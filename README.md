@@ -1,6 +1,8 @@
 # 🧠 Associative Memory Retriever for Long-Context QA
 ### Using Modern Hopfield Networks
 
+**Notice: This project is currently a work in progress and is under active development. Implementations, benchmarks, and architectures are subject to ongoing updates.**
+
 > A production-ready QA system that replaces traditional RAG with energy-minimization-based
 > associative memory retrieval — robust to noisy queries and long documents.
 
