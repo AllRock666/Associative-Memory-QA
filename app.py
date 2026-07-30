@@ -328,7 +328,6 @@ init_session_state()
 
 
 # ─── Pipeline Initialization ────────────────────────────────────────
-@st.cache_resource(show_spinner=False)
 def get_pipeline(
     embedding_model: str,
     chunk_size: int,
@@ -336,17 +335,29 @@ def get_pipeline(
     hopfield_beta: float,
     top_k: int,
 ):
-    """Initialize and cache the QA pipeline."""
+    """Get or initialize the QA pipeline in session state."""
     from core.pipeline import HopfieldQAPipeline, PipelineConfig
-    config = PipelineConfig(
-        embedding_model=embedding_model,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        hopfield_beta=hopfield_beta,
-        top_k=top_k,
-        use_fusion=True,
-    )
-    return HopfieldQAPipeline(config)
+    
+    if st.session_state.pipeline is None:
+        config = PipelineConfig(
+            embedding_model=embedding_model,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            hopfield_beta=hopfield_beta,
+            top_k=top_k,
+            use_fusion=True,
+        )
+        st.session_state.pipeline = HopfieldQAPipeline(config)
+    else:
+        p = st.session_state.pipeline
+        p.config.hopfield_beta = hopfield_beta
+        p.config.top_k = top_k
+        p.config.chunk_size = chunk_size
+        p.config.chunk_overlap = chunk_overlap
+        p.config.embedding_model = embedding_model
+        p.update_hopfield_beta(hopfield_beta)
+        
+    return st.session_state.pipeline
 
 
 # ─── Sidebar ────────────────────────────────────────────────────────
