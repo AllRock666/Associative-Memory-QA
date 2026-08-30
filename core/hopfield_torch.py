@@ -8,10 +8,11 @@ class HopfieldRetriever(nn.Module):
     Continuous Modern Hopfield Network Retriever.
     Computes the update rule iteratively: state_{t+1} = X * softmax(beta * X^T * state_t - M)
     """
-    def __init__(self, beta: float = 1.0, n_iter: int = 1):
+    def __init__(self, beta: float = 1.0, n_iter: int = 1, residual: bool = True):
         super().__init__()
         self.beta = beta
         self.n_iter = n_iter
+        self.residual = residual
 
     def forward(
         self, 
@@ -38,7 +39,14 @@ class HopfieldRetriever(nn.Module):
             scaled_projection = self.beta * projection
             M, _ = torch.max(scaled_projection, dim=-1, keepdim=True)
             attention_weights = F.softmax(scaled_projection - M, dim=-1)
-            state = torch.bmm(attention_weights, stored_patterns)
+            
+            retrieved = torch.bmm(attention_weights, stored_patterns)
+            
+            # Residual connection (Standard in Transformer/Modern Hopfield)
+            if self.residual:
+                state = F.normalize(query + retrieved, p=2, dim=-1)
+            else:
+                state = retrieved
             
         _, top_indices = torch.topk(attention_weights.squeeze(1), k=min(top_k, attention_weights.size(-1)), dim=-1)
         
@@ -136,8 +144,8 @@ class RetrievalResult:
 
 class PyTorchHopfieldMemory:
     """Wrapper to mimic the old ModernHopfieldNetwork API but backed by PyTorch."""
-    def __init__(self, beta: float = 8.0, n_iter: int = 3, similarity_threshold: float = 0.05):
-        self.retriever = HopfieldRetriever(beta=beta, n_iter=n_iter)
+    def __init__(self, beta: float = 8.0, n_iter: int = 3, residual: bool = True, similarity_threshold: float = 0.05):
+        self.retriever = HopfieldRetriever(beta=beta, n_iter=n_iter, residual=residual)
         self.similarity_threshold = similarity_threshold
         self._patterns = None
         self._metadata = []
