@@ -25,7 +25,8 @@ class HopfieldRetriever(nn.Module):
             
         if stored_patterns.dim() == 2:
             N, d_mem = stored_patterns.shape
-            assert d == d_mem, "Dimension mismatch between query and memory"
+            if d != d_mem:
+                raise ValueError("Dimension mismatch between query and memory")
             stored_patterns = stored_patterns.unsqueeze(0).expand(B, N, d)
             
         state = query
@@ -111,18 +112,12 @@ class BiLSTMQAHead(nn.Module):
         end_logits = end_logits.squeeze(0)
         
         L = start_logits.size(0)
-        best_score = -float('inf')
-        best_span = (0, 0)
-        
-        # Simple O(L^2) search for the best valid span
-        for i in range(L):
-            for j in range(i, min(i + max_len, L)):
-                score = start_logits[i].item() + end_logits[j].item()
-                if score > best_score:
-                    best_score = score
-                    best_span = (i, j)
-                    
-        return best_span
+        scores = start_logits.unsqueeze(1) + end_logits.unsqueeze(0)  # (L, L)
+        mask = torch.triu(torch.ones(L, L, dtype=torch.bool, device=scores.device))
+        mask &= (torch.arange(L, device=scores.device).unsqueeze(1) + max_len > torch.arange(L, device=scores.device).unsqueeze(0))
+        scores = scores.masked_fill(~mask, -float('inf'))
+        best = torch.argmax(scores)
+        return (best.item() // L, best.item() % L)
 
 from dataclasses import dataclass
 from typing import List, Dict
@@ -177,11 +172,23 @@ class PyTorchHopfieldMemory:
             
         q_tensor = torch.tensor(q, dtype=torch.float32, device=self.device).unsqueeze(0) # (1, d)
         
+        raw_sims = torch.mm(q_tensor, self._patterns.T).squeeze(0).cpu().numpy() # (N,)
+        
         with torch.no_grad():
-            _, attn, top_idx = self.retriever(q_tensor, self._patterns, top_k=min(top_k, self.n_patterns))
+            try:
+                _, attn, top_idx = self.retriever(q_tensor, self._patterns, top_k=min(top_k, self.n_patterns))
+            except RuntimeError as e:
+                if 'out of memory' in str(e).lower():
+                    self.retriever.to('cpu')
+                    self._patterns = self._patterns.to('cpu')
+                    q_tensor = q_tensor.to('cpu')
+                    _, attn, top_idx = self.retriever(q_tensor, self._patterns, top_k=min(top_k, self.n_patterns))
+                    self.device = torch.device('cpu')
+                else:
+                    raise e
             
-        attn = attn.squeeze().cpu().numpy()
-        top_idx = top_idx.squeeze().cpu().numpy()
+        attn = attn.squeeze(0).squeeze(0).cpu().numpy()
+        top_idx = top_idx.squeeze(0).squeeze(0).cpu().numpy()
         
         if top_idx.ndim == 0:
             top_idx = [int(top_idx)]
@@ -190,7 +197,9 @@ class PyTorchHopfieldMemory:
             
         results = []
         for rank, idx in enumerate(top_idx):
-            score = float(attn[idx])
+            idx = int(idx)
+            attention = float(attn[idx])
+            score = float(raw_sims[idx])
             if score < self.similarity_threshold:
                 continue
             meta = self._metadata[idx]
@@ -200,14 +209,80 @@ class PyTorchHopfieldMemory:
                 source=meta.get("source", "unknown"),
                 chunk_index=meta.get("chunk_index", idx),
                 similarity_score=score,
-                hopfield_attention=score,
+                hopfield_attention=attention,
                 rank=rank+1,
                 metadata=meta
             ))
         return results
 
     def retrieve_with_fusion(self, queries: List[np.ndarray], top_k: int = 5, fusion_weights: List[float] = None) -> List[RetrievalResult]:
-        return self.retrieve(queries[0], top_k)
+        if self._patterns is None or not queries:
+            return []
+            
+        B = len(queries)
+        if fusion_weights is None:
+            fusion_weights = [1.0] * B
+            
+        queries_arr = np.array(queries)
+        norms = np.linalg.norm(queries_arr, axis=1, keepdims=True)
+        norms = np.where(norms < 1e-8, 1.0, norms)
+        q_norm = queries_arr / norms
+        
+        q_tensor = torch.tensor(q_norm, dtype=torch.float32, device=self.device)
+        raw_sims = torch.mm(q_tensor, self._patterns.T).cpu().numpy()
+        
+        with torch.no_grad():
+            try:
+                _, attn, _ = self.retriever(q_tensor, self._patterns, top_k=min(top_k, self.n_patterns))
+            except RuntimeError as e:
+                if 'out of memory' in str(e).lower():
+                    self.retriever.to('cpu')
+                    self._patterns = self._patterns.to('cpu')
+                    q_tensor = q_tensor.to('cpu')
+                    _, attn, _ = self.retriever(q_tensor, self._patterns, top_k=min(top_k, self.n_patterns))
+                    self.device = torch.device('cpu')
+                else:
+                    raise e
+                    
+        attn = attn.squeeze(1).cpu().numpy()
+        
+        chunk_scores = {}
+        for b in range(B):
+            w = fusion_weights[b]
+            ranks = np.argsort(attn[b])[::-1]
+            for rank_pos, idx in enumerate(ranks):
+                rrf_score = w * (1.0 / (60 + rank_pos))
+                if idx not in chunk_scores:
+                    chunk_scores[idx] = {"rrf": 0.0, "max_attn": 0.0, "max_sim": 0.0}
+                chunk_scores[idx]["rrf"] += rrf_score
+                chunk_scores[idx]["max_attn"] = max(chunk_scores[idx]["max_attn"], float(attn[b, idx]))
+                chunk_scores[idx]["max_sim"] = max(chunk_scores[idx]["max_sim"], float(raw_sims[b, idx]))
+                
+        sorted_indices = sorted(chunk_scores.keys(), key=lambda i: chunk_scores[i]["rrf"], reverse=True)
+        
+        results = []
+        rank = 1
+        for idx in sorted_indices:
+            idx = int(idx)
+            info = chunk_scores[idx]
+            if info["max_sim"] < self.similarity_threshold:
+                continue
+            meta = self._metadata[idx]
+            results.append(RetrievalResult(
+                chunk_id=meta.get("chunk_id", str(idx)),
+                text=meta.get("text", ""),
+                source=meta.get("source", "unknown"),
+                chunk_index=meta.get("chunk_index", idx),
+                similarity_score=info["max_sim"],
+                hopfield_attention=info["max_attn"],
+                rank=rank,
+                metadata=meta
+            ))
+            rank += 1
+            if len(results) >= top_k:
+                break
+                
+        return results
 
     def get_attention_landscape(self, query: np.ndarray) -> Dict:
         if self._patterns is None:
@@ -215,7 +290,9 @@ class PyTorchHopfieldMemory:
         q_tensor = torch.tensor(query, dtype=torch.float32, device=self.device).unsqueeze(0)
         with torch.no_grad():
             _, attn, _ = self.retriever(q_tensor, self._patterns, top_k=1)
-        attn_list = attn.squeeze().cpu().numpy().tolist()
+        attn_list = attn.squeeze(0).squeeze(0).cpu().numpy().tolist()
+        if not isinstance(attn_list, list):
+            attn_list = [attn_list]
         return {
             "attention_weights": attn_list,
             "energy_values": [0.0] * len(attn_list)

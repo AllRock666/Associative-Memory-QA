@@ -59,3 +59,42 @@ def test_bilstm_decode_span():
     
     best_span = head.decode_span(start_logits, end_logits)
     assert best_span == (2, 5)
+
+import numpy as np
+from core.hopfield_torch import PyTorchHopfieldMemory, RetrievalResult
+
+def test_pytorch_hopfield_memory_wrapper_n0():
+    memory = PyTorchHopfieldMemory()
+    res = memory.retrieve(np.random.randn(64))
+    assert len(res) == 0
+    
+    landscape = memory.get_attention_landscape(np.random.randn(64))
+    assert landscape["attention_weights"] == []
+    
+    fusion = memory.retrieve_with_fusion([np.random.randn(64), np.random.randn(64)])
+    assert len(fusion) == 0
+
+def test_pytorch_hopfield_memory_wrapper_n1():
+    memory = PyTorchHopfieldMemory(similarity_threshold=-1.0)
+    patterns = np.random.randn(1, 64)
+    metadata = [{"chunk_id": "test"}]
+    memory.store(patterns, metadata)
+    
+    # Should not crash on squeeze
+    res = memory.retrieve(np.random.randn(64), top_k=5)
+    assert len(res) == 1
+    assert res[0].chunk_id == "test"
+    
+    landscape = memory.get_attention_landscape(np.random.randn(64))
+    assert len(landscape["attention_weights"]) == 1
+
+def test_pytorch_hopfield_memory_wrapper_fusion():
+    memory = PyTorchHopfieldMemory(similarity_threshold=-1.0)
+    patterns = np.random.randn(10, 64)
+    metadata = [{"chunk_id": f"test_{i}"} for i in range(10)]
+    memory.store(patterns, metadata)
+    
+    queries = [np.random.randn(64) for _ in range(3)]
+    res = memory.retrieve_with_fusion(queries, top_k=5, fusion_weights=[1.0, 0.5, 0.5])
+    assert len(res) == 5
+    assert isinstance(res[0], RetrievalResult)
