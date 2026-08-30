@@ -9,24 +9,38 @@ from core.hopfield_torch import PyTorchHopfieldMemory, BiLSTMQAHead
 from core.baselines import BM25Retriever, DenseRetriever
 from benchmarks.metrics import metric_max_over_ground_truths, exact_match_score, f1_score, normalize_answer
 
-def get_answer_span(context, query, qa_head, tokenizer, device):
+def get_answer_span(context, query, qa_model, tokenizer, device):
     inputs = tokenizer(query, context, return_tensors='pt', truncation=True, max_length=512)
     inputs = {k: v.to(device) for k, v in inputs.items()}
     
     with torch.no_grad():
-        from transformers import AutoModel
-        # Basic BERT forward pass, normally you'd keep encoder initialized in a class
-        encoder = AutoModel.from_pretrained('bert-base-uncased').to(device)
-        encoder.eval()
+        outputs = qa_model(**inputs)
         
-        outputs = encoder(**inputs)
-        token_embeddings = outputs.last_hidden_state
-        mask = inputs['attention_mask'].bool()
+        start_logits = outputs.start_logits.squeeze(0)
+        end_logits = outputs.end_logits.squeeze(0)
         
-        start_logits, end_logits = qa_head(token_embeddings, mask)
-        best_span = qa_head.decode_span(start_logits, end_logits)
+        sequence_ids = inputs.get('token_type_ids', None)
+        if sequence_ids is None:
+            query_len = len(tokenizer.tokenize(query)) + 2
+            mask = torch.ones_like(start_logits, dtype=torch.bool)
+            mask[:query_len] = False
+        else:
+            mask = (sequence_ids.squeeze(0) == 1)
+            
+        start_logits = start_logits.masked_fill(~mask, -float('inf'))
+        end_logits = end_logits.masked_fill(~mask, -float('inf'))
         
-    start_idx, end_idx = best_span
+        L = start_logits.size(0)
+        max_len = 30
+        scores = start_logits.unsqueeze(1) + end_logits.unsqueeze(0)
+        valid_mask = torch.triu(torch.ones(L, L, dtype=torch.bool, device=scores.device))
+        valid_mask &= (torch.arange(L, device=scores.device).unsqueeze(1) + max_len > torch.arange(L, device=scores.device).unsqueeze(0))
+        scores = scores.masked_fill(~valid_mask, -float('inf'))
+        
+        best = torch.argmax(scores)
+        start_idx = best.item() // L
+        end_idx = best.item() % L
+        
     input_ids = inputs['input_ids'][0].tolist()
     
     if start_idx >= end_idx or start_idx == 0:
@@ -70,15 +84,13 @@ def main():
     hopfield.store(patterns, metadata)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print("Initializing BiLSTM QA Head (End-to-End)...")
-    from transformers import AutoTokenizer, AutoModel
-    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+    print("Initializing QA Head (End-to-End)...")
+    from transformers import AutoTokenizer, AutoModelForQuestionAnswering
+    tokenizer = AutoTokenizer.from_pretrained('deepset/roberta-base-squad2')
     
-    # Normally we would train the BiLSTM head. We instantiate it here to demonstrate the pipeline
-    # Note: Untrained BiLSTM will produce random extraction. 
-    # For a real benchmark, we measure retrieval explicitly, and just show end-to-end pipeline executes.
-    qa_head = BiLSTMQAHead(input_dim=768, hidden_dim=256).to(device)
-    qa_head.eval()
+    # Use a pre-trained SQuAD model for real extraction benchmarks
+    qa_model = AutoModelForQuestionAnswering.from_pretrained('deepset/roberta-base-squad2').to(device)
+    qa_model.eval()
 
     results = {
         "BM25": {"recall": 0.0, "em": 0.0, "f1": 0.0},
@@ -98,7 +110,7 @@ def main():
         recall = any(normalize_answer(gt) in normalize_answer(context_str) for gt in ground_truths)
         
         # End-to-End prediction
-        pred = get_answer_span(context_str, query, qa_head, tokenizer, device)
+        pred = get_answer_span(context_str, query, qa_model, tokenizer, device)
         
         em = metric_max_over_ground_truths(exact_match_score, pred, ground_truths)
         f1 = metric_max_over_ground_truths(f1_score, pred, ground_truths)

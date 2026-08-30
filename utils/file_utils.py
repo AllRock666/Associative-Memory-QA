@@ -64,8 +64,8 @@ def _clean_text(text: str) -> str:
 def _extract_pdf(file_obj) -> str:
     """Extract text from PDF using PyPDF2."""
     try:
-        import PyPDF2
-        reader = PyPDF2.PdfReader(file_obj)
+        import pypdf
+        reader = pypdf.PdfReader(file_obj)
         pages = []
         for page in reader.pages:
             page_text = page.extract_text()
@@ -73,7 +73,7 @@ def _extract_pdf(file_obj) -> str:
                 pages.append(page_text)
         return _clean_text('\n\n'.join(pages))
     except ImportError:
-        raise ImportError("PyPDF2 required for PDF support: pip install PyPDF2")
+        raise ImportError("pypdf required for PDF support: pip install pypdf")
     except Exception as e:
         raise ValueError(f"Failed to extract PDF text: {e}")
 

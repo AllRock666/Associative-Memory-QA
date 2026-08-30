@@ -549,24 +549,20 @@ ANSWER:"""
 
 class ExtractiveQAAnswerGenerator(AnswerGenerator):
     """
-    End-to-End Extractive QA generator using BiLSTM head.
-    Requires transformers for tokenization.
+    End-to-End Extractive QA generator using a pre-trained QA model.
     """
-    def __init__(self, model_name='bert-base-uncased', hidden_dim=256, **kwargs):
+    def __init__(self, model_name='deepset/roberta-base-squad2', **kwargs):
         super().__init__(**kwargs)
         try:
-            from transformers import AutoTokenizer, AutoModel
+            from transformers import AutoTokenizer, AutoModelForQuestionAnswering
             import torch
-            from core.hopfield_torch import BiLSTMQAHead
         except ImportError:
             raise ImportError("Please install transformers and torch")
             
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.encoder = AutoModel.from_pretrained(model_name).to(self.device)
-        self.qa_head = BiLSTMQAHead(input_dim=self.encoder.config.hidden_size, hidden_dim=hidden_dim).to(self.device)
-        self.encoder.eval()
-        self.qa_head.eval()
+        self.qa_model = AutoModelForQuestionAnswering.from_pretrained(model_name).to(self.device)
+        self.qa_model.eval()
 
     def generate(self, processed_query: ProcessedQuery, retrieved_chunks: List[RetrievalResult]) -> GeneratedAnswer:
         import torch
@@ -582,25 +578,50 @@ class ExtractiveQAAnswerGenerator(AnswerGenerator):
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         
         with torch.no_grad():
-            outputs = self.encoder(**inputs)
-            token_embeddings = outputs.last_hidden_state
-            mask = inputs['attention_mask'].bool()
+            outputs = self.qa_model(**inputs)
             
-            start_logits, end_logits = self.qa_head(token_embeddings, mask)
-            best_span = self.qa_head.decode_span(start_logits, end_logits)
+            start_logits = outputs.start_logits.squeeze(0)
+            end_logits = outputs.end_logits.squeeze(0)
             
-        # Extract string span
-        start_idx, end_idx = best_span
+            # Mask out question tokens so we only predict in context
+            sequence_ids = inputs.get('token_type_ids', None)
+            if sequence_ids is None:
+                # RoBERTa doesn't use token_type_ids, so we find the context manually
+                # 0 for question, 1 for context in RoBERTa tokenizer output usually? No, it's None.
+                # Just mask the first N tokens corresponding to query + special tokens
+                query_len = len(self.tokenizer.tokenize(query)) + 2
+                mask = torch.ones_like(start_logits, dtype=torch.bool)
+                mask[:query_len] = False
+            else:
+                mask = (sequence_ids.squeeze(0) == 1)
+                
+            start_logits = start_logits.masked_fill(~mask, -float('inf'))
+            end_logits = end_logits.masked_fill(~mask, -float('inf'))
+            
+            L = start_logits.size(0)
+            max_len = 30
+            scores = start_logits.unsqueeze(1) + end_logits.unsqueeze(0)
+            valid_mask = torch.triu(torch.ones(L, L, dtype=torch.bool, device=scores.device))
+            valid_mask &= (torch.arange(L, device=scores.device).unsqueeze(1) + max_len > torch.arange(L, device=scores.device).unsqueeze(0))
+            scores = scores.masked_fill(~valid_mask, -float('inf'))
+            
+            best = torch.argmax(scores)
+            start_idx = best.item() // L
+            end_idx = best.item() % L
+            
+            # True confidence from softmax
+            start_probs = torch.nn.functional.softmax(start_logits, dim=-1)
+            end_probs = torch.nn.functional.softmax(end_logits, dim=-1)
+            conf = (start_probs[start_idx] * end_probs[end_idx]).item()
+            
         input_ids = inputs['input_ids'][0].tolist()
         
         if start_idx >= end_idx or start_idx == 0:
-            # Fallback if prediction is invalid or points to [CLS]
             answer_text = "Could not extract a specific answer span. Context suggests: " + retrieved_chunks[0].text[:200] + "..."
             conf = 0.3
         else:
             answer_tokens = input_ids[start_idx:end_idx+1]
             answer_text = self.tokenizer.decode(answer_tokens, skip_special_tokens=True)
-            conf = 0.85
             
         return GeneratedAnswer(
             query=query,
@@ -610,5 +631,5 @@ class ExtractiveQAAnswerGenerator(AnswerGenerator):
             highlighted_passages=self._build_highlighted_passages(retrieved_chunks, processed_query.keywords),
             sources=list(dict.fromkeys(c.source for c in retrieved_chunks)),
             answer_type="extractive_span",
-            generation_stats={"model": "BiLSTMQAHead"}
+            generation_stats={"model": "deepset/roberta-base-squad2"}
         )
