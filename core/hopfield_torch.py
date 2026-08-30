@@ -137,6 +137,7 @@ class RetrievalResult:
     similarity_score: float
     rank: int
     metadata: Dict = None
+    hopfield_attention: float = 0.0
 
 class PyTorchHopfieldMemory:
     """Wrapper to mimic the old ModernHopfieldNetwork API but backed by PyTorch."""
@@ -199,21 +200,26 @@ class PyTorchHopfieldMemory:
                 source=meta.get("source", "unknown"),
                 chunk_index=meta.get("chunk_index", idx),
                 similarity_score=score,
+                hopfield_attention=score,
                 rank=rank+1,
                 metadata=meta
             ))
         return results
 
-    def retrieve_with_fusion(self, queries: List[np.ndarray], top_k: int = 5) -> List[RetrievalResult]:
+    def retrieve_with_fusion(self, queries: List[np.ndarray], top_k: int = 5, fusion_weights: List[float] = None) -> List[RetrievalResult]:
         return self.retrieve(queries[0], top_k)
 
-    def get_attention_landscape(self, query: np.ndarray) -> List[float]:
+    def get_attention_landscape(self, query: np.ndarray) -> Dict:
         if self._patterns is None:
-            return []
+            return {"attention_weights": [], "energy_values": []}
         q_tensor = torch.tensor(query, dtype=torch.float32, device=self.device).unsqueeze(0)
         with torch.no_grad():
             _, attn, _ = self.retriever(q_tensor, self._patterns, top_k=1)
-        return attn.squeeze().cpu().numpy().tolist()
+        attn_list = attn.squeeze().cpu().numpy().tolist()
+        return {
+            "attention_weights": attn_list,
+            "energy_values": [0.0] * len(attn_list)
+        }
 
     def get_network_stats(self) -> Dict:
         return {

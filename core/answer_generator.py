@@ -14,7 +14,7 @@ import logging
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 
-from core.hopfield import RetrievalResult
+from core.hopfield_torch import RetrievalResult
 from core.query_handler import ProcessedQuery
 
 logger = logging.getLogger(__name__)
