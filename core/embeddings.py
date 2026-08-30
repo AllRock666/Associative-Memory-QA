@@ -71,6 +71,8 @@ class DocumentChunker:
         text = re.sub(r'\s+', ' ', text).strip()
 
         if len(text) <= self.chunk_size:
+            if len(text) < self.min_chunk_size:
+                return []
             chunk_id = self._create_chunk_id(source, 0, text)
             return [Chunk(
                 chunk_id=chunk_id,
@@ -238,6 +240,8 @@ class EmbeddingEngine:
                 self._cache[cache_key] = embeddings[i]
                 results[orig_idx] = embeddings[i]
 
+        if not results:
+            return np.empty((0, self.embedding_dim))
         return np.vstack(results)
 
     def embed_chunks(

@@ -37,7 +37,7 @@ def main():
     seq_len = inputs['input_ids'].size(1)
     
     # Calculate how much attention the Hopfield network paid to Vision vs Text
-    attn = attention_weights.squeeze().cpu().numpy()
+    attn = attention_weights[0, 0].cpu().numpy()
     visual_attention = sum(attn[:num_visual_patches])
     text_attention = sum(attn[num_visual_patches:])
     

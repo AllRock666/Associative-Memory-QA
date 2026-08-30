@@ -108,6 +108,7 @@ class HopfieldQAPipeline:
         )
         self.memory = PyTorchHopfieldMemory(
             beta=self.config.hopfield_beta,
+            n_iter=self.config.hopfield_n_iter,
             similarity_threshold=self.config.similarity_threshold,
         )
         self.query_processor = QueryProcessor()
@@ -328,6 +329,7 @@ class HopfieldQAPipeline:
         self._is_ready = False
         self.memory = PyTorchHopfieldMemory(
             beta=self.config.hopfield_beta,
+            n_iter=self.config.hopfield_n_iter,
             similarity_threshold=self.config.similarity_threshold,
         )
         self.embedder.clear_cache()
