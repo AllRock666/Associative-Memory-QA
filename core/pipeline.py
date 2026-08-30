@@ -14,7 +14,7 @@ import re
 import logging
 
 from core.embeddings import DocumentChunker, EmbeddingEngine, Chunk
-from core.hopfield import ModernHopfieldNetwork, RetrievalResult
+from core.hopfield_torch import PyTorchHopfieldMemory, RetrievalResult
 from core.query_handler import QueryProcessor, ProcessedQuery
 from core.answer_generator import AnswerGenerator, GeneratedAnswer
 
@@ -106,13 +106,13 @@ class HopfieldQAPipeline:
             model_name=self.config.embedding_model,
             batch_size=self.config.embedding_batch_size,
         )
-        self.memory = ModernHopfieldNetwork(
+        self.memory = PyTorchHopfieldMemory(
             beta=self.config.hopfield_beta,
-            n_iter=self.config.hopfield_n_iter,
             similarity_threshold=self.config.similarity_threshold,
         )
         self.query_processor = QueryProcessor()
-        self.answer_generator = AnswerGenerator(
+        from core.answer_generator import ExtractiveQAAnswerGenerator
+        self.answer_generator = ExtractiveQAAnswerGenerator(
             max_answer_length=self.config.max_answer_length,
             min_confidence_threshold=self.config.min_confidence,
         )
@@ -326,9 +326,9 @@ class HopfieldQAPipeline:
         self._all_chunks = []
         self._documents = {}
         self._is_ready = False
-        self.memory = ModernHopfieldNetwork(
+        self.memory = PyTorchHopfieldMemory(
             beta=self.config.hopfield_beta,
-            n_iter=self.config.hopfield_n_iter,
+            similarity_threshold=self.config.similarity_threshold,
         )
         self.embedder.clear_cache()
 

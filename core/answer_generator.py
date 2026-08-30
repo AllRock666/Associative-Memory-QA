@@ -546,3 +546,69 @@ ANSWER:"""
         # Placeholder: in production, call your LLM API here
         # response = call_llm_api(prompt, self.model_name)
         raise NotImplementedError("External LLM integration not configured.")
+
+class ExtractiveQAAnswerGenerator(AnswerGenerator):
+    """
+    End-to-End Extractive QA generator using BiLSTM head.
+    Requires transformers for tokenization.
+    """
+    def __init__(self, model_name='bert-base-uncased', hidden_dim=256, **kwargs):
+        super().__init__(**kwargs)
+        try:
+            from transformers import AutoTokenizer, AutoModel
+            import torch
+            from core.hopfield_torch import BiLSTMQAHead
+        except ImportError:
+            raise ImportError("Please install transformers and torch")
+            
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.encoder = AutoModel.from_pretrained(model_name).to(self.device)
+        self.qa_head = BiLSTMQAHead(input_dim=self.encoder.config.hidden_size, hidden_dim=hidden_dim).to(self.device)
+        self.encoder.eval()
+        self.qa_head.eval()
+
+    def generate(self, processed_query: ProcessedQuery, retrieved_chunks: List[RetrievalResult]) -> GeneratedAnswer:
+        import torch
+        
+        if not retrieved_chunks:
+            return super().generate(processed_query, retrieved_chunks)
+            
+        # Concatenate retrieved chunks into a single context
+        context = " ".join([c.text for c in retrieved_chunks[:3]]) # Limit to top 3 for length
+        query = processed_query.cleaned
+        
+        inputs = self.tokenizer(query, context, return_tensors='pt', truncation=True, max_length=512)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        
+        with torch.no_grad():
+            outputs = self.encoder(**inputs)
+            token_embeddings = outputs.last_hidden_state
+            mask = inputs['attention_mask'].bool()
+            
+            start_logits, end_logits = self.qa_head(token_embeddings, mask)
+            best_span = self.qa_head.decode_span(start_logits, end_logits)
+            
+        # Extract string span
+        start_idx, end_idx = best_span
+        input_ids = inputs['input_ids'][0].tolist()
+        
+        if start_idx >= end_idx or start_idx == 0:
+            # Fallback if prediction is invalid or points to [CLS]
+            answer_text = "Could not extract a specific answer span. Context suggests: " + retrieved_chunks[0].text[:200] + "..."
+            conf = 0.3
+        else:
+            answer_tokens = input_ids[start_idx:end_idx+1]
+            answer_text = self.tokenizer.decode(answer_tokens, skip_special_tokens=True)
+            conf = 0.85
+            
+        return GeneratedAnswer(
+            query=query,
+            answer=answer_text,
+            confidence=conf,
+            evidence_chunks=retrieved_chunks,
+            highlighted_passages=self._build_highlighted_passages(retrieved_chunks, processed_query.keywords),
+            sources=list(dict.fromkeys(c.source for c in retrieved_chunks)),
+            answer_type="extractive_span",
+            generation_stats={"model": "BiLSTMQAHead"}
+        )
