@@ -1,10 +1,9 @@
 # 🧠 Associative Memory Retriever for Long-Context QA
-### Using Modern Hopfield Networks
+### Exploring Modern Hopfield Networks for Retrieval
 
-**Notice: This project is currently a work in progress and is under active development. Implementations, benchmarks, and architectures are subject to ongoing updates.**
+**Notice: This project is currently a work in progress and is under active development. It serves as a clean, testable reference implementation for exploring the equivalence between Modern Hopfield Networks and Transformer attention, rather than a production replacement for RAG.**
 
-> A production-ready QA system that replaces traditional RAG with energy-minimization-based
-> associative memory retrieval — robust to noisy queries and long documents.
+> An experimental QA system investigating energy-minimization-based associative memory retrieval — including when iterative attractor dynamics can overcome noise and when they collapse.
 
 ---
 
@@ -28,7 +27,7 @@
                            ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │  ANSWER GENERATION                                              │
-│  Chunks → SentenceScoring → Synthesis → ConfidenceScore        │
+│  Chunks → Extractive QA Model (RoBERTa) → Span + Confidence     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -39,21 +38,30 @@
 E = −lse(β, X^T ξ) + ½ξ^Tξ + (1/β)log N + ½M²
 ```
 
-### Update Rule (1-Step Convergence)
+### Update Rule
 ```
 ξ_new = X · softmax(β · X^T · ξ)
 ```
+*Note on equivalence: With `n_iter=1`, ranking chunks by the Hopfield attention weight and ranking them by raw cosine similarity (Dense retrieval) produce the exact same ordering, as softmax is a strictly monotonic transform of similarity scores for a fixed β.*
 
-### Capacity
-- **Classical Hopfield:** 0.14 × N patterns
-- **Modern Hopfield:** exp(d/2) patterns — exponential in embedding dimension!
+## 📊 Evaluation & Benchmarks
 
-| Property | Classical | Modern |
-|---|---|---|
-| State Space | Binary {-1,+1} | Continuous ℝ^d |
-| Capacity | 0.14·N | exp(d/2) |
-| Convergence | Many steps | **1 step** |
-| Link to Attention | ❌ | ✅ Exact equivalence |
+We systematically evaluate the retrieval architecture to identify when Hopfield dynamics provide an advantage.
+
+### SQuAD (Single-Hop Fact Retrieval)
+On standard single-hop retrieval, a 1-step Hopfield update is mathematically identical to Dense (DPR) cosine similarity.
+* **BM25:** 74.80% F1
+* **Dense (DPR):** 74.46% F1
+* **Hopfield (1-iter):** 74.46% F1
+
+### HotpotQA (Multi-Hop Reasoning)
+For multi-hop queries, we utilize `n_iter=3` to allow the network to "hop" between facts. However, early tests revealed a vulnerability: without residual connections, the iterative update pulls the query state toward whichever pattern dominates the attention distribution (attractor collapse), degrading performance. By implementing a residual update `ξ_new = normalize(ξ + retrieved)` (equivalent to a Transformer layer), stability is recovered:
+
+* **BM25:** 14.67% F1
+* **Dense (DPR):** 29.08% F1
+* **Hopfield (3-iter, residual):** 26.85% F1
+
+*Current conclusion: Continuous Hopfield Networks applied to raw text embeddings require well-separated patterns. Without a learned query-projection layer to isolate trajectories, iterative dynamics can struggle to outperform plain top-k cosine similarity.*
 
 ## 📁 Project Structure
 
@@ -61,11 +69,14 @@ E = −lse(β, X^T ξ) + ½ξ^Tξ + (1/β)log N + ½M²
 hopfield_qa/
 ├── app.py                    # Streamlit UI
 ├── requirements.txt
+├── benchmarks/               # SQuAD, HotpotQA, and ablation scripts
 ├── core/
 │   ├── embeddings.py         # DocumentChunker + EmbeddingEngine
-│   ├── hopfield.py           # ModernHopfieldNetwork
+│   ├── hopfield_torch.py     # PyTorch Hopfield Memory + QA Head
+│   ├── bitemporal_graph.py   # Experimental legal validity graph
+│   ├── hybrid_retriever.py   # Router between Hopfield and temporal graph
 │   ├── query_handler.py      # QueryProcessor (noise, expansion, variants)
-│   ├── answer_generator.py   # AnswerGenerator (extractive + LLM)
+│   ├── answer_generator.py   # AnswerGenerator
 │   └── pipeline.py           # HopfieldQAPipeline (orchestrator)
 └── utils/
     ├── visualization.py      # Plotly charts
@@ -88,48 +99,21 @@ streamlit run app.py
 ```python
 from core.pipeline import HopfieldQAPipeline, PipelineConfig
 
-# Configure
 config = PipelineConfig(
     embedding_model="all-MiniLM-L6-v2",
-    chunk_size=512,
-    hopfield_beta=8.0,    # Retrieval sharpness
-    top_k=5,
-    use_fusion=True,      # Multi-query fusion
+    hopfield_beta=8.0,
+    hopfield_n_iter=1,
 )
-
-# Initialize
 pipeline = HopfieldQAPipeline(config)
-
-# Load documents
-pipeline.add_document("Your document text here...", source="my_doc")
-
-# Query
-result = pipeline.query("What is the storage capacity of Hopfield networks?")
-print(result.answer.answer)
-print(f"Confidence: {result.answer.confidence:.2%}")
-print(f"Time: {result.total_time_ms:.1f}ms")
 ```
-
-## ⚙️ Key Parameters
-
-| Parameter | Default | Effect |
-|---|---|---|
-| `hopfield_beta` | 8.0 | Higher = sharper retrieval focus |
-| `chunk_size` | 512 | Token-length of each memory pattern |
-| `chunk_overlap` | 64 | Context preservation between chunks |
-| `top_k` | 5 | Number of patterns to retrieve |
-| `use_fusion` | True | Multi-query RRF fusion for noise robustness |
 
 ## 🧩 Key Features
 
-- **Modern Hopfield Retrieval** — Energy minimization instead of cosine NN search
+- **Modern Hopfield Retrieval** — PyTorch-backed continuous associative memory
+- **Experimental Legal Router** — Route "current law" queries to a temporal graph, and vague queries to Hopfield memory (see `benchmarks/run_legal_amendments.py`)
 - **Multi-Query Fusion** — Generate query variants + Reciprocal Rank Fusion
-- **Noise Handling** — Automatic detection and correction of noisy queries
-- **Query Expansion** — Abbreviation expansion, type-specific reformulation
-- **4 Query Types** — Factual, Procedural, Comparative, Conceptual
-- **Confidence Scoring** — Multi-factor confidence estimation
+- **Pre-trained Extraction** — End-to-end extractive QA using RoBERTa
 - **Rich Visualizations** — Attention heatmaps, energy landscape, PCA scatter
-- **Multi-format Support** — .txt, .pdf, .docx, .md
 - **Fully offline** — No external API calls required
 
 ## 📖 References
@@ -137,4 +121,3 @@ print(f"Time: {result.total_time_ms:.1f}ms")
 1. Ramsauer et al. (2021). "Hopfield Networks is All You Need." ICLR 2021.
 2. Hopfield, J.J. (1982). "Neural networks and physical systems with emergent collective computational abilities." PNAS.
 3. Lewis et al. (2020). "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks." NeurIPS 2020.
-4. Vaswani et al. (2017). "Attention is All You Need." NeurIPS 2017.

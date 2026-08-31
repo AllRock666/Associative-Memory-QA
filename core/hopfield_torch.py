@@ -295,15 +295,27 @@ class PyTorchHopfieldMemory:
     def get_attention_landscape(self, query: np.ndarray) -> Dict:
         if self._patterns is None:
             return {"attention_weights": [], "energy_values": []}
-        q_tensor = torch.tensor(query, dtype=torch.float32, device=self.device).unsqueeze(0)
+            
+        q = query.copy()
+        n = np.linalg.norm(q)
+        if n > 1e-8:
+            q = q / n
+            
+        q_tensor = torch.tensor(q, dtype=torch.float32, device=self.device).unsqueeze(0)
+        
         with torch.no_grad():
+            projection = torch.mm(q_tensor, self._patterns.T).squeeze(0)
+            # Energy contribution of each pattern is inversely related to projection
+            energy_values = -self.beta * projection
             _, attn, _ = self.retriever(q_tensor, self._patterns, top_k=1)
+            
         attn_list = attn.squeeze(0).squeeze(0).cpu().numpy().tolist()
         if not isinstance(attn_list, list):
             attn_list = [attn_list]
+            
         return {
             "attention_weights": attn_list,
-            "energy_values": [0.0] * len(attn_list)
+            "energy_values": energy_values.cpu().numpy().tolist()
         }
 
     def get_network_stats(self) -> Dict:
