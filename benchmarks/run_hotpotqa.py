@@ -9,6 +9,22 @@ from core.hopfield_torch import PyTorchHopfieldMemory, BiLSTMQAHead
 from core.baselines import BM25Retriever, DenseRetriever
 from benchmarks.metrics import metric_max_over_ground_truths, exact_match_score, f1_score, normalize_answer
 
+
+def truncate_chunks_for_roberta(chunks, query, tokenizer, max_total_tokens=512):
+    query_tokens = len(tokenizer(query, add_special_tokens=False)['input_ids'])
+    special_tokens = 4
+    budget = max_total_tokens - query_tokens - special_tokens
+    if budget <= 0: budget = 10
+    budget_per_chunk = budget // max(len(chunks), 1)
+    
+    truncated_texts = []
+    for chunk in chunks:
+        ids = tokenizer(chunk['text'], add_special_tokens=False)['input_ids']
+        if len(ids) > budget_per_chunk:
+            ids = ids[:budget_per_chunk]
+        truncated_texts.append(tokenizer.decode(ids))
+    return " ".join(truncated_texts)
+
 def get_answer_span(context, query, qa_model, tokenizer, device):
     inputs = tokenizer(query, context, return_tensors='pt', truncation=True, max_length=512)
     inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -66,16 +82,16 @@ def main():
         
     print(f"Building memory from {len(hotpot)} questions' distractors...")
     # HotpotQA context is {"title": ["t1", "t2"], "sentences": [["s1", "s2"], ["s3", "s4"]]}
-    unique_paragraphs = set()
+    unique_paragraphs_dict = {}
     for item in hotpot:
         titles = item['context']['title']
         sentences_lists = item['context']['sentences']
         for t, s_list in zip(titles, sentences_lists):
             para_text = "".join(s_list)
-            unique_paragraphs.add(para_text)
+            unique_paragraphs_dict[para_text] = t
             
-    unique_contexts = list(unique_paragraphs)
-    metadata = [{"chunk_id": str(i), "text": c} for i, c in enumerate(unique_contexts)]
+    unique_contexts = list(unique_paragraphs_dict.keys())
+    metadata = [{"chunk_id": str(i), "title": unique_paragraphs_dict[c], "text": c} for i, c in enumerate(unique_contexts)]
     
     print(f"Total unique paragraphs to index: {len(unique_contexts)}")
     
@@ -106,27 +122,35 @@ def main():
     qa_model.eval()
 
     results = {
-        "BM25": {"recall": 0.0, "em": 0.0, "f1": 0.0},
-        "Dense (DPR)": {"recall": 0.0, "em": 0.0, "f1": 0.0},
-        "Hopfield (3-iter)": {"recall": 0.0, "em": 0.0, "f1": 0.0}
+        "BM25": {"recall": 0.0, "mrr": 0.0, "em": 0.0, "f1": 0.0},
+        "Dense (DPR)": {"recall": 0.0, "mrr": 0.0, "em": 0.0, "f1": 0.0},
+        "Hopfield (3-iter)": {"recall": 0.0, "mrr": 0.0, "em": 0.0, "f1": 0.0}
     }
     
-    def evaluate_retriever(name, retriever_func, query, query_emb, ground_truths):
+    def evaluate_retriever(name, retriever_func, query, query_emb, ground_truths, support_titles):
         if name == "BM25":
             retrieved = retriever_func(query, top_k=args.top_k)
         else:
             retrieved = retriever_func(query_emb, top_k=args.top_k)
             
-        context_str = " ".join([r['text'] for r in retrieved])
+        context_str = truncate_chunks_for_roberta(retrieved, query, tokenizer)
         
-        recall = any(normalize_answer(gt) in normalize_answer(context_str) for gt in ground_truths)
+        retrieved_titles = [r.get('title', '') for r in retrieved]
+        
+        recall = 1.0 if any(t in retrieved_titles for t in support_titles) else 0.0
+        
+        mrr = 0.0
+        for i, t in enumerate(retrieved_titles):
+            if t in support_titles:
+                mrr = 1.0 / (i + 1)
+                break
         
         pred = get_answer_span(context_str, query, qa_model, tokenizer, device)
         
         em = metric_max_over_ground_truths(exact_match_score, pred, ground_truths)
         f1 = metric_max_over_ground_truths(f1_score, pred, ground_truths)
         
-        return recall, em, f1
+        return recall, mrr, em, f1
 
     print("\nRunning Evaluation...")
     for item in tqdm(hotpot, desc="Evaluating Queries"):
@@ -134,25 +158,30 @@ def main():
         ground_truths = [item['answer']]
         query_emb = embedder.embed_query(query)
         
+        support_titles = item['supporting_facts']['title']
+        
         # BM25
-        r, em, f1 = evaluate_retriever("BM25", bm25.retrieve, query, query_emb, ground_truths)
+        r, mrr, em, f1 = evaluate_retriever("BM25", bm25.retrieve, query, query_emb, ground_truths, support_titles)
         results["BM25"]["recall"] += r
+        results["BM25"]["mrr"] += mrr
         results["BM25"]["em"] += em
         results["BM25"]["f1"] += f1
         
         # Dense (DPR)
-        r, em, f1 = evaluate_retriever("Dense (DPR)", dpr.retrieve, query, query_emb, ground_truths)
+        r, mrr, em, f1 = evaluate_retriever("Dense (DPR)", dpr.retrieve, query, query_emb, ground_truths, support_titles)
         results["Dense (DPR)"]["recall"] += r
+        results["Dense (DPR)"]["mrr"] += mrr
         results["Dense (DPR)"]["em"] += em
         results["Dense (DPR)"]["f1"] += f1
         
         # Hopfield
         def hopfield_wrapper(q, top_k):
             res = hopfield.retrieve(q, top_k)
-            return [{'text': x.text} for x in res]
+            return [{'title': x.metadata.get('title', ''), 'text': x.text} for x in res]
             
-        r, em, f1 = evaluate_retriever("Hopfield (3-iter)", hopfield_wrapper, query, query_emb, ground_truths)
+        r, mrr, em, f1 = evaluate_retriever("Hopfield (3-iter)", hopfield_wrapper, query, query_emb, ground_truths, support_titles)
         results["Hopfield (3-iter)"]["recall"] += r
+        results["Hopfield (3-iter)"]["mrr"] += mrr
         results["Hopfield (3-iter)"]["em"] += em
         results["Hopfield (3-iter)"]["f1"] += f1
 
@@ -162,11 +191,11 @@ def main():
         
     print("\n" + "="*50)
     print("HotpotQA Benchmark Results (Multi-hop Reasoning)")
-    print("="*50)
-    print(f"{'Model':<20} | {'Recall@'+str(args.top_k):<10} | {'Exact Match':<11} | {'F1 Score':<10}")
-    print("-"*50)
+    print("="*70)
+    print(f"{'Model':<20} | {'Recall@'+str(args.top_k):<10} | {'MRR':<10} | {'Exact Match':<11} | {'F1 Score':<10}")
+    print("-"*70)
     for model, stats in results.items():
-        print(f"{model:<20} | {stats['recall']*100:>8.2f}% | {stats['em']*100:>9.2f}% | {stats['f1']*100:>8.2f}%")
+        print(f"{model:<20} | {stats['recall']*100:>8.2f}% | {stats['mrr']:>10.4f} | {stats['em']*100:>9.2f}% | {stats['f1']*100:>8.2f}%")
         
     with open("benchmarks/hotpotqa_results.json", "w") as f:
         json.dump(results, f, indent=4)

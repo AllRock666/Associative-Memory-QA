@@ -328,6 +328,61 @@ init_session_state()
 
 
 # ─── Pipeline Initialization ────────────────────────────────────────
+
+def load_canned_legal_pipeline():
+    from core.pipeline import HopfieldQAPipeline, PipelineConfig
+    from core.embeddings import EmbeddingEngine
+    from core.hopfield_torch import PyTorchHopfieldMemory
+    from core.bitemporal_graph import BiTemporalGraph
+    from core.hybrid_retriever import LegalHybridRetriever
+    import datetime
+    import numpy as np
+    import streamlit as st
+    
+    if "legal_pipeline" in st.session_state and st.session_state.legal_pipeline is not None:
+        return st.session_state.legal_pipeline
+        
+    config = PipelineConfig(
+        embedding_model="all-MiniLM-L6-v2",
+        chunk_size=512,
+        chunk_overlap=64,
+        hopfield_beta=8.0,
+        top_k=2,
+        use_fusion=True
+    )
+    pipeline = HopfieldQAPipeline(config)
+    
+    embedder = EmbeddingEngine(model_name="all-MiniLM-L6-v2")
+    hopfield = PyTorchHopfieldMemory(beta=8.0, n_iter=3)
+    graph = BiTemporalGraph()
+    
+    doc1_text = "The penalty for late delivery is $50,000."
+    doc2_text = "Amendment: The penalty for late delivery is increased to $75,000."
+    doc3_text = "The governing law for this contract is the state of California."
+    
+    emb1 = embedder.embed_query(doc1_text)
+    emb2 = embedder.embed_query(doc2_text)
+    emb3 = embedder.embed_query(doc3_text)
+    
+    node1_id = graph.add_node(doc1_text, emb1, valid_from=datetime.date(2023, 1, 1))
+    node2_id = graph.amend_node(node1_id, doc2_text, emb2, valid_from=datetime.date(2024, 1, 1))
+    node3_id = graph.add_node(doc3_text, emb3, valid_from=datetime.date(2023, 1, 1))
+    
+    patterns = np.array([emb1, emb2, emb3])
+    metadata = [
+        {"chunk_id": "doc1", "text": doc1_text},
+        {"chunk_id": "doc2", "text": doc2_text},
+        {"chunk_id": "doc3", "text": doc3_text}
+    ]
+    hopfield.store(patterns, metadata)
+    
+    hybrid = LegalHybridRetriever(hopfield, graph, embedder)
+    
+    st.session_state.legal_pipeline = pipeline
+    st.session_state.legal_hybrid = hybrid
+    st.session_state.legal_embedder = embedder
+    return pipeline
+
 def get_pipeline(
     embedding_model: str,
     chunk_size: int,

@@ -3,16 +3,41 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple, Optional
 
+class QueryProjectionLayer(nn.Module):
+    """
+    Optional trainable projection layer to separate the query embeddings
+    and provide a better landscape for the continuous Hopfield update.
+    """
+    def __init__(self, dim: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.LayerNorm(dim),
+            nn.ReLU(),
+            nn.Linear(dim, dim)
+        )
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Residual connection
+        return F.normalize(x + self.net(x), p=2, dim=-1)
+
 class HopfieldRetriever(nn.Module):
     """
     Continuous Modern Hopfield Network Retriever.
     Computes the update rule iteratively: state_{t+1} = X * softmax(beta * X^T * state_t - M)
     """
-    def __init__(self, beta: float = 1.0, n_iter: int = 1, residual: bool = True):
+    def __init__(self, beta: float = 1.0, n_iter: int = 1, residual: bool = True, use_projection: bool = False, embedding_dim: int = 384):
         super().__init__()
         self.beta = beta
         self.n_iter = n_iter
         self.residual = residual
+        
+        # Untrained by default. PyTorchHopfieldMemory must opt-in to use it.
+        self.use_projection = use_projection
+        if use_projection:
+            self.projection = QueryProjectionLayer(embedding_dim)
+        else:
+            self.projection = None
 
     def forward(
         self, 
@@ -29,6 +54,9 @@ class HopfieldRetriever(nn.Module):
             if d != d_mem:
                 raise ValueError("Dimension mismatch between query and memory")
             stored_patterns = stored_patterns.unsqueeze(0).expand(B, N, d)
+            
+        if self.use_projection and self.projection is not None:
+            query = self.projection(query)
             
         state = query
         attention_weights = None
@@ -144,8 +172,8 @@ class RetrievalResult:
 
 class PyTorchHopfieldMemory:
     """Wrapper to mimic the old ModernHopfieldNetwork API but backed by PyTorch."""
-    def __init__(self, beta: float = 8.0, n_iter: int = 3, residual: bool = True, similarity_threshold: float = 0.05):
-        self.retriever = HopfieldRetriever(beta=beta, n_iter=n_iter, residual=residual)
+    def __init__(self, beta: float = 8.0, n_iter: int = 3, residual: bool = True, similarity_threshold: float = 0.05, use_projection: bool = False, embedding_dim: int = 384):
+        self.retriever = HopfieldRetriever(beta=beta, n_iter=n_iter, residual=residual, use_projection=use_projection, embedding_dim=embedding_dim)
         self.similarity_threshold = similarity_threshold
         self._patterns = None
         self._metadata = []
