@@ -50,9 +50,9 @@ We systematically evaluate the retrieval architecture to identify when Hopfield 
 
 ### SQuAD (Single-Hop Fact Retrieval)
 On standard single-hop retrieval, a 1-step Hopfield update is mathematically identical to Dense (DPR) cosine similarity.
-* **BM25:** 74.80% F1
-* **Dense (DPR):** 74.46% F1
-* **Hopfield (1-iter):** 74.46% F1
+* **BM25:** 57.83% F1
+* **Dense (DPR):** 60.23% F1
+* **Hopfield (1-iter):** 61.23% F1
 
 ### HotpotQA (Multi-Hop Reasoning)
 For multi-hop queries, we utilize `n_iter=3` to allow the network to "hop" between facts. However, early tests revealed a vulnerability: without residual connections, the iterative update pulls the query state toward whichever pattern dominates the attention distribution (attractor collapse), degrading performance. By implementing a residual update `ξ_new = normalize(ξ + retrieved)` (equivalent to a Transformer layer), stability is recovered:

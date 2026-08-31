@@ -151,7 +151,7 @@ def main():
         results[model] = {k: v / n for k, v in results[model].items()}
         
     print("\n" + "="*50)
-    print("SQuAD Benchmark Results (Random Sub-sample / Untrained Head)")
+    print("SQuAD Benchmark Results")
     print("="*50)
     print(f"{'Model':<15} | {'Recall@'+str(args.top_k):<10} | {'Exact Match':<11} | {'F1 Score':<10}")
     print("-"*50)
