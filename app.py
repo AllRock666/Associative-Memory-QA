@@ -1,396 +1,77 @@
-"""
-Associative Memory Retriever for Long-Context QA
-=================================================
-Streamlit UI — Modern Hopfield Network-powered document QA system
-"""
-
 import sys
 import os
+import time
+import streamlit as st
+
 sys.path.insert(0, os.path.dirname(__file__))
 
-import streamlit as st
-import numpy as np
-import time
-import json
-from typing import List, Optional
-
-# ─── Page Config (must be first) ──────────────────────────────────
+# ---------------------------------------------------------
+# PAGE CONFIG & CSS
+# ---------------------------------------------------------
 st.set_page_config(
-    page_title="Hopfield QA — Associative Memory Retriever",
+    page_title="Hopfield Search",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ─── Custom CSS ────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* Fonts & Root */
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&family=Syne:wght@700;800&display=swap');
-
-:root {
-  --primary: #00D4FF;
-  --secondary: #7B2FBE;
-  --accent: #FF6B35;
-  --success: #00C49A;
-  --warning: #FFB800;
-  --bg: #080C18;
-  --bg-card: #0F1623;
-  --bg-input: #131A2B;
-  --border: #1E2D45;
-  --text: #E2E8F0;
-  --text-muted: #64748B;
-  --text-dim: #94A3B8;
-}
-
-/* Global */
-.stApp { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; }
-.block-container { padding-top: 1rem !important; max-width: 1400px; }
-
-/* Header */
-.hero-header {
-  background: linear-gradient(135deg, #0A0E1A 0%, #0d1528 50%, #111827 100%);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 2rem 2.5rem;
-  margin-bottom: 1.5rem;
-  position: relative;
-  overflow: hidden;
-}
-.hero-header::before {
-  content: '';
-  position: absolute;
-  top: -50%; left: -50%;
-  width: 200%; height: 200%;
-  background: radial-gradient(ellipse at 30% 50%, rgba(0,212,255,0.06) 0%, transparent 60%),
-              radial-gradient(ellipse at 80% 20%, rgba(123,47,190,0.08) 0%, transparent 50%);
-  pointer-events: none;
-}
-.hero-title {
-  font-family: 'Syne', sans-serif;
-  font-size: 2rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, #00D4FF 0%, #7B2FBE 60%, #FF6B35 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin: 0;
-  line-height: 1.2;
-}
-.hero-subtitle {
-  font-family: 'Space Mono', monospace;
-  font-size: 0.75rem;
-  color: var(--text-dim);
-  margin-top: 0.5rem;
-  letter-spacing: 0.05em;
-}
-.hero-badge {
-  display: inline-block;
-  background: rgba(0,212,255,0.1);
-  border: 1px solid rgba(0,212,255,0.3);
-  color: var(--primary);
-  font-family: 'Space Mono', monospace;
-  font-size: 0.65rem;
-  padding: 3px 10px;
-  border-radius: 20px;
-  margin-right: 6px;
-  letter-spacing: 0.05em;
-}
-
-/* Cards */
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.25rem;
-  margin-bottom: 1rem;
-}
-.card-header {
-  font-family: 'Space Mono', monospace;
-  font-size: 0.7rem;
-  color: var(--primary);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  margin-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.5rem;
-}
-
-/* Answer Box */
-.answer-box {
-  background: linear-gradient(135deg, #0d1528, #111827);
-  border: 1px solid rgba(0,212,255,0.25);
-  border-left: 4px solid var(--primary);
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin: 1rem 0;
-  position: relative;
-}
-.answer-box::before {
-  content: '⟳ RETRIEVED ANSWER';
-  font-family: 'Space Mono', monospace;
-  font-size: 0.6rem;
-  color: var(--primary);
-  letter-spacing: 0.15em;
-  display: block;
-  margin-bottom: 0.75rem;
-}
-.answer-text {
-  font-size: 0.95rem;
-  line-height: 1.75;
-  color: var(--text);
-}
-
-/* Evidence chunks */
-.evidence-chunk {
-  background: #0A0F1E;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 0.75rem;
-  position: relative;
-  transition: border-color 0.2s;
-}
-.evidence-chunk:hover { border-color: rgba(0,212,255,0.3); }
-.chunk-rank {
-  font-family: 'Space Mono', monospace;
-  font-size: 0.6rem;
-  color: var(--primary);
-  position: absolute;
-  top: 8px; right: 10px;
-}
-.chunk-source {
-  font-family: 'Space Mono', monospace;
-  font-size: 0.65rem;
-  color: var(--secondary);
-  margin-bottom: 0.4rem;
-}
-.chunk-text {
-  font-size: 0.82rem;
-  color: var(--text-dim);
-  line-height: 1.6;
-}
-.chunk-scores {
-  display: flex;
-  gap: 12px;
-  margin-top: 0.5rem;
-}
-.score-pill {
-  font-family: 'Space Mono', monospace;
-  font-size: 0.6rem;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background: rgba(0,0,0,0.4);
-}
-
-/* Confidence Meter */
-.confidence-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, #1E2D45 0%, #1E2D45 100%);
-  overflow: hidden;
-  margin-top: 6px;
-}
-.confidence-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.5s ease;
-}
-
-/* Query Variants */
-.variant-tag {
-  display: inline-block;
-  background: rgba(123,47,190,0.15);
-  border: 1px solid rgba(123,47,190,0.3);
-  color: #A78BFA;
-  font-size: 0.7rem;
-  padding: 3px 10px;
-  border-radius: 20px;
-  margin: 2px;
-  font-family: 'Space Mono', monospace;
-}
-.keyword-tag {
-  display: inline-block;
-  background: rgba(0,212,255,0.08);
-  border: 1px solid rgba(0,212,255,0.2);
-  color: var(--primary);
-  font-size: 0.68rem;
-  padding: 2px 8px;
-  border-radius: 12px;
-  margin: 2px;
-  font-family: 'Space Mono', monospace;
-}
-
-/* Noise badge */
-.noise-high { color: #FF6B35; background: rgba(255,107,53,0.1); border-color: rgba(255,107,53,0.3); }
-.noise-low  { color: #00C49A; background: rgba(0,196,154,0.1); border-color: rgba(0,196,154,0.3); }
-
-/* Stats grid */
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0.5rem 0; }
-.stat-cell {
-  background: #080C18;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.6rem;
-  text-align: center;
-}
-.stat-value {
-  font-family: 'Space Mono', monospace;
-  font-size: 1.1rem;
-  color: var(--primary);
-  display: block;
-}
-.stat-label { font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; }
-
-/* Sidebar */
-section[data-testid="stSidebar"] {
-  background: #080C18 !important;
-  border-right: 1px solid var(--border);
-}
-section[data-testid="stSidebar"] .stSlider label { color: var(--text-dim) !important; }
-
-/* Buttons */
-.stButton button {
-  background: linear-gradient(135deg, var(--primary), var(--secondary)) !important;
-  color: white !important;
-  border: none !important;
-  border-radius: 8px !important;
-  font-family: 'DM Sans', sans-serif !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.02em !important;
-  transition: opacity 0.2s !important;
-}
-.stButton button:hover { opacity: 0.85 !important; }
-
-/* Input */
-.stTextArea textarea, .stTextInput input {
-  background: var(--bg-input) !important;
-  border-color: var(--border) !important;
-  color: var(--text) !important;
-  border-radius: 8px !important;
-  font-family: 'DM Sans', sans-serif !important;
-}
-.stTextArea textarea:focus, .stTextInput input:focus {
-  border-color: var(--primary) !important;
-  box-shadow: 0 0 0 1px rgba(0,212,255,0.3) !important;
-}
-
-/* Tabs */
-.stTabs [data-baseweb="tab-list"] { background: var(--bg-card) !important; border-radius: 8px; }
-.stTabs [data-baseweb="tab"] { color: var(--text-muted) !important; }
-.stTabs [aria-selected="true"] { color: var(--primary) !important; }
-.stTabs [data-baseweb="tab-highlight"] { background-color: var(--primary) !important; }
-
-/* Metrics */
-.stMetric { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }
-.stMetric label { color: var(--text-muted) !important; font-size: 0.7rem !important; }
-.stMetric [data-testid="stMetricValue"] { color: var(--primary) !important; font-family: 'Space Mono', monospace !important; }
-
-/* File uploader */
-.stFileUploader { background: var(--bg-input) !important; border-color: var(--border) !important; border-radius: 10px !important; }
-
-/* Expander */
-.streamlit-expanderHeader { color: var(--text-dim) !important; font-size: 0.8rem !important; }
-.streamlit-expanderContent { background: var(--bg-card) !important; }
-
-/* Progress */
-.stProgress > div > div { background: linear-gradient(90deg, var(--primary), var(--secondary)) !important; }
-
-/* Separator */
-hr { border-color: var(--border) !important; }
-
-/* Scrollbar */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    /* Clean Minimalist Theme */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    html, body, [class*="css"]  {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .stChatFloatingInputContainer {
+        padding-bottom: 2rem;
+    }
+    
+    /* Clean metrics */
+    div[data-testid="stMetricValue"] {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.5rem;
+    }
+    
+    /* Subtle expanders */
+    .streamlit-expanderHeader {
+        font-weight: 500;
+        color: #4B5563;
+    }
+    
+    /* Document tags */
+    .doc-tag {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        background-color: #F3F4F6;
+        color: #374151;
+        font-size: 0.875rem;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+        border: 1px solid #E5E7EB;
+    }
 </style>
 """, unsafe_allow_html=True)
 
+# ---------------------------------------------------------
+# STATE INITIALIZATION
+# ---------------------------------------------------------
+def init_state():
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "pipeline" not in st.session_state:
+        st.session_state.pipeline = None
+    if "docs_loaded" not in st.session_state:
+        st.session_state.docs_loaded = False
 
-# ─── Session State Init ────────────────────────────────────────────
-def init_session_state():
-    defaults = {
-        "pipeline": None,
-        "query_history": [],
-        "last_result": None,
-        "docs_loaded": False,
-        "loading": False,
-        "doc_count": 0,
-        "chunk_count": 0,
-        "show_viz": True,
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
+init_state()
 
-
-init_session_state()
-
-
-# ─── Pipeline Initialization ────────────────────────────────────────
-
-def load_canned_legal_pipeline():
-    from core.pipeline import HopfieldQAPipeline, PipelineConfig
-    from core.embeddings import EmbeddingEngine
-    from core.hopfield_torch import PyTorchHopfieldMemory
-    from core.bitemporal_graph import BiTemporalGraph
-    from core.hybrid_retriever import LegalHybridRetriever
-    import datetime
-    import numpy as np
-    import streamlit as st
-    
-    if "legal_pipeline" in st.session_state and st.session_state.legal_pipeline is not None:
-        return st.session_state.legal_pipeline
-        
-    config = PipelineConfig(
-        embedding_model="all-MiniLM-L6-v2",
-        chunk_size=512,
-        chunk_overlap=64,
-        hopfield_beta=8.0,
-        top_k=2,
-        use_fusion=True
-    )
-    pipeline = HopfieldQAPipeline(config)
-    
-    embedder = EmbeddingEngine(model_name="all-MiniLM-L6-v2")
-    hopfield = PyTorchHopfieldMemory(beta=8.0, n_iter=3)
-    graph = BiTemporalGraph()
-    
-    doc1_text = "The penalty for late delivery is $50,000."
-    doc2_text = "Amendment: The penalty for late delivery is increased to $75,000."
-    doc3_text = "The governing law for this contract is the state of California."
-    
-    emb1 = embedder.embed_query(doc1_text)
-    emb2 = embedder.embed_query(doc2_text)
-    emb3 = embedder.embed_query(doc3_text)
-    
-    node1_id = graph.add_node(doc1_text, emb1, valid_from=datetime.date(2023, 1, 1))
-    node2_id = graph.amend_node(node1_id, doc2_text, emb2, valid_from=datetime.date(2024, 1, 1))
-    node3_id = graph.add_node(doc3_text, emb3, valid_from=datetime.date(2023, 1, 1))
-    
-    patterns = np.array([emb1, emb2, emb3])
-    metadata = [
-        {"chunk_id": "doc1", "text": doc1_text},
-        {"chunk_id": "doc2", "text": doc2_text},
-        {"chunk_id": "doc3", "text": doc3_text}
-    ]
-    hopfield.store(patterns, metadata)
-    
-    hybrid = LegalHybridRetriever(hopfield, graph, embedder)
-    
-    st.session_state.legal_pipeline = pipeline
-    st.session_state.legal_hybrid = hybrid
-    st.session_state.legal_embedder = embedder
-    return pipeline
-
-def get_pipeline(
-    embedding_model: str,
-    chunk_size: int,
-    chunk_overlap: int,
-    hopfield_beta: float,
-    top_k: int,
-):
-    """Get or initialize the QA pipeline in session state."""
+# ---------------------------------------------------------
+# PIPELINE INITIALIZATION
+# ---------------------------------------------------------
+def get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_k, energy_type):
     from core.pipeline import HopfieldQAPipeline, PipelineConfig
     
     if st.session_state.pipeline is None:
@@ -402,708 +83,125 @@ def get_pipeline(
             top_k=top_k,
             use_fusion=True,
         )
+        config.energy_type = energy_type
         st.session_state.pipeline = HopfieldQAPipeline(config)
     else:
         p = st.session_state.pipeline
         p.config.hopfield_beta = hopfield_beta
         p.config.top_k = top_k
         p.config.chunk_size = chunk_size
-        p.config.chunk_overlap = chunk_overlap
-        p.config.embedding_model = embedding_model
-        p.update_hopfield_beta(hopfield_beta)
+        p.config.energy_type = energy_type
+        p.memory.retriever.beta = hopfield_beta
+        p.memory.retriever.energy_type = energy_type
         
     return st.session_state.pipeline
 
-
-# ─── Sidebar ────────────────────────────────────────────────────────
+# ---------------------------------------------------------
+# SIDEBAR (Data & Config)
+# ---------------------------------------------------------
 with st.sidebar:
-    st.markdown("""
-    <div style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;
-         background:linear-gradient(135deg,#00D4FF,#7B2FBE);
-         -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-         background-clip:text;margin-bottom:0.25rem;">
-    🧠 HopfieldQA
-    </div>
-    <div style="font-family:'Space Mono',monospace;font-size:0.62rem;color:#64748B;
-         margin-bottom:1.5rem;">Associative Memory Retriever</div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("### ⚙️ Model Settings")
-
-    embedding_model = st.selectbox(
-        "Embedding Model",
-        options=[
-            "all-MiniLM-L6-v2",
-            "all-mpnet-base-v2",
-            "multi-qa-MiniLM-L6-cos-v1",
-        ],
-        help="Sentence transformer model for generating embeddings",
-        index=0,
-    )
-
-    st.markdown("### 📄 Chunking")
-    chunk_size = st.slider("Chunk Size (tokens)", 128, 1024, 512, 64)
-    chunk_overlap = st.slider("Chunk Overlap", 0, 256, 64, 16)
-
-    st.markdown("### 🌡️ Hopfield Network")
-    hopfield_beta = st.slider(
-        "β (Inverse Temperature)",
-        min_value=1.0, max_value=32.0, value=8.0, step=0.5,
-        help="Higher β = sharper, more focused retrieval. Lower = softer, distributed."
-    )
-    top_k = st.slider("Top-K Chunks", 2, 15, 5)
-
-    st.markdown("### 🔍 Retrieval")
-    show_viz = st.toggle("Show Visualizations", value=True)
-    st.session_state.show_viz = show_viz
-
-    # Update beta dynamically
-    if st.session_state.pipeline is not None:
-        st.session_state.pipeline.update_hopfield_beta(hopfield_beta)
-
+    st.title("🧠 Hopfield Search")
+    st.markdown("Neural Associative Memory QA")
     st.divider()
+    
+    st.subheader("1. System Configuration")
+    with st.expander("⚙️ Advanced Settings", expanded=False):
+        embedding_model = st.selectbox("Embedding Model", ["all-MiniLM-L6-v2", "all-mpnet-base-v2"])
+        energy_type = st.selectbox("Energy Function", ["softmax", "sparsemax", "polynomial"], help="Changes the Hopfield attention landscape.")
+        hopfield_beta = st.slider("Temperature (Beta)", 0.1, 20.0, 8.0, 0.5)
+        chunk_size = st.slider("Chunk Size", 128, 1024, 512, 64)
+        chunk_overlap = st.slider("Chunk Overlap", 0, 256, 64, 16)
+        top_k = st.slider("Retrieve Top-K", 1, 15, 3)
 
-    # Pipeline Stats
-    if st.session_state.docs_loaded and st.session_state.pipeline:
-        p = st.session_state.pipeline
-        stats = p.get_stats()
-        st.markdown("### 📊 Memory Stats")
+    pipeline = get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_k, energy_type)
 
-        pipeline_stats = stats.get("pipeline", {})
-        hop_stats = stats.get("hopfield_network", {})
-
-        st.markdown(f"""
-        <div class="card" style="padding:0.75rem;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-family:'Space Mono',monospace;font-size:0.65rem;">
-            <div style="color:#64748B;">Documents</div>
-            <div style="color:#00D4FF;text-align:right;">{pipeline_stats.get('n_documents', 0)}</div>
-            <div style="color:#64748B;">Chunks</div>
-            <div style="color:#00D4FF;text-align:right;">{pipeline_stats.get('n_chunks', 0)}</div>
-            <div style="color:#64748B;">Patterns</div>
-            <div style="color:#00D4FF;text-align:right;">{hop_stats.get('n_patterns', 0)}</div>
-            <div style="color:#64748B;">Embed Dim</div>
-            <div style="color:#00D4FF;text-align:right;">{hop_stats.get('embedding_dim', 0)}</div>
-        </div>
-        <div style="font-size:0.6rem;color:#7B2FBE;margin-top:8px;font-family:'Space Mono',monospace;">
-            Capacity: {hop_stats.get('theoretical_capacity', 'N/A')}
-        </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-
-# ─── Main Layout ────────────────────────────────────────────────────
-st.markdown("""
-<div class="hero-header">
-  <p class="hero-title">Associative Memory Retriever</p>
-  <p class="hero-subtitle">Modern Hopfield Networks for Long-Context Document QA</p>
-  <div style="margin-top:0.75rem;">
-    <span class="hero-badge">MHN</span>
-    <span class="hero-badge">ENERGY MINIMIZATION</span>
-    <span class="hero-badge">MULTI-QUERY FUSION</span>
-    <span class="hero-badge">NOISE ROBUST</span>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ─── Tabs ──────────────────────────────────────────────────────────
-tab_qa, tab_docs, tab_theory, tab_history = st.tabs([
-    "🔍 Query & Answer",
-    "📄 Document Management",
-    "🔬 Theory & Architecture",
-    "📜 Query History"
-])
-
-
-# ══════════════════════════════════════════════════════════════════
-# TAB 1: Query & Answer
-# ══════════════════════════════════════════════════════════════════
-with tab_qa:
-    if not st.session_state.docs_loaded:
-        st.markdown("""
-        <div class="card" style="text-align:center;padding:3rem;">
-          <div style="font-size:2.5rem;margin-bottom:1rem;">🧠</div>
-          <div style="font-family:'Syne',sans-serif;font-size:1.1rem;color:#E2E8F0;margin-bottom:0.5rem;">
-            No Documents in Memory
-          </div>
-          <div style="color:#64748B;font-size:0.85rem;">
-            Load documents in the <strong>Document Management</strong> tab to begin querying.
-            <br>Or use the built-in sample documents to try the system immediately.
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        # ── Query Input ───────────────────────────────────────────
-        col_q, col_btn = st.columns([4, 1])
-        with col_q:
-            query = st.text_input(
-                "Ask a question",
-                placeholder="e.g. How do modern Hopfield networks differ from classical ones?",
-                label_visibility="collapsed",
-            )
-        with col_btn:
-            search_btn = st.button("⚡ Search", use_container_width=True)
-
-        # Example queries
-        st.markdown("""
-        <div style="font-family:'Space Mono',monospace;font-size:0.62rem;color:#64748B;margin-bottom:4px;">
-        EXAMPLE QUERIES:
-        </div>
-        """, unsafe_allow_html=True)
-
-        ex_cols = st.columns(4)
-        examples = [
-            "What is the storage capacity of Hopfield networks?",
-            "How does RAG work?",
-            "Explain transformer attention mechanism",
-            "What are the limitations of traditional RAG?",
-        ]
-        for i, (col, ex) in enumerate(zip(ex_cols, examples)):
-            with col:
-                if st.button(ex[:35] + "...", key=f"ex_{i}", use_container_width=True):
-                    query = ex
-                    search_btn = True
-
-        # ── Execute Query ─────────────────────────────────────────
-        if (search_btn or query) and query and st.session_state.pipeline:
-            with st.spinner(""):
-                progress_ph = st.empty()
-                progress_ph.markdown("""
-                <div style="font-family:'Space Mono',monospace;font-size:0.7rem;color:#00D4FF;
-                     animation:pulse 1s infinite;">
-                ⟳ Running associative retrieval...
-                </div>
-                """, unsafe_allow_html=True)
-
-                try:
-                    result = st.session_state.pipeline.query(
-                        query,
-                        top_k=top_k,
-                        include_attention_landscape=show_viz,
-                    )
-                    st.session_state.last_result = result
-                    st.session_state.query_history.append({
-                        "query": query,
-                        "answer": result.answer.answer,
-                        "confidence": result.answer.confidence,
-                        "n_chunks": len(result.retrieved_chunks),
-                        "time_ms": result.total_time_ms,
-                        "type": result.processed_query.query_type,
-                    })
-                    progress_ph.empty()
-                except Exception as e:
-                    progress_ph.empty()
-                    st.error(f"Query failed: {e}")
-                    result = None
-
-            if result:
-                # ── Query Processing Panel ────────────────────────
-                pq = result.processed_query
-                with st.expander("🔄 Query Processing Details", expanded=False):
-                    c1, c2, c3 = st.columns(3)
-                    with c1:
-                        st.markdown("**Cleaned Query**")
-                        st.code(pq.cleaned, language=None)
-                    with c2:
-                        st.markdown("**Query Type**")
-                        type_colors = {
-                            "factual": "#00D4FF", "procedural": "#00C49A",
-                            "comparative": "#FFB800", "conceptual": "#7B2FBE"
-                        }
-                        tc = type_colors.get(pq.query_type, "#64748B")
-                        st.markdown(f"""
-                        <span style="background:rgba(0,0,0,0.3);border:1px solid {tc};
-                             color:{tc};padding:4px 12px;border-radius:20px;
-                             font-family:'Space Mono',monospace;font-size:0.7rem;">
-                        {pq.query_type.upper()}
-                        </span>
-                        """, unsafe_allow_html=True)
-
-                        noise_cls = "noise-high" if pq.is_noisy else "noise-low"
-                        st.markdown(f"""
-                        <span class="variant-tag {noise_cls}" style="margin-top:4px;display:inline-block;">
-                        {'⚠ NOISY' if pq.is_noisy else '✓ CLEAN'} ({pq.noise_score:.2f})
-                        </span>
-                        """, unsafe_allow_html=True)
-                    with c3:
-                        st.markdown("**Query Variants** (for fusion)")
-                        for v in pq.variants:
-                            st.markdown(f'<span class="variant-tag">{v[:50]}</span>',
-                                        unsafe_allow_html=True)
-
-                    st.markdown("**Keywords**")
-                    kw_html = "".join(
-                        f'<span class="keyword-tag">{kw}</span>' for kw in pq.keywords
-                    )
-                    st.markdown(kw_html, unsafe_allow_html=True)
-
-                st.divider()
-
-                # ── Performance Metrics ───────────────────────────
-                m1, m2, m3, m4 = st.columns(4)
-                with m1:
-                    st.metric("⚡ Total Time", f"{result.total_time_ms:.0f} ms")
-                with m2:
-                    st.metric("🔍 Retrieval", f"{result.retrieval_time_ms:.1f} ms")
-                with m3:
-                    st.metric("📦 Chunks Retrieved", len(result.retrieved_chunks))
-                with m4:
-                    conf_pct = int(result.answer.confidence * 100)
-                    conf_label, _ = ("High", "#00C49A") if result.answer.confidence > 0.6 else \
-                                    ("Medium", "#FFB800") if result.answer.confidence > 0.3 else \
-                                    ("Low", "#FF6B35")
-                    st.metric("🎯 Confidence", f"{conf_pct}% ({conf_label})")
-
-                # ── Answer Box ────────────────────────────────────
-                conf_color = "#00C49A" if result.answer.confidence > 0.6 else \
-                             "#FFB800" if result.answer.confidence > 0.3 else "#FF6B35"
-                conf_width = int(result.answer.confidence * 100)
-
-                st.markdown(f"""
-                <div class="answer-box">
-                  <div class="answer-text">{result.answer.answer}</div>
-                  <div style="margin-top:1rem;display:flex;align-items:center;gap:12px;">
-                    <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#64748B;">
-                      CONFIDENCE
-                    </div>
-                    <div class="confidence-bar" style="flex:1;">
-                      <div class="confidence-fill"
-                           style="width:{conf_width}%;background:{conf_color};"></div>
-                    </div>
-                    <div style="font-family:'Space Mono',monospace;font-size:0.7rem;color:{conf_color};">
-                      {conf_pct}%
-                    </div>
-                  </div>
-                  <div style="margin-top:0.75rem;font-family:'Space Mono',monospace;font-size:0.6rem;color:#64748B;">
-                    SOURCES: {' · '.join(result.answer.sources[:4])}
-                  </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                # ── Evidence Chunks ───────────────────────────────
-                st.markdown("""
-                <div class="card-header" style="margin-top:1rem;">📎 Retrieved Evidence</div>
-                """, unsafe_allow_html=True)
-
-                for i, chunk in enumerate(result.retrieved_chunks[:top_k]):
-                    sim_color = "#00D4FF" if chunk.similarity_score > 0.5 else \
-                                "#7B2FBE" if chunk.similarity_score > 0.3 else "#64748B"
-
-                    display_text = chunk.text[:280] + ("..." if len(chunk.text) > 280 else "")
-
-                    # Highlight keywords in display
-                    for kw in pq.keywords[:5]:
-                        import re
-                        display_text = re.sub(
-                            f'({re.escape(kw)})',
-                            r'<mark style="background:rgba(0,212,255,0.15);color:#00D4FF;'
-                            r'border-radius:2px;padding:0 2px;">\1</mark>',
-                            display_text,
-                            flags=re.IGNORECASE
-                        )
-
-                    st.markdown(f"""
-                    <div class="evidence-chunk">
-                      <div class="chunk-rank">RANK #{chunk.rank}</div>
-                      <div class="chunk-source">📁 {chunk.source} · Chunk {chunk.chunk_index}</div>
-                      <div class="chunk-text">{display_text}</div>
-                      <div class="chunk-scores">
-                        <span class="score-pill" style="color:{sim_color};">
-                          cos: {chunk.similarity_score:.3f}
-                        </span>
-                        <span class="score-pill" style="color:#7B2FBE;">
-                          attn: {chunk.hopfield_attention:.4f}
-                        </span>
-                      </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                # ── Visualizations ────────────────────────────────
-                if show_viz and result.retrieved_chunks:
-                    st.markdown("""
-                    <div class="card-header" style="margin-top:1.5rem;">📊 Retrieval Analytics</div>
-                    """, unsafe_allow_html=True)
-
-                    from utils.visualization import (
-                        plot_similarity_distribution,
-                        plot_attention_heatmap,
-                        plot_energy_landscape,
-                        plot_embedding_scatter,
-                    )
-
-                    vc1, vc2 = st.columns(2)
-
-                    with vc1:
-                        fig_sim = plot_similarity_distribution(result.retrieved_chunks)
-                        st.plotly_chart(fig_sim, use_container_width=True, config={"displayModeBar": False})
-
-                    with vc2:
-                        if result.attention_landscape:
-                            landscape = result.attention_landscape
-                            attn = landscape["attention_weights"]
-                            pipeline = st.session_state.pipeline
-                            labels = [
-                                f"{c.source[:10]}·{c.chunk_index}"
-                                for c in pipeline._all_chunks
-                            ]
-                            fig_attn = plot_attention_heatmap(attn, labels)
-                            st.plotly_chart(fig_attn, use_container_width=True,
-                                            config={"displayModeBar": False})
-
-                    # Energy landscape
-                    if result.attention_landscape:
-                        pipeline = st.session_state.pipeline
-                        if pipeline._all_chunks and len(pipeline._all_chunks) > 0:
-                            q_emb = pipeline.embedder.embed_query(result.query)
-                            pat_matrix = np.vstack([c.embedding for c in pipeline._all_chunks])
-                            fig_energy = plot_energy_landscape(q_emb, pat_matrix)
-                            st.plotly_chart(fig_energy, use_container_width=True,
-                                            config={"displayModeBar": False})
-
-                    # Embedding scatter (PCA)
-                    try:
-                        pipeline = st.session_state.pipeline
-                        if len(pipeline._all_chunks) > 3:
-                            embs = np.vstack([c.embedding for c in pipeline._all_chunks])
-                            q_emb = pipeline.embedder.embed_query(result.query)
-                            sources = [c.source for c in pipeline._all_chunks]
-                            retrieved_ids = [
-                                idx for idx, c in enumerate(pipeline._all_chunks)
-                                if c.chunk_id in {r.chunk_id for r in result.retrieved_chunks}
-                            ]
-                            fig_scatter = plot_embedding_scatter(
-                                embs, q_emb, sources, retrieved_ids
-                            )
-                            st.plotly_chart(fig_scatter, use_container_width=True,
-                                            config={"displayModeBar": False})
-                    except Exception:
-                        pass  # Skip scatter if sklearn not available
-
-
-# ══════════════════════════════════════════════════════════════════
-# TAB 2: Document Management
-# ══════════════════════════════════════════════════════════════════
-with tab_docs:
-    st.markdown("""
-    <div class="card-header">📄 Document Management — Load Documents into Hopfield Memory</div>
-    """, unsafe_allow_html=True)
-
-    col_load, col_upload = st.columns(2)
-
-    with col_load:
-        st.markdown("#### 📚 Built-in Sample Documents")
-        st.markdown("""
-        <div style="font-size:0.82rem;color:#94A3B8;margin-bottom:0.75rem;">
-        Load curated documents about AI, Hopfield Networks, and RAG systems
-        to explore the system immediately.
-        </div>
-        """, unsafe_allow_html=True)
-
-        if st.button("🚀 Load Sample Documents", use_container_width=True):
-            with st.spinner("Initializing pipeline..."):
-                # Get or create pipeline
-                pipeline = get_pipeline(
-                    embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_k
-                )
-
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-
-                def progress_cb(msg, pct):
-                    status_text.markdown(
-                        f'<span style="font-family:\'Space Mono\',monospace;font-size:0.7rem;'
-                        f'color:#00D4FF;">{msg}</span>',
-                        unsafe_allow_html=True
-                    )
-                    progress_bar.progress(pct)
-
-                results = pipeline.load_sample_documents()
-                st.session_state.pipeline = pipeline
-                st.session_state.docs_loaded = True
-
-                progress_bar.empty()
-                status_text.empty()
-
-            st.success(f"✅ Loaded {len(results)} sample documents!")
-            for r in results:
-                st.markdown(f"""
-                <div style="font-family:'Space Mono',monospace;font-size:0.7rem;color:#00C49A;">
-                ✓ {r.get('source', '?')} → {r.get('n_chunks', 0)} chunks
-                </div>
-                """, unsafe_allow_html=True)
-
-    with col_upload:
-        st.markdown("#### 📎 Upload Your Documents")
-        st.markdown("""
-        <div style="font-size:0.82rem;color:#94A3B8;margin-bottom:0.75rem;">
-        Upload .txt, .pdf, .docx, or .md files to add to the Hopfield memory.
-        </div>
-        """, unsafe_allow_html=True)
-
-        uploaded_files = st.file_uploader(
-            "Upload documents",
-            accept_multiple_files=True,
-            type=["txt", "pdf", "docx", "md"],
-            label_visibility="collapsed",
-        )
-
-        if uploaded_files and st.button("⚡ Process & Store Files", use_container_width=True):
-            from utils.file_utils import extract_text_from_file
-
-            pipeline = get_pipeline(
-                embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_k
-            )
-            st.session_state.pipeline = pipeline
-
-            progress = st.progress(0)
-            for i, f in enumerate(uploaded_files):
+    st.subheader("2. Knowledge Base")
+    
+    # Document Upload
+    uploaded_files = st.file_uploader("Upload Documents (PDF, TXT)", type=["txt", "pdf", "md"], accept_multiple_files=True)
+    if st.button("Ingest Files", use_container_width=True) and uploaded_files:
+        from utils.file_utils import extract_text_from_file
+        with st.spinner("Processing documents..."):
+            for f in uploaded_files:
                 try:
                     text, source = extract_text_from_file(f, f.name)
-                    result = pipeline.add_document(text, source=source)
-                    st.success(f"✅ {source}: {result.get('n_chunks', 0)} chunks")
+                    pipeline.add_document(text, source=source)
                 except Exception as e:
-                    st.error(f"❌ {f.name}: {e}")
-                progress.progress((i + 1) / len(uploaded_files))
-
+                    st.error(f"Failed to process {f.name}: {e}")
             st.session_state.docs_loaded = True
-            st.session_state.pipeline = pipeline
+            st.success("Documents added to Hopfield Memory!")
+            st.rerun()
 
+    # Custom Text
+    with st.expander("Paste Text Manually"):
+        custom_name = st.text_input("Source Name", value="Pasted Snippet")
+        custom_text = st.text_area("Content")
+        if st.button("Add Text", use_container_width=True) and custom_text:
+            with st.spinner("Processing..."):
+                pipeline.add_document(custom_text.strip(), source=custom_name)
+                st.session_state.docs_loaded = True
+                st.success("Text added!")
+                st.rerun()
+                
     st.divider()
-
-    # ── Custom Text Input ─────────────────────────────────────────
-    st.markdown("#### ✏️ Paste Custom Text")
-    custom_text = st.text_area(
-        "Paste your document text here",
-        height=180,
-        placeholder="Paste any text here and give it a name...",
-        label_visibility="collapsed",
-    )
-    custom_name = st.text_input("Document Name", value="custom_doc", max_chars=50)
-
-    if st.button("💾 Add to Memory", use_container_width=False) and custom_text.strip():
-        pipeline = get_pipeline(
-            embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_k
-        )
-        with st.spinner("Processing..."):
-            result = pipeline.add_document(custom_text.strip(), source=custom_name)
-        st.session_state.pipeline = pipeline
-        st.session_state.docs_loaded = True
-        st.success(f"✅ Added '{custom_name}': {result.get('n_chunks', 0)} chunks stored in memory")
-
-    # ── Document List ─────────────────────────────────────────────
-    if st.session_state.docs_loaded and st.session_state.pipeline:
-        st.divider()
-        st.markdown("""<div class="card-header">📋 Documents in Memory</div>""",
-                    unsafe_allow_html=True)
-        pipeline = st.session_state.pipeline
-        for source, text in pipeline._documents.items():
-            chunks_for_source = [c for c in pipeline._all_chunks if c.source == source]
-            st.markdown(f"""
-            <div style="display:flex;justify-content:space-between;align-items:center;
-                 padding:0.6rem 1rem;background:#0A0F1E;border:1px solid #1E2D45;
-                 border-radius:8px;margin-bottom:6px;">
-              <div>
-                <span style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#E2E8F0;">
-                  📁 {source}
-                </span>
-                <span style="font-size:0.72rem;color:#64748B;margin-left:12px;">
-                  {len(text):,} chars
-                </span>
-              </div>
-              <span style="font-family:'Space Mono',monospace;font-size:0.65rem;
-                   color:#00D4FF;background:rgba(0,212,255,0.08);
-                   border:1px solid rgba(0,212,255,0.2);padding:2px 10px;border-radius:12px;">
-                {len(chunks_for_source)} chunks
-              </span>
-            </div>
-            """, unsafe_allow_html=True)
-
-        if st.button("🗑️ Clear All Documents"):
-            st.session_state.pipeline.clear()
+    if st.session_state.docs_loaded:
+        st.metric("Stored Patterns (Chunks)", pipeline.n_chunks)
+        st.markdown("**Active Sources:**")
+        for src in pipeline._documents.keys():
+            st.markdown(f"<span class='doc-tag'>📄 {src}</span>", unsafe_allow_html=True)
+        
+        if st.button("Clear Memory", type="primary", use_container_width=True):
+            st.session_state.pipeline = None
             st.session_state.docs_loaded = False
-            st.session_state.last_result = None
+            st.session_state.messages = []
             st.rerun()
 
+# ---------------------------------------------------------
+# MAIN INTERFACE (Chat)
+# ---------------------------------------------------------
+if not st.session_state.docs_loaded:
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #6B7280;'>Welcome to Hopfield Search</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #9CA3AF;'>To get started, please upload some documents or paste text in the sidebar.</p>", unsafe_allow_html=True)
+else:
+    # Display chat history
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if "results" in msg:
+                with st.expander("🔍 View Hopfield Retrieval Details"):
+                    for idx, chunk in enumerate(msg["results"]):
+                        st.markdown(f"**Rank {idx+1}** | Source: `{chunk.source}` | Attn: `{chunk.hopfield_attention:.4f}`")
+                        st.caption(f"_{chunk.text}_")
+                        st.divider()
 
-# ══════════════════════════════════════════════════════════════════
-# TAB 3: Theory & Architecture
-# ══════════════════════════════════════════════════════════════════
-with tab_theory:
-    st.markdown("""
-    <div class="card-header">🔬 Modern Hopfield Networks — Theory</div>
-    """, unsafe_allow_html=True)
+    # Chat Input
+    if prompt := st.chat_input("Ask a question about your documents..."):
+        # User message
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-    col_t1, col_t2 = st.columns(2)
-
-    with col_t1:
-        st.markdown("""
-        <div class="card">
-        <div class="card-header">⚡ Energy Function</div>
-
-        <div style="font-family:'Space Mono',monospace;font-size:0.8rem;color:#00D4FF;
-             background:#080C18;padding:1rem;border-radius:8px;margin-bottom:1rem;
-             border-left:3px solid #00D4FF;">
-        E = −lse(β, X<sup>T</sup>ξ) + ½ξ<sup>T</sup>ξ + (1/β)log N + ½M²
-        </div>
-
-        <div style="font-size:0.82rem;color:#94A3B8;line-height:1.7;">
-        <strong style="color:#E2E8F0;">Where:</strong><br>
-        • <span style="color:#00D4FF;">X</span> = stored memory patterns (d × N matrix)<br>
-        • <span style="color:#00D4FF;">ξ</span> = current state (query vector, d-dim)<br>
-        • <span style="color:#00D4FF;">β</span> = inverse temperature (retrieval sharpness)<br>
-        • <span style="color:#00D4FF;">lse</span> = log-sum-exp function<br>
-        • <span style="color:#00D4FF;">N</span> = number of stored patterns<br>
-        • <span style="color:#00D4FF;">M</span> = largest pattern norm
-        </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="card">
-        <div class="card-header">🔄 Update Rule (1-Step Convergence)</div>
-
-        <div style="font-family:'Space Mono',monospace;font-size:0.8rem;color:#7B2FBE;
-             background:#080C18;padding:1rem;border-radius:8px;margin-bottom:1rem;
-             border-left:3px solid #7B2FBE;">
-        ξ<sub>new</sub> = X · softmax(β · X<sup>T</sup> · ξ)
-        </div>
-
-        <div style="font-size:0.82rem;color:#94A3B8;line-height:1.7;">
-        This is equivalent to a <strong style="color:#7B2FBE;">single attention head</strong>
-        in transformer attention, connecting associative memory directly to
-        the attention mechanism.<br><br>
-        <strong style="color:#E2E8F0;">Key insight:</strong> For well-separated patterns,
-        convergence occurs in <em>exactly one step</em> — making retrieval O(N·d).
-        </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_t2:
-        st.markdown("""
-        <div class="card">
-        <div class="card-header">📊 Capacity Comparison</div>
-        <table style="width:100%;font-size:0.78rem;border-collapse:collapse;">
-          <tr style="border-bottom:1px solid #1E2D45;">
-            <th style="text-align:left;color:#64748B;padding:6px 0;font-weight:500;">Property</th>
-            <th style="text-align:center;color:#64748B;padding:6px;">Classical</th>
-            <th style="text-align:center;color:#00D4FF;padding:6px;">Modern</th>
-          </tr>
-          <tr style="border-bottom:1px solid #1E2D45;">
-            <td style="color:#94A3B8;padding:6px 0;">State Space</td>
-            <td style="text-align:center;color:#E2E8F0;">Binary {-1,+1}</td>
-            <td style="text-align:center;color:#00D4FF;">Continuous ℝ<sup>d</sup></td>
-          </tr>
-          <tr style="border-bottom:1px solid #1E2D45;">
-            <td style="color:#94A3B8;padding:6px 0;">Capacity</td>
-            <td style="text-align:center;color:#E2E8F0;">0.14 · N</td>
-            <td style="text-align:center;color:#00D4FF;">exp(d/2)</td>
-          </tr>
-          <tr style="border-bottom:1px solid #1E2D45;">
-            <td style="color:#94A3B8;padding:6px 0;">Convergence</td>
-            <td style="text-align:center;color:#E2E8F0;">Many steps</td>
-            <td style="text-align:center;color:#00D4FF;">1 step</td>
-          </tr>
-          <tr style="border-bottom:1px solid #1E2D45;">
-            <td style="color:#94A3B8;padding:6px 0;">Energy</td>
-            <td style="text-align:center;color:#E2E8F0;">Quadratic</td>
-            <td style="text-align:center;color:#00D4FF;">log-sum-exp</td>
-          </tr>
-          <tr>
-            <td style="color:#94A3B8;padding:6px 0;">Attention Link</td>
-            <td style="text-align:center;color:#E2E8F0;">❌</td>
-            <td style="text-align:center;color:#00C49A;">✓ Exact</td>
-          </tr>
-        </table>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="card">
-        <div class="card-header">🏗️ System Architecture</div>
-        <div style="font-family:'Space Mono',monospace;font-size:0.68rem;color:#94A3B8;
-             line-height:2.2;">
-        <span style="color:#00D4FF;">Document</span>
-          → <span style="color:#E2E8F0;">Chunker</span>
-          → <span style="color:#00D4FF;">Embedder</span>
-          → <span style="color:#7B2FBE;">Hopfield Memory</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↑<br>
-        <span style="color:#FF6B35;">Query</span>
-          → <span style="color:#E2E8F0;">QueryProcessor</span>
-          → <span style="color:#E2E8F0;">Variants</span>
-          → <span style="color:#7B2FBE;">Energy Min.</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>
-        <span style="color:#E2E8F0;">Top-K Chunks</span>
-          → <span style="color:#00C49A;">RRF Fusion</span>
-          → <span style="color:#E2E8F0;">AnswerGen</span>
-          → <span style="color:#00D4FF;">Answer</span>
-        </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="card" style="margin-top:0.5rem;">
-    <div class="card-header">📖 Key References</div>
-    <div style="font-size:0.8rem;color:#94A3B8;line-height:1.8;">
-    • <strong style="color:#E2E8F0;">Ramsauer et al. (2021)</strong> — "Hopfield Networks is All You Need"
-      <em style="color:#64748B;">ICLR 2021</em><br>
-    • <strong style="color:#E2E8F0;">Hopfield (1982)</strong> — "Neural networks and physical systems with
-      emergent collective computational abilities" <em style="color:#64748B;">PNAS</em><br>
-    • <strong style="color:#E2E8F0;">Lewis et al. (2020)</strong> — "Retrieval-Augmented Generation for
-      Knowledge-Intensive NLP Tasks" <em style="color:#64748B;">NeurIPS 2020</em><br>
-    • <strong style="color:#E2E8F0;">Vaswani et al. (2017)</strong> — "Attention is All You Need"
-      <em style="color:#64748B;">NeurIPS 2017</em>
-    </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════════════════
-# TAB 4: Query History
-# ══════════════════════════════════════════════════════════════════
-with tab_history:
-    st.markdown("""
-    <div class="card-header">📜 Query History</div>
-    """, unsafe_allow_html=True)
-
-    if not st.session_state.query_history:
-        st.markdown("""
-        <div style="text-align:center;color:#64748B;font-size:0.85rem;padding:2rem;">
-        No queries yet. Ask something in the Query & Answer tab!
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        if st.button("🗑️ Clear History"):
-            st.session_state.query_history = []
-            st.rerun()
-
-        for i, item in enumerate(reversed(st.session_state.query_history)):
-            conf_c = "#00C49A" if item["confidence"] > 0.6 else \
-                     "#FFB800" if item["confidence"] > 0.3 else "#FF6B35"
-            st.markdown(f"""
-            <div class="card" style="margin-bottom:0.75rem;">
-              <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;">
-                <div style="font-size:0.85rem;color:#E2E8F0;font-weight:500;">
-                  {len(st.session_state.query_history) - i}. {item['query']}
-                </div>
-                <div style="display:flex;gap:6px;align-items:center;">
-                  <span style="font-family:'Space Mono',monospace;font-size:0.6rem;
-                       background:rgba(0,0,0,0.3);color:#7B2FBE;padding:2px 8px;
-                       border-radius:10px;">{item['type']}</span>
-                  <span style="font-family:'Space Mono',monospace;font-size:0.65rem;
-                       color:{conf_c};">{int(item['confidence']*100)}%</span>
-                  <span style="font-size:0.65rem;color:#64748B;">{item['time_ms']:.0f}ms</span>
-                </div>
-              </div>
-              <div style="font-size:0.8rem;color:#94A3B8;line-height:1.6;">
-                {item['answer'][:300]}{'...' if len(item['answer']) > 300 else ''}
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-
-# ─── Footer ────────────────────────────────────────────────────────
-st.markdown("""
-<div style="text-align:center;margin-top:3rem;padding:1rem;
-     font-family:'Space Mono',monospace;font-size:0.6rem;color:#1E2D45;">
-HOPFIELD QA · MODERN HOPFIELD NETWORKS · ASSOCIATIVE MEMORY RETRIEVAL
-</div>
-""", unsafe_allow_html=True)
+        # Assistant response
+        with st.chat_message("assistant"):
+            with st.spinner("Converging energy state..."):
+                start_t = time.time()
+                result = pipeline.generate_answer(prompt)
+                elapsed = (time.time() - start_t) * 1000
+                
+                ans_text = result.answer.answer
+                
+                response_md = f"{ans_text}\n\n*Confidence: {result.answer.confidence:.2f} | Time: {elapsed:.0f}ms*"
+                st.markdown(response_md)
+                
+                with st.expander("🔍 View Hopfield Retrieval Details"):
+                    for idx, chunk in enumerate(result.retrieved_chunks):
+                        st.markdown(f"**Rank {idx+1}** | Source: `{chunk.source}` | Attn: `{chunk.hopfield_attention:.4f}`")
+                        st.caption(f"_{chunk.text}_")
+                        st.divider()
+                        
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": response_md,
+            "results": result.retrieved_chunks
+        })
