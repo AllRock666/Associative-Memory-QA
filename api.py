@@ -24,7 +24,7 @@ class SearchRequest(BaseModel):
     energy_type: Optional[str] = "softmax"
     hopfield_beta: Optional[float] = 8.0
     top_k: Optional[int] = 5
-    use_projection: Optional[bool] = True
+    use_projection: Optional[bool] = False
     retriever_mode: Optional[str] = "hopfield"  # "hopfield", "dense", "hybrid"
     engine_mode: Optional[str] = "associative"  # legacy backwards compatibility
     answer_style: Optional[str] = "conversational"  # "conversational" (LLM RAG), "detailed", "executive", "concise"
@@ -55,7 +55,7 @@ def startup_event():
         hopfield_beta=8.0,
         top_k=5,
         use_fusion=True,
-        use_projection=(proj_path is not None),
+        use_projection=False,
         projection_path=proj_path,
         use_associative_engine=True,
     )

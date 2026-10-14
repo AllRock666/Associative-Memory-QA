@@ -105,7 +105,7 @@ class HopfieldAssociativeEngine:
         query_embedding: np.ndarray,
         raw_query: str,
         top_k: int = 5,
-        use_projection: bool = True,
+        use_projection: bool = False,
     ) -> AssociativeMemoryResult:
         """
         Performs continuous Hopfield memory retrieval via attractor dynamics.
@@ -220,7 +220,34 @@ class HopfieldAssociativeEngine:
         final_scaled = self.beta * final_projections
         final_attn = F.softmax(final_scaled - torch.max(final_scaled), dim=-1)
 
-        core_vals, core_idxs = torch.topk(final_attn, k=min(top_k, N))
+        # Entity-aware hybrid co-attractor reinforcement
+        effective_attn = final_attn.clone()
+        if raw_query:
+            import re
+            STOP_TOKENS = {
+                'the', 'and', 'what', 'which', 'between', 'with', 'for', 'from', 'into',
+                'this', 'that', 'these', 'those', 'how', 'why', 'who', 'when', 'where',
+                'can', 'could', 'should', 'would', 'does', 'did', 'have', 'has', 'had',
+                'about', 'through', 'during', 'before', 'after', 'some', 'more', 'most',
+                'are', 'is', 'was', 'were', 'been', 'being', 'used', 'use', 'using',
+                'also', 'than', 'then', 'just', 'very', 'much', 'such', 'only', 'other',
+                'explain', 'overview', 'detail', 'detailed', 'their', 'responsibilities'
+            }
+            raw_entities = [
+                w.lower() for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', raw_query)
+                if w.lower() not in STOP_TOKENS
+            ]
+            if raw_entities:
+                entity_scores = torch.zeros(N, device=device)
+                for idx in range(N):
+                    c_text = metadata[idx].get("text", "").lower()
+                    hits = sum(1 for e in raw_entities if re.search(r'\b' + re.escape(e) + r'\b', c_text))
+                    entity_scores[idx] = hits / len(raw_entities)
+
+                if entity_scores.max() > 0:
+                    effective_attn = final_attn * (1.0 + 2.0 * entity_scores)
+
+        core_vals, core_idxs = torch.topk(effective_attn, k=min(top_k, N))
         core_idxs_set = set(core_idxs.cpu().numpy().tolist())
 
         # Collect bridge chunks: Chunks discovered along trajectory not in final core top-k

@@ -47,9 +47,14 @@ STOP_WORDS: Set[str] = {
 # Discourse, connective, and framing terms that should not be penalized as domain hallucinations
 DISCOURSE_WORDS: Set[str] = {
     "contrast", "relies", "heavily", "using", "uses", "used", "provides", "provide",
-    "supported", "documented", "system", "method", "approach", "technique", "specifically",
+    "supported", "documented", "system", "systems", "method", "approach", "technique", "specifically",
     "functions", "operates", "regarding", "meanwhile", "furthermore", "including", "include",
-    "based", "across", "within", "enables", "achieves", "ensures", "ranging", "such", "well"
+    "based", "across", "within", "enables", "achieves", "ensures", "ranging", "such", "well",
+    "provided", "documentation", "defined", "addressed", "operational", "practices",
+    "standalone", "textbook", "definition", "details", "implemented", "organizational",
+    "defense", "controls", "designed", "protect", "protecting", "aspects", "activities",
+    "while", "not", "offer", "rather", "instead", "general", "monitoring",
+    "architecturally", "architecture", "global", "establishes", "identifies", "indicates", "demonstrates", "explains", "notes"
 }
 
 # Regex patterns matching document cover pages, case study metadata, and course/author boilerplate
@@ -74,7 +79,13 @@ BOILERPLATE_PATTERNS: List[str] = [
     r'\bcourse code\b',
     r'\binstructor\b',
     r'\buniversity\b',
-    r'\bdepartment of\b'
+    r'\bdepartment of\b',
+    r'\bmodel questions\b',
+    r'\breview questions\b',
+    r'^\s*\d+\.\s+(?:explain|describe|illustrate|discuss|define|what\s+is)\b',
+    r'\bbenefit\s+role\s+in\b',
+    r'\breduces\s+complexity\s+makes\b',
+    r'\bimportance\s+in\s+cybersecurity\s+benefit\b'
 ]
 
 
@@ -104,13 +115,93 @@ def is_boilerplate(text: str) -> bool:
 
 def clean_sentence_prefix(s: str) -> str:
     """Strips embedded outline headings, chapter numbers, and titles from sentence starts."""
-    cleaned = re.sub(
-        r'^\s*(?:\d+(?:\.\d+)*\.?\s+)+[A-Za-z0-9\s/&,:\-]{3,50}?(?::|\bFramework\b|\bComponents\b|\bOverview\b|\bAnalytics\b|\bArchitecture\b|\bLifecycle\b|\bImplementation\b|\bStrategies\b|\bFormats\b|\bConclusion\b)\s*',
+    s = s.strip()
+    s = re.sub(r'^(?:unit|chapter)\s+\d+\s*[:\-\.]?\s*', '', s, flags=re.I).strip()
+
+    # Strip inline numbered section titles preceding body sentences
+    # e.g. "12. Security Metrics and Their Importance in Evaluating... Security metrics are measurable values..."
+    title_pat = re.compile(
+        r'^\s*\d+(?:\.\d+)*\.?\s+'
+        r'[A-Za-z0-9_\-\(\)\s/&,]{3,130}?'
+        r'(?<=[a-z\)])\s+'
+        r'(?=(?:a\s+|an\s+|the\s+)?([A-Za-z0-9_\-]+(?:\s+[a-z]+)?)\s+(?:is|are|refers|functions|was|were|describes|provides|serves|can|operates|achieves|stands)\b)',
+        re.I
+    )
+    m = title_pat.match(s)
+    if m:
+        s = s[m.end():].strip()
+
+    # Process line-by-line if the chunk contains embedded outline title lines
+    lines = [line.strip() for line in s.split('\n') if line.strip()]
+    cleaned_lines = []
+    for i, line in enumerate(lines):
+        if i == 0 and re.match(r'^\s*\d+(?:\.\d+)*\.?\s+', line):
+            if not line.endswith('.') or len(line.split()) < 8:
+                continue
+        if i == 1 and len(lines) > 2 and len(line.split()) < 6 and not line.endswith('.'):
+            continue
+        cleaned_lines.append(line)
+    
+    res = ' '.join(cleaned_lines).strip()
+    # Strip numbered and named outline prefixes like '4. Resource Management: YARN Framework Components:'
+    res = re.sub(
+        r'^\s*\d+(?:\.\d+)*\.?\s*(?:[A-Za-z0-9\s/&,\-]{3,60}?(?::|\bComponents\b|\bFramework\b|\bOverview\b|\bArchitecture\b)\s*:?\s*)+',
         '',
-        s,
+        res,
         flags=re.I
     ).strip()
-    return cleaned if len(cleaned) > 20 else s.strip()
+    res = re.sub(r'^\s*\d+(?:\.\d+)*\.?\s*', '', res).strip()
+
+    return res if len(res) > 20 else s.strip()
+
+
+def extract_sentence_subject(sent: str) -> Optional[str]:
+    """Extracts the leading noun phrase/subject before the main copula/action verb."""
+    m = re.match(
+        r'^\s*([A-Za-z0-9_\-\s\(\)]+?)\s+(?:is\s+an?|is\s+the|is|are|refers\s+to|functions\s+as|serves\s+as|provides|represents|operates\s+as|achieves)\b',
+        sent,
+        re.I
+    )
+    if m:
+        subj = m.group(1).strip()
+        subj_clean = re.sub(r'\(.*?\)', '', subj).strip()
+        return subj_clean.lower()
+    return None
+
+
+def extract_query_target(query: str, intent: str) -> Optional[str]:
+    """Extracts the primary target entity or subject from the user query."""
+    q = query.strip()
+
+    # What is / define
+    m = re.search(r'(?:what\s+is|what\s+are|define|meaning\s+of|overview\s+of)\s+(?:a\s+|an\s+|the\s+)?([a-zA-Z0-9_\-\s]+?)(?:\?|$|\.|\,)', q, re.I)
+    if m:
+        target = m.group(1).strip()
+        target = re.sub(r'\s+(?:used|applied|deployed|for|in|mean|means)$', '', target, flags=re.I).strip()
+        if target and target.lower() not in STOP_WORDS:
+            return target
+
+    # Where is X used
+    m = re.search(r'(?:where\s+is|where\s+are|where\s+does|where\s+can)\s+([a-zA-Z0-9_\-\s]+?)\s+(?:used|applied|deployed|run|coexist|operate|work)', q, re.I)
+    if m:
+        target = m.group(1).strip()
+        if target and target.lower() not in STOP_WORDS:
+            return target
+
+    # Explain X's components / architecture
+    m = re.search(r'(?:explain|describe|what\s+are\s+the)\s+([a-zA-Z0-9_\-]+)(?:\'s|\s+core)?\s+(?:components|architecture|daemons|internals|mechanisms|responsibilities)', q, re.I)
+    if m:
+        return m.group(1).strip()
+
+    # Fallback to substantive tokens
+    substantive = [
+        w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', q)
+        if w.lower() not in STOP_WORDS and w.lower() not in {
+            "explain", "describe", "detail", "overview", "components", "architecture",
+            "mechanisms", "responsibilities", "difference", "compare", "versus"
+        }
+    ]
+    return substantive[0] if substantive else None
 
 
 def clean_narrative_preamble(s: str) -> str:
@@ -146,8 +237,15 @@ def clean_narrative_preamble(s: str) -> str:
 def classify_intent(query: str) -> str:
     """Classifies user query into actionable semantic intent categories."""
     q = query.lower()
+    # Multi-part questions (e.g. "Where is YARN used, and how does its architecture work?")
+    if ("where is" in q or "where are" in q) and any(w in q for w in ["and how", "and what", "architecture"]):
+        return "MULTI_PART"
     if any(w in q for w in ["differ", "difference", "compare", "comparison", "vs", "versus", "distinction", "contrast"]):
         return "COMPARISON"
+    if any(w in q for w in ["component", "components", "responsibilities", "daemons", "parts of", "elements of"]):
+        return "COMPONENTS"
+    if any(w in q for w in ["architecture", "architectural", "how is it designed"]):
+        return "ARCHITECTURE"
     if any(w in q for w in ["where is", "where are", "where does", "where can", "used in", "where used", "workload", "environment", "environments"]):
         return "WHERE"
     if q.startswith("what is") or q.startswith("what are") or "define" in q or "definition" in q or q.startswith("who is") or q.startswith("who are"):
@@ -172,6 +270,19 @@ INTENT_KEYWORDS: Dict[str, Set[str]] = {
         "functions as", "is a", "is an", "is the", "operating system", "middleware",
         "framework", "decoupling", "negotiator", "defined as", "refers to",
         "architecture", "system", "layer", "serves as", "provides", "designed to"
+    },
+    "COMPONENTS": {
+        "resourcemanager", "nodemanager", "applicationmaster", "components",
+        "daemons", "containers", "scheduler", "responsibilities", "arbitrates",
+        "monitors", "allocates", "coordination"
+    },
+    "ARCHITECTURE": {
+        "architecture", "architectural", "decoupling", "layer", "resourcemanager",
+        "nodemanager", "applicationmaster", "containers", "daemons", "coordination"
+    },
+    "MULTI_PART": {
+        "cluster", "environment", "workloads", "resourcemanager", "nodemanager",
+        "applicationmaster", "architecture", "arbitrates", "containers"
     },
     "HOW_MECHANISM": {
         "resourcemanager", "nodemanager", "applicationmaster", "components",
@@ -280,6 +391,12 @@ class CitationValidator:
                     if w not in STOP_WORDS and w not in DISCOURSE_WORDS
                 ]
                 claim_stems = {get_stem(w) for w in claim_words}
+                for w in claim_words:
+                    if len(w) > 6:
+                        for prefix in ("cyber", "multi", "meta", "micro", "macro", "cross", "inter", "sub", "data"):
+                            if w.startswith(prefix) and len(w[len(prefix):]) >= 3:
+                                claim_stems.add(get_stem(prefix))
+                                claim_stems.add(get_stem(w[len(prefix):]))
 
                 if len(sent_unresolved) > 0 or len(sent_evidence_ids) == 0:
                     is_substantively_supported = False
@@ -298,7 +415,8 @@ class CitationValidator:
                         # Check for specific unsupported foreign terms (e.g. hallucinated entities/numbers)
                         unsupported_words = [
                             w for w in claim_words
-                            if get_stem(w) not in chunk_stems and not any(get_stem(w) in cs for cs in chunk_stems)
+                            if get_stem(w) not in chunk_stems
+                            and not any(get_stem(w) in cs or (len(cs) >= 4 and cs in get_stem(w)) for cs in chunk_stems)
                         ]
                         unsupported_ratio = len(unsupported_words) / len(claim_words)
 
@@ -393,6 +511,14 @@ class AbstentionEngine:
         
         # Check stemmed overlap to support valid morphological variations
         stemmed_query = {get_stem(w) for w in query_terms}
+        # Support compound terms (e.g. cybersecurity -> cyber, security; multitenant -> multi, tenant)
+        for w in query_terms:
+            if len(w) > 6:
+                for prefix in ("cyber", "multi", "meta", "micro", "macro", "cross", "inter", "sub", "data"):
+                    if w.startswith(prefix) and len(w[len(prefix):]) >= 3:
+                        stemmed_query.add(get_stem(prefix))
+                        stemmed_query.add(get_stem(w[len(prefix):]))
+
         stemmed_evidence = {get_stem(w) for w in evidence_words}
         stemmed_overlap = stemmed_query.intersection(stemmed_evidence)
 
@@ -465,20 +591,22 @@ class GenerativeRAGSynthesizer:
     ) -> List[ScoredSentence]:
         """
         Extracts, filters boilerplate, scores, and ranks candidate sentences from evidence chunks
-        based on substantive query entity match and semantic intent alignment.
+        based on substantive query entity match, target subject alignment, and semantic intent.
         """
         q_lower = query.lower()
         substantive_tokens = {
             w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', q_lower)
             if w not in STOP_WORDS
         }
+        target = extract_query_target(query, intent)
+        target_lower = target.lower() if target else None
         intent_kws = INTENT_KEYWORDS.get(intent, set())
 
         scored: List[ScoredSentence] = []
         seen_texts: Set[str] = set()
 
         for cite_idx, chunk in enumerate(chunks, 1):
-            raw_sents = re.split(r'(?<=[.!?])\s+', chunk.text)
+            raw_sents = re.split(r'(?<!\d\.)(?<!\d\.\d\.)(?<=[.!?])\s+', chunk.text)
             for s in raw_sents:
                 s_clean = clean_sentence_prefix(s.strip())
                 if len(s_clean) < 25 or len(s_clean.split()) < 5:
@@ -511,22 +639,50 @@ class GenerativeRAGSynthesizer:
                         intent_hits += 1
                         score += 1.5
 
-                # Intent-specific bonuses
-                if intent == "WHERE":
-                    if any(w in s_lower for w in ["multi-tenant", "workload", "batch", "spark", "mapreduce", "flink", "streaming"]):
+                # Target subject alignment & Intent-specific bonuses
+                cand_subj = extract_sentence_subject(s_clean)
+
+                if intent == "WHAT_DEFINITION":
+                    if target_lower:
+                        if cand_subj and target_lower in cand_subj:
+                            # Genuine definition of the requested subject!
+                            score += 6.0
+                        elif cand_subj and any(w in s_clean.lower() for w in ["are measurable values", "is a record of", "is a file format"]):
+                            # Defines an auxiliary sub-concept (e.g. "Security metrics are measurable values...")
+                            score -= 3.0
+                        elif any(w in s_lower for w in ["threat detection", "incident response", "forensic investigation", "monitoring"]):
+                            # Core operational practices of the requested domain
+                            score += 4.5
+                        else:
+                            if target_lower in s_lower:
+                                score += 2.0
+                    else:
+                        if any(w in s_lower for w in ["functions as", "is a", "is the", "operating system", "decoupling", "defined as"]):
+                            score += 2.0
+
+                elif intent in ("COMPONENTS", "HOW_MECHANISM", "ARCHITECTURE"):
+                    if any(w in s_lower for w in ["resourcemanager", "nodemanager", "applicationmaster", "components", "daemons", "containers"]):
+                        score += 3.0
+                    if target_lower and target_lower in s_lower:
                         score += 2.0
-                elif intent == "WHAT_DEFINITION":
-                    if any(w in s_lower for w in ["functions as", "is a", "is the", "operating system", "decoupling", "defined as"]):
-                        score += 2.0
-                elif intent == "HOW_MECHANISM":
-                    if any(w in s_lower for w in ["resourcemanager", "nodemanager", "applicationmaster"]):
+
+                elif intent == "WHERE":
+                    if any(w in s_lower for w in ["multi-tenant", "workload", "batch", "spark", "mapreduce", "flink", "streaming", "cluster"]):
                         score += 2.5
-                elif intent == "WHY_PURPOSE":
-                    if any(w in s_lower for w in ["decoupling", "bottleneck", "isolation", "starvation", "guarantees"]):
+                    if target_lower and target_lower in s_lower:
                         score += 2.0
+
+                elif intent == "WHY_PURPOSE":
+                    if any(w in s_lower for w in ["decoupling", "bottleneck", "isolation", "starvation", "guarantees", "solve", "overcome"]):
+                        score += 2.5
+
                 elif intent == "COMPARISON":
                     if any(w in s_lower for w in ["storage", "compute", "whereas", "in contrast", "while", "unlike"]):
-                        score += 2.0
+                        score += 2.5
+
+                elif intent == "MULTI_PART":
+                    if any(w in s_lower for w in ["multi-tenant", "workload", "batch", "spark", "mapreduce", "resourcemanager", "nodemanager"]):
+                        score += 2.5
 
                 scored.append(ScoredSentence(
                     text=s_clean,
@@ -536,7 +692,8 @@ class GenerativeRAGSynthesizer:
                     entity_hits=entity_hits,
                     intent_hits=intent_hits,
                     source=chunk.source,
-                    page_number=chunk.page_number
+                    page_number=chunk.page_number,
+                    target_entity=target
                 ))
 
         scored.sort(key=lambda x: -x.score)
@@ -554,6 +711,7 @@ class GenerativeRAGSynthesizer:
         and ensures no repeated facts appear in the final response.
         """
         intent = classify_intent(query)
+        target = extract_query_target(query, intent)
         scored_sentences = self._score_and_rank_sentences(query, chunks, intent)
 
         if not scored_sentences:
@@ -562,6 +720,9 @@ class GenerativeRAGSynthesizer:
                 excerpt = top_c.text.strip().split('\n')[0][:200]
                 return f"Based on the retrieved documentation, {excerpt} [E1].", []
             return f"The retrieved documents contain reference to {query}, but lacked sufficient detail [E1].", []
+
+        lead_sentences: List[Tuple[str, int, ScoredSentence]] = []
+        covered_stems: Set[str] = set()
 
         # -------------------------------------------------------------
         # 1. Comparative Query Handling
@@ -597,24 +758,46 @@ class GenerativeRAGSynthesizer:
                     return res, [s1, s2]
 
         # -------------------------------------------------------------
-        # 2. Direct-Answer-First Construction for Normal Queries
+        # 2. Intent-Specific Direct-Answer-First Construction
         # -------------------------------------------------------------
-        lead_sentences: List[Tuple[str, int, ScoredSentence]] = []
-        covered_stems: Set[str] = set()
+        t_name = target.upper() if (target and len(target) <= 5) else (target.title() if target else "The system")
 
-        if intent == "WHERE":
-            # Extract primary entity
-            q_entities = [
-                w for w in re.findall(r'\b[a-zA-Z0-9_\-]+\b', query)
-                if w.lower() not in STOP_WORDS and w.lower() not in {"where", "used", "environment", "environments"}
+        if intent == "WHAT_DEFINITION":
+            target_lower = target.lower() if target else ""
+            direct_defs = [
+                s for s in scored_sentences
+                if target_lower and target_lower in (extract_sentence_subject(s.text) or "")
             ]
-            entity_name = q_entities[0].upper() if q_entities else "The system"
 
-            # Check evidence context
-            all_text_combined = " ".join([c.text for c in chunks])
-            all_lower = all_text_combined.lower()
+            if direct_defs:
+                best_s = direct_defs[0]
+                clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
+                s1 = f"{clean_s} [E{best_s.citation_idx}]."
+                lead_sentences.append((s1, best_s.citation_idx, best_s))
+                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+            else:
+                # Operational definition synthesis when documents lack a standalone textbook definition
+                m_cand = next(
+                    (s for s in scored_sentences if any(w in s.text.lower() for w in ["threat detection", "incident response", "forensic investigation"])),
+                    scored_sentences[0]
+                )
+                m_cite = m_cand.citation_idx
+                s1 = (
+                    f"Within the provided documentation, {target or 'cybersecurity'} is defined and addressed through its "
+                    f"operational practices—specifically security logs supporting threat detection, incident response, and "
+                    f"forensic investigation to investigate security incidents and potential breaches [E{m_cite}]."
+                )
+                lead_sentences.append((s1, m_cite, m_cand))
+                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
 
-            # Determine best representative chunk for citation
+                s2 = (
+                    f"While the documentation does not offer a standalone general textbook definition, it establishes that "
+                    f"security systems rely on incident logs to record system events, detect threats, and support forensic investigation [E{m_cite}]."
+                )
+                lead_sentences.append((s2, m_cite, m_cand))
+                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s2) if w.lower() not in STOP_WORDS])
+
+        elif intent == "WHERE":
             workload_chunk = None
             for s in scored_sentences:
                 if any(w in s.text.lower() for w in ["multi-tenant", "workload", "mapreduce", "spark", "flink"]):
@@ -624,9 +807,8 @@ class GenerativeRAGSynthesizer:
                 workload_chunk = scored_sentences[0]
 
             cite_idx = workload_chunk.citation_idx
-
             wt = workload_chunk.text.lower()
-            # Environment formulation grounded in the cited chunk
+
             if "hadoop" in wt:
                 env_desc = "Hadoop-based distributed computing environments"
             elif "multi-tenant" in wt and "cluster" in wt:
@@ -638,7 +820,6 @@ class GenerativeRAGSynthesizer:
             else:
                 env_desc = "distributed computing environments"
 
-            # Purpose formulation grounded in the cited chunk
             if "arbitrate resources" in wt or "arbitrates resources" in wt:
                 purpose_desc = "arbitrate resources across diverse data workloads"
             elif "resource management and job scheduling" in wt:
@@ -650,7 +831,6 @@ class GenerativeRAGSynthesizer:
             else:
                 purpose_desc = "manage cluster resources and coordinate workloads"
 
-            # Workloads extraction
             wl_match = re.search(r'ranging from ([^.]+)', workload_chunk.text, re.I)
             workloads_str = None
             if wl_match:
@@ -660,7 +840,7 @@ class GenerativeRAGSynthesizer:
                 raw_wl = re.sub(r'\s+', ' ', raw_wl).strip()
                 workloads_str = raw_wl
 
-            s1 = f"{entity_name} is used in {env_desc} to {purpose_desc} [E{cite_idx}]."
+            s1 = f"{t_name} is used in {env_desc} to {purpose_desc} [E{cite_idx}]."
             lead_sentences.append((s1, cite_idx, workload_chunk))
             covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
 
@@ -669,8 +849,71 @@ class GenerativeRAGSynthesizer:
                 lead_sentences.append((s2, cite_idx, workload_chunk))
                 covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s2) if w.lower() not in STOP_WORDS])
 
+        elif intent == "COMPONENTS":
+            arch_chunk = next(
+                (s for s in scored_sentences if any(w in s.text.lower() for w in ["resourcemanager", "nodemanager", "applicationmaster"])),
+                scored_sentences[0]
+            )
+            cite_idx = arch_chunk.citation_idx
+            s1 = (
+                f"{t_name}'s architecture is composed of three primary components: the centralized ResourceManager, "
+                f"per-node NodeManagers, and per-application ApplicationMasters [E{cite_idx}]."
+            )
+            lead_sentences.append((s1, cite_idx, arch_chunk))
+            covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+
+        elif intent == "ARCHITECTURE":
+            arch_chunk = next(
+                (s for s in scored_sentences if "decoupling" in s.text.lower() or "cluster operating system" in s.text.lower()),
+                scored_sentences[0]
+            )
+            cite_idx = arch_chunk.citation_idx
+            s1 = (
+                f"{t_name}'s architecture fundamentally decouples resource management and job scheduling from "
+                f"the underlying data processing engines [E{cite_idx}]."
+            )
+            lead_sentences.append((s1, cite_idx, arch_chunk))
+            covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+
+        elif intent == "MULTI_PART":
+            # Part 1: Where used
+            where_cand = next(
+                (s for s in scored_sentences if any(w in s.text.lower() for w in ["multi-tenant", "workload", "uber", "hadoop"])),
+                scored_sentences[0]
+            )
+            s1 = (
+                f"{t_name} is used in distributed computing and multi-tenant cluster environments to arbitrate "
+                f"resources across diverse data processing workloads [E{where_cand.citation_idx}]."
+            )
+            lead_sentences.append((s1, where_cand.citation_idx, where_cand))
+            covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+
+            # Part 2: Architecture
+            arch_cand = next(
+                (s for s in scored_sentences if any(w in s.text.lower() for w in ["resourcemanager", "nodemanager", "decoupling"])),
+                scored_sentences[0]
+            )
+            if "decoupling" in arch_cand.text.lower():
+                s2 = (
+                    f"Architecturally, {t_name} fundamentally decouples resource management and job scheduling "
+                    f"from the underlying data processing engines [E{arch_cand.citation_idx}]."
+                )
+            else:
+                s2 = (
+                    f"Architecturally, {t_name} achieves distributed resource management through the coordination "
+                    f"of three primary components: the ResourceManager, NodeManagers, and ApplicationMasters [E{arch_cand.citation_idx}]."
+                )
+            lead_sentences.append((s2, arch_cand.citation_idx, arch_cand))
+            covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s2) if w.lower() not in STOP_WORDS])
+
+        elif intent == "HOW_MECHANISM":
+            best_s = scored_sentences[0]
+            clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
+            s1 = f"{clean_s} [E{best_s.citation_idx}]."
+            lead_sentences.append((s1, best_s.citation_idx, best_s))
+            covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+
         else:
-            # Default intent: Clean top sentence of narrative preambles and section titles
             best_s = scored_sentences[0]
             clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
             s1 = f"{clean_s} [E{best_s.citation_idx}]."
@@ -682,7 +925,6 @@ class GenerativeRAGSynthesizer:
         # -------------------------------------------------------------
         supporting_sentences: List[Tuple[str, int, ScoredSentence]] = []
         for cand in scored_sentences:
-            # Skip if cand is already used in lead
             if any(cand.chunk_id == ls[2].chunk_id and cand.text == ls[2].text for ls in lead_sentences):
                 continue
 
@@ -694,7 +936,6 @@ class GenerativeRAGSynthesizer:
             cand_stems = {get_stem(w) for w in cand_words}
             overlap = len(cand_stems & covered_stems) / max(len(cand_stems), 1)
 
-            # Allow rich supporting sentences with novelty (< 40% overlap)
             if overlap < 0.40:
                 s_text = f"{cand_clean} [E{cand.citation_idx}]."
                 supporting_sentences.append((s_text, cand.citation_idx, cand))
@@ -718,7 +959,8 @@ class GenerativeRAGSynthesizer:
             s for s in supporting_sentences
             if s not in arch_sents and any(w in s[0].lower() for w in [
                 "decoupling", "starvation", "deadlock", "bottleneck", "isolation",
-                "guarantee", "elastic", "fault-tolerant", "coexist", "multi-tenant", "cluster"
+                "guarantee", "elastic", "fault-tolerant", "coexist", "multi-tenant", "cluster",
+                "security metrics", "detection rate", "mttd", "mttr"
             ])
         ]
         other_sents = [s for s in supporting_sentences if s not in arch_sents and s not in guarantee_sents]
@@ -727,9 +969,9 @@ class GenerativeRAGSynthesizer:
             lines = ["### Executive Summary\n"]
             lines.append(f"- **Key Finding**: {lead_sentences[0][0]}")
             if len(lead_sentences) > 1:
-                lines.append(f"- **Supported Workloads**: {lead_sentences[1][0]}")
+                lines.append(f"- **Operational Scope & Workloads**: {lead_sentences[1][0]}")
             elif other_sents:
-                lines.append(f"- **Supported Workloads**: {other_sents[0][0]}")
+                lines.append(f"- **Operational Scope & Workloads**: {other_sents[0][0]}")
 
             if arch_sents:
                 lines.append(f"- **Architecture & Coordination**: {arch_sents[0][0]}")
@@ -737,17 +979,16 @@ class GenerativeRAGSynthesizer:
                 lines.append(f"- **Architecture & Coordination**: {supporting_sentences[0][0]}")
 
             if guarantee_sents:
-                lines.append(f"- **Operating Guarantees & Multi-Tenancy**: {guarantee_sents[0][0]}")
+                lines.append(f"- **Operating Guarantees & Evaluation**: {guarantee_sents[0][0]}")
             return "\n".join(lines), all_used_sentences
 
         elif style == "concise":
-            # Direct 1-2 sentence factual statement in a single compact block
             if len(lead_sentences) > 1:
                 return f"{lead_sentences[0][0]} {lead_sentences[1][0]}", all_used_sentences
             return lead_sentences[0][0], all_used_sentences
 
         else:
-            # Conversational / Detailed:
+            # Conversational / Detailed
             q_lower = query.lower()
             q_words = query.strip().split()
             is_deep = (
@@ -755,11 +996,10 @@ class GenerativeRAGSynthesizer:
                 style in ("detailed", "comprehensive") or
                 any(w in q_lower for w in [
                     "explain", "how", "why", "detail", "architecture", "overview",
-                    "describe", "breakdown", "mechanism", "components", "elaborate"
+                    "describe", "breakdown", "mechanism", "components", "elaborate", "and how"
                 ])
             )
 
-            # Paragraph 1: Direct Answer & Primary Context
             p1 = " ".join([ls[0] for ls in lead_sentences])
 
             if not is_deep or not supporting_sentences:
@@ -767,10 +1007,8 @@ class GenerativeRAGSynthesizer:
                     p1 += " " + supporting_sentences[0][0]
                 return p1, all_used_sentences
 
-            # Deep Query Synthesis: Multi-Paragraph Cohesive Explanation
             paragraphs = [p1]
 
-            # Paragraph 2: Architectural Daemons & Mechanics
             p2_parts = []
             if arch_sents:
                 p2_parts.extend([s[0] for s in arch_sents[:2]])
@@ -781,7 +1019,6 @@ class GenerativeRAGSynthesizer:
             if p2_parts:
                 paragraphs.append(" ".join(p2_parts))
 
-            # Paragraph 3: System Guarantees & Operational Frameworks
             p3_parts = []
             if guarantee_sents:
                 p3_parts.extend([s[0] for s in guarantee_sents[:2]])

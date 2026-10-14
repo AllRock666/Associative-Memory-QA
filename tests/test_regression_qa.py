@@ -421,3 +421,156 @@ def test_regression_hopfield_diagnostics_preservation():
     assert dedup_col.attractor_energy == -12.345
     assert dedup_col.energy_depth == 4.56
     assert len(dedup_col.trajectory_hops) == 1
+
+
+# ---------------------------------------------------------------------------
+# Fixture: Cybersecurity Evidence Chunks
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def cybersecurity_evidence_collection() -> EvidenceCollection:
+    """Fixture providing realistic chunks reflecting cyber security unit 2.pdf."""
+    chunks = [
+        # Chunk 1: Outline section on Security Metrics (simulating cyber security unit 2.pdf)
+        EvidenceChunk(
+            chunk_id="chunk_sec_metrics",
+            doc_id="cyber_security_unit_2.pdf",
+            source="cyber security unit 2.pdf",
+            text=(
+                "12. Security Metrics and Their Importance Systems Security metrics are critical tools "
+                "for quantifying the effectiveness of security processes, measuring risk posture, and "
+                "demonstrating compliance with standards. Metrics provide quantifiable data on system health."
+            ),
+            similarity_score=0.88,
+            rank=1,
+            page_number=12,
+            is_core_attractor=True
+        ),
+        # Chunk 2: Security Logs and operational practices
+        EvidenceChunk(
+            chunk_id="chunk_sec_logs",
+            doc_id="cyber_security_unit_2.pdf",
+            source="cyber security unit 2.pdf",
+            text=(
+                "10. Security Logs and Their Role in Incident Response Systems Security logs are records of events "
+                "occurring within an organization’s systems and networks. They play a vital role in: Threat detection: "
+                "Identifying suspicious activity and potential breaches. Incident response: Providing the necessary information "
+                "to investigate and mitigate security incidents. Forensic investigation: Supporting post-incident analysis "
+                "to understand how a breach occurred."
+            ),
+            similarity_score=0.86,
+            rank=2,
+            page_number=10,
+            is_core_attractor=False
+        ),
+        # Chunk 3: Security monitoring
+        EvidenceChunk(
+            chunk_id="chunk_sec_monitoring",
+            doc_id="cyber_security_unit_2.pdf",
+            source="cyber security unit 2.pdf",
+            text=(
+                "Security monitoring and event analysis enable real-time detection of unauthorized access, malware propagation, "
+                "and vulnerability exploitation across enterprise systems."
+            ),
+            similarity_score=0.82,
+            rank=3,
+            page_number=11,
+            is_core_attractor=False
+        ),
+    ]
+    return EvidenceCollection(
+        query="what is cybersecurity",
+        chunks=chunks,
+        retriever_name="HopfieldRetrieverAdapter"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test N: Cybersecurity Definition Fidelity & Heading Separation
+# ---------------------------------------------------------------------------
+def test_regression_cybersecurity_definition_fidelity(cybersecurity_evidence_collection):
+    synthesizer = GenerativeRAGSynthesizer()
+    answer = synthesizer.synthesize("what is cybersecurity", cybersecurity_evidence_collection, style="conversational")
+
+    assert answer.abstained is False
+    assert answer.confidence > 0.50
+
+    answer_text = answer.answer
+    answer_lower = answer_text.lower()
+
+    # 1. Opening sentence must NOT lead with "12. Security Metrics" or define cybersecurity as metrics
+    assert not answer_text.startswith("12.")
+    assert not answer_text.startswith("10.")
+    assert "12. security metrics" not in answer_lower
+    assert not answer_lower.startswith("security metrics are")
+
+    # 2. Must directly state definition / operational scope first
+    assert "operational practices" in answer_lower or "defined" in answer_lower or "security monitoring" in answer_lower
+    assert any(term in answer_lower for term in ["threat detection", "incident response", "forensic investigation", "monitoring"])
+
+    # 3. Honest attribution: acknowledging absence of a standalone textbook definition when relying on operational scope
+    assert "within the provided documentation" in answer_lower or "operational practices" in answer_lower
+
+    # 4. Valid citations present
+    assert any(f"[E{i}]" in answer_text for i in [1, 2, 3])
+    assert len(answer.claims) > 0
+    assert all(c.is_verified for c in answer.claims)
+
+    # 5. Verify executive and concise styles also maintain definition fidelity
+    exec_answer = synthesizer.synthesize("what is cybersecurity", cybersecurity_evidence_collection, style="executive")
+    assert not exec_answer.answer.startswith("12.")
+    assert "operational practices" in exec_answer.answer.lower() or "threat detection" in exec_answer.answer.lower()
+
+    concise_answer = synthesizer.synthesize("what is cybersecurity", cybersecurity_evidence_collection, style="concise")
+    assert not concise_answer.answer.startswith("12.")
+    assert len(concise_answer.answer.split(".")) <= 4
+
+
+# ---------------------------------------------------------------------------
+# Test O: Multi-Part Synthesis ("where is yarn used, and how does its architecture work")
+# ---------------------------------------------------------------------------
+def test_regression_yarn_multipart_synthesis(yarn_evidence_collection):
+    synthesizer = GenerativeRAGSynthesizer()
+    query = "where is yarn used, and how does its architecture work?"
+    answer = synthesizer.synthesize(query, yarn_evidence_collection, style="conversational")
+
+    assert answer.abstained is False
+    assert answer.confidence > 0.60
+    answer_lower = answer.answer.lower()
+
+    # 1. Part 1 (Where): addresses environments and workloads
+    assert "yarn is used in" in answer_lower or "used" in answer_lower
+    assert any(w in answer_lower for w in ["multi-tenant", "workloads", "batch", "spark", "mapreduce"])
+
+    # 2. Part 2 (How / Architecture): addresses components coordination
+    assert "architecture" in answer_lower or "components" in answer_lower or "resourcemanager" in answer_lower
+    assert "nodemanager" in answer_lower or "applicationmaster" in answer_lower
+
+    # 3. Valid citations
+    assert len(answer.claims) >= 2
+    assert all(c.is_verified for c in answer.claims)
+
+
+# ---------------------------------------------------------------------------
+# Test P: Components and Responsibilities Breakdown
+# ---------------------------------------------------------------------------
+def test_regression_yarn_components_synthesis(yarn_evidence_collection):
+    synthesizer = GenerativeRAGSynthesizer()
+    query = "explain YARN components and their responsibilities"
+    answer = synthesizer.synthesize(query, yarn_evidence_collection, style="conversational")
+
+    assert answer.abstained is False
+    assert answer.confidence > 0.60
+    answer_lower = answer.answer.lower()
+
+    # Must explicitly articulate the three primary components
+    assert "resourcemanager" in answer_lower
+    assert "nodemanager" in answer_lower
+    assert "applicationmaster" in answer_lower
+
+    # Must mention coordination / responsibilities
+    assert "resources" in answer_lower or "containers" in answer_lower or "arbitrates" in answer_lower
+
+    # Valid citations
+    assert len(answer.claims) >= 1
+    assert all(c.is_verified for c in answer.claims)
+
