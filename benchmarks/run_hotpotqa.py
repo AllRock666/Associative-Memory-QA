@@ -2,13 +2,14 @@ import argparse
 import json
 import time
 import torch
+import numpy as np
 from tqdm import tqdm
 from datasets import load_dataset
+import mlflow
 from core.embeddings import EmbeddingEngine
-from core.hopfield_torch import PyTorchHopfieldMemory, BiLSTMQAHead
+from core.hopfield_torch import PyTorchHopfieldMemory
 from core.baselines import BM25Retriever, DenseRetriever
 from benchmarks.metrics import metric_max_over_ground_truths, exact_match_score, f1_score, normalize_answer
-
 
 def truncate_chunks_for_roberta(chunks, query, tokenizer, max_total_tokens=512):
     query_tokens = len(tokenizer(query, add_special_tokens=False)['input_ids'])
@@ -19,7 +20,7 @@ def truncate_chunks_for_roberta(chunks, query, tokenizer, max_total_tokens=512):
     
     truncated_texts = []
     for chunk in chunks:
-        ids = tokenizer(chunk['text'], add_special_tokens=False)['input_ids']
+        ids = tokenizer((chunk.text if hasattr(chunk, 'text') else (chunk.text if hasattr(chunk, 'text') else chunk['text'])), add_special_tokens=False)['input_ids']
         if len(ids) > budget_per_chunk:
             ids = ids[:budget_per_chunk]
         truncated_texts.append(tokenizer.decode(ids))
@@ -48,157 +49,159 @@ def get_answer_span(context, query, qa_model, tokenizer, device):
         
         L = start_logits.size(0)
         max_len = 30
-        scores = start_logits.unsqueeze(1) + end_logits.unsqueeze(0)
-        valid_mask = torch.triu(torch.ones(L, L, dtype=torch.bool, device=scores.device))
-        valid_mask &= (torch.arange(L, device=scores.device).unsqueeze(1) + max_len > torch.arange(L, device=scores.device).unsqueeze(0))
-        scores = scores.masked_fill(~valid_mask, -float('inf'))
         
-        best = torch.argmax(scores)
-        start_idx = best.item() // L
-        end_idx = best.item() % L
+        score_matrix = start_logits.unsqueeze(1) + end_logits.unsqueeze(0)
         
-    input_ids = inputs['input_ids'][0].tolist()
+        mask_upper = torch.triu(torch.ones(L, L, device=device), diagonal=0).bool()
+        mask_len = torch.tril(torch.ones(L, L, device=device), diagonal=max_len).bool()
+        valid_mask = mask_upper & mask_len
+        
+        score_matrix = score_matrix.masked_fill(~valid_mask, -float('inf'))
+        
+        flat_idx = torch.argmax(score_matrix)
+        start_idx = flat_idx // L
+        end_idx = flat_idx % L
+        
+    answer_tokens = inputs['input_ids'][0][start_idx:end_idx+1]
+    return tokenizer.decode(answer_tokens)
+
+def evaluate_retriever(retriever_name, retriever_obj, data, qa_model, tokenizer, device, top_k=3, embedder=None, args=None):
+    results = {"em": 0.0, "f1": 0.0, "time_ms": 0.0, "recall": 0.0, "mrr": 0.0}
+    total = len(data)
+    start = time.time()
     
-    if start_idx >= end_idx or start_idx == 0:
-        return ""
+    with mlflow.start_run(run_name=f"HotpotQA-{retriever_name}", nested=True):
+        mlflow.log_params({
+            "retriever": retriever_name,
+            "top_k": top_k,
+            "dataset": "HotpotQA",
+            "subset": args.subset if args else None
+        })
+        if args and retriever_name == "Hopfield":
+            mlflow.log_params({
+                "hopfield_beta": args.beta,
+                "hopfield_n_iter": args.n_iter,
+                "energy_type": getattr(args, "energy_type", "softmax"),
+                "hopfield_use_projection": getattr(args, "use_projection", False)
+            })
+
+        for item in tqdm(data, desc=f"Evaluating {retriever_name}"):
+            query = item['question']
+            answers = [item['answer']]
+            
+            supporting_titles = set(item['supporting_facts']['title'])
+            
+            if embedder:
+                q_emb = embedder.embed_query(query)
+                chunks = retriever_obj.retrieve(q_emb, top_k=top_k)
+            else:
+                chunks = retriever_obj.retrieve(query, top_k=top_k)
+                
+            retrieved_titles = [(c.metadata.get('title', '') if hasattr(c, 'metadata') else (c.metadata.get('title', '') if hasattr(c, 'metadata') else c.get('metadata', {}).get('title', ''))) for c in chunks]
+            if not any(retrieved_titles):
+                retrieved_titles = [c['text'].split('\n')[0] for c in chunks]
+                
+            recall_found = False
+            for title in retrieved_titles:
+                if title in supporting_titles:
+                    recall_found = True
+                    break
+            if recall_found:
+                results["recall"] += 1.0
+                
+            for rank, title in enumerate(retrieved_titles):
+                if title in supporting_titles:
+                    results["mrr"] += 1.0 / (rank + 1)
+                    break
+            
+            context = truncate_chunks_for_roberta(chunks, query, tokenizer)
+            pred = get_answer_span(context, query, qa_model, tokenizer, device)
+            
+            results["em"] += metric_max_over_ground_truths(exact_match_score, pred, answers)
+            results["f1"] += metric_max_over_ground_truths(f1_score, pred, answers)
+            
+        elapsed = time.time() - start
+        if total > 0:
+            results["em"] /= total
+            results["f1"] /= total
+            results["recall"] /= total
+            results["mrr"] /= total
+            results["time_ms"] = (elapsed * 1000) / total
+            
+        mlflow.log_metrics(results)
         
-    answer_tokens = input_ids[start_idx:end_idx+1]
-    return tokenizer.decode(answer_tokens, skip_special_tokens=True)
+    return results
 
 def main():
-    parser = argparse.ArgumentParser(description="Run HotpotQA benchmark on Hopfield QA")
-    parser.add_argument("--subset", type=int, default=100, help="Number of samples to evaluate on (default 100)")
-    parser.add_argument("--top_k", type=int, default=4, help="Top K context chunks to retrieve")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--subset", type=int, default=100)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--top_k", type=int, default=4)
+    parser.add_argument("--beta", type=float, default=8.0)
+    parser.add_argument("--n_iter", type=int, default=3)
+    parser.add_argument("--energy_type", type=str, default="softmax")
+    parser.add_argument("--use_projection", action="store_true")
+    parser.add_argument("--projection_path", type=str, default="models/projection_squad.pt")
     args = parser.parse_args()
 
-    print("Loading HotpotQA dataset (distractor setting)...")
-    try:
-        hotpot = load_dataset("hotpot_qa", "distractor", split="validation")
-    except Exception as e:
-        print(f"Error loading hotpot_qa: {e}")
-        return
-        
-    hotpot = hotpot.select(range(args.subset))
-        
-    print(f"Building memory from {len(hotpot)} questions' distractors...")
-    # HotpotQA context is {"title": ["t1", "t2"], "sentences": [["s1", "s2"], ["s3", "s4"]]}
-    unique_paragraphs_dict = {}
-    for item in hotpot:
-        titles = item['context']['title']
-        sentences_lists = item['context']['sentences']
-        for t, s_list in zip(titles, sentences_lists):
-            para_text = "".join(s_list)
-            unique_paragraphs_dict[para_text] = t
-            
-    unique_contexts = list(unique_paragraphs_dict.keys())
-    metadata = [{"chunk_id": str(i), "title": unique_paragraphs_dict[c], "text": c} for i, c in enumerate(unique_contexts)]
+    mlflow.set_experiment("HopfieldQA-HotpotQA-Benchmark")
+
+    dataset = load_dataset("hotpot_qa", "distractor", split="validation")
+    dataset = dataset.shuffle(seed=args.seed).select(range(args.subset))
     
-    print(f"Total unique paragraphs to index: {len(unique_contexts)}")
-    
-    embedder = EmbeddingEngine(model_name="all-MiniLM-L6-v2")
-    patterns = []
-    for c in tqdm(unique_contexts, desc="Embedding Contexts"):
-        patterns.append(embedder.embed_query(c))
-    import numpy as np
-    patterns = np.array(patterns)
-    
-    print("Initializing Retrievers...")
-    bm25 = BM25Retriever()
-    bm25.store(unique_contexts, metadata)
-    
-    dpr = DenseRetriever()
-    dpr.store(patterns, metadata)
-    
-    # Hopfield is configured with n_iter=3 for multi-hop retrieval
-    hopfield = PyTorchHopfieldMemory(beta=8.0, n_iter=3)
-    hopfield.store(patterns, metadata)
-    
+    embedder = EmbeddingEngine()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print("Initializing QA Head (End-to-End)...")
-    from transformers import AutoTokenizer, AutoModelForQuestionAnswering
-    tokenizer = AutoTokenizer.from_pretrained('deepset/roberta-base-squad2')
     
-    qa_model = AutoModelForQuestionAnswering.from_pretrained('deepset/roberta-base-squad2').to(device)
-    qa_model.eval()
-
-    results = {
-        "BM25": {"recall": 0.0, "mrr": 0.0, "em": 0.0, "f1": 0.0},
-        "Dense (DPR)": {"recall": 0.0, "mrr": 0.0, "em": 0.0, "f1": 0.0},
-        "Hopfield (3-iter)": {"recall": 0.0, "mrr": 0.0, "em": 0.0, "f1": 0.0}
-    }
+    from transformers import AutoModelForQuestionAnswering, AutoTokenizer
+    qa_model = AutoModelForQuestionAnswering.from_pretrained("deepset/roberta-base-squad2").to(device)
+    tokenizer = AutoTokenizer.from_pretrained("deepset/roberta-base-squad2")
     
-    def evaluate_retriever(name, retriever_func, query, query_emb, ground_truths, support_titles):
-        if name == "BM25":
-            retrieved = retriever_func(query, top_k=args.top_k)
+    print("Building memory...")
+    chunks = []
+    patterns = []
+    metadata = []
+    
+    for i, item in enumerate(tqdm(dataset)):
+        for title, sentences in zip(item['context']['title'], item['context']['sentences']):
+            ctx = title + "\n" + "".join(sentences)
+            emb = embedder.embed_query(ctx)
+            patterns.append(emb)
+            meta = {"chunk_id": f"{i}_{title}", "text": ctx, "title": title}
+            metadata.append(meta)
+            chunks.append({"id": meta["chunk_id"], "text": ctx, "metadata": meta})
+            
+    patterns_tensor = np.array(patterns)
+    
+    bm25 = BM25Retriever()
+    bm25.store([c['text'] for c in chunks], metadata)
+    
+    dense = DenseRetriever()
+    dense.store(patterns_tensor, metadata)
+    
+    hopfield = PyTorchHopfieldMemory(beta=args.beta, n_iter=args.n_iter, use_projection=args.use_projection)
+    if args.use_projection and args.projection_path:
+        import os
+        if os.path.exists(args.projection_path):
+            hopfield.retriever.projection.load_state_dict(torch.load(args.projection_path, map_location=hopfield.device, weights_only=True))
+            print(f"Loaded projection from {args.projection_path}")
         else:
-            retrieved = retriever_func(query_emb, top_k=args.top_k)
-            
-        context_str = truncate_chunks_for_roberta(retrieved, query, tokenizer)
-        
-        retrieved_titles = [r.get('title', '') for r in retrieved]
-        
-        recall = 1.0 if any(t in retrieved_titles for t in support_titles) else 0.0
-        
-        mrr = 0.0
-        for i, t in enumerate(retrieved_titles):
-            if t in support_titles:
-                mrr = 1.0 / (i + 1)
-                break
-        
-        pred = get_answer_span(context_str, query, qa_model, tokenizer, device)
-        
-        em = metric_max_over_ground_truths(exact_match_score, pred, ground_truths)
-        f1 = metric_max_over_ground_truths(f1_score, pred, ground_truths)
-        
-        return recall, mrr, em, f1
-
-    print("\nRunning Evaluation...")
-    for item in tqdm(hotpot, desc="Evaluating Queries"):
-        query = item['question']
-        ground_truths = [item['answer']]
-        query_emb = embedder.embed_query(query)
-        
-        support_titles = item['supporting_facts']['title']
-        
-        # BM25
-        r, mrr, em, f1 = evaluate_retriever("BM25", bm25.retrieve, query, query_emb, ground_truths, support_titles)
-        results["BM25"]["recall"] += r
-        results["BM25"]["mrr"] += mrr
-        results["BM25"]["em"] += em
-        results["BM25"]["f1"] += f1
-        
-        # Dense (DPR)
-        r, mrr, em, f1 = evaluate_retriever("Dense (DPR)", dpr.retrieve, query, query_emb, ground_truths, support_titles)
-        results["Dense (DPR)"]["recall"] += r
-        results["Dense (DPR)"]["mrr"] += mrr
-        results["Dense (DPR)"]["em"] += em
-        results["Dense (DPR)"]["f1"] += f1
-        
-        # Hopfield
-        def hopfield_wrapper(q, top_k):
-            res = hopfield.retrieve(q, top_k)
-            return [{'title': x.metadata.get('title', ''), 'text': x.text} for x in res]
-            
-        r, mrr, em, f1 = evaluate_retriever("Hopfield (3-iter)", hopfield_wrapper, query, query_emb, ground_truths, support_titles)
-        results["Hopfield (3-iter)"]["recall"] += r
-        results["Hopfield (3-iter)"]["mrr"] += mrr
-        results["Hopfield (3-iter)"]["em"] += em
-        results["Hopfield (3-iter)"]["f1"] += f1
-
-    n = len(hotpot)
-    for model in results:
-        results[model] = {k: v / n for k, v in results[model].items()}
-        
-    print("\n" + "="*50)
-    print("HotpotQA Benchmark Results (Multi-hop Reasoning)")
-    print("="*70)
-    print(f"{'Model':<20} | {'Recall@'+str(args.top_k):<10} | {'MRR':<10} | {'Exact Match':<11} | {'F1 Score':<10}")
-    print("-"*70)
-    for model, stats in results.items():
-        print(f"{model:<20} | {stats['recall']*100:>8.2f}% | {stats['mrr']:>10.4f} | {stats['em']*100:>9.2f}% | {stats['f1']*100:>8.2f}%")
-        
+            print(f"Warning: Projection path {args.projection_path} not found.")
+    hopfield.retriever.energy_type = args.energy_type
+    hopfield.store(patterns_tensor, metadata)
+    
+    results = {}
+    with mlflow.start_run(run_name=f"Benchmark-Suite-{args.subset}"):
+        mlflow.log_params(vars(args))
+        results["BM25"] = evaluate_retriever("BM25", bm25, dataset, qa_model, tokenizer, device, top_k=args.top_k, args=args)
+        results["Dense"] = evaluate_retriever("Dense", dense, dataset, qa_model, tokenizer, device, top_k=args.top_k, embedder=embedder, args=args)
+        results["Hopfield"] = evaluate_retriever("Hopfield", hopfield, dataset, qa_model, tokenizer, device, top_k=args.top_k, embedder=embedder, args=args)
+    
     with open("benchmarks/hotpotqa_results.json", "w") as f:
-        json.dump(results, f, indent=4)
+        json.dump(results, f, indent=2)
         
+    print(json.dumps(results, indent=2))
+
 if __name__ == "__main__":
     main()
+
+

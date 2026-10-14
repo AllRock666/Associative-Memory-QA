@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hopfield Associative Memory (HAM) - RAG Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; }
+        .spinner { border: 3px solid rgba(0,0,0,0.1); width: 22px; height: 22px; border-radius: 50%; border-left-color: #3b82f6; animation: spin 0.8s linear infinite; display: none; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* Custom scrollbar for clean ChatGPT-like sidebars */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .chat-scroll { scroll-behavior: smooth; }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex flex-col overflow-hidden bg-slate-50">
+
+    <!-- Top App Navigation Bar -->
+    <header class="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between shadow-2xs z-20 flex-shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 bg-gradient-to-tr from-blue-700 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm shadow-sm tracking-tight">
+                HAM
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-sm font-bold text-slate-800 leading-none">Hopfield Memory Workspace</h1>
+                    <span id="pipeline-badge" class="text-[11px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800">Checking...</span>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-0.5">Continuous Energy Attractor Retrieval &bull; Multi-Document Persistent Memory</p>
+            </div>
+        </div>
+
+        <!-- Center: Current Chat Name -->
+        <div class="hidden md:flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-xl border border-slate-200 max-w-md truncate">
+            <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+            <span id="active-chat-title" class="text-xs font-semibold text-slate-700 truncate">New Conversation</span>
+        </div>
+
+        <!-- Right: Status and Quick Controls -->
+        <div class="flex items-center space-x-3 text-xs">
+            <div id="llm-status-pill" class="text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200" title="Checking status...">Checking LLM...</div>
+            <button onclick="createNewChat()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-2xs transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
+                <span>New Chat</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- App Body: Sidebar + Main Workspace -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- ChatGPT-Style Multi-Panel Sidebar -->
+        <aside class="w-80 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 z-10 shadow-xs">
+            <!-- Sidebar Navigation Tabs -->
+            <div class="flex border-b border-slate-200 bg-slate-50/70 p-1.5 gap-1 text-xs font-semibold">
+                <button id="tab-btn-chats" onclick="switchSidebarTab('chats')" class="flex-1 py-1.5 px-2 rounded-lg bg-white shadow-2xs text-blue-700 flex items-center justify-center gap-1.5 border border-slate-200/80 transition">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                    <span>Chats</span>
+                    <span id="chats-count-badge" class="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.2 rounded-full">0</span>
+                </button>
+                <button id="tab-btn-docs" onclick="switchSidebarTab('docs')" class="flex-1 py-1.5 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1.5 transition">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <span>Docs</span>
+                    <span id="docs-count-badge" class="bg-slate-200 text-slate-700 text-[10px] px-1.5 py-0.2 rounded-full">0</span>
+                </button>
+                <button id="tab-btn-settings" onclick="switchSidebarTab('settings')" class="flex-1 py-1.5 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1.5 transition">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    <span>Config</span>
+                </button>
+            </div>
+
+            <!-- TAB 1: CONVERSATIONS (CHATGPT STYLE) -->
+            <div id="tab-content-chats" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-2">
+                <button onclick="createNewChat()" class="w-full py-2.5 px-3 rounded-xl border border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/50 text-slate-700 text-xs font-semibold flex items-center justify-center gap-2 transition group">
+                    <svg class="w-4 h-4 text-blue-600 group-hover:scale-110 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
+                    <span>Start New Conversation</span>
+                </button>
+
+                <div class="pt-2">
+                    <div class="flex items-center justify-between px-1 mb-2">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Previous Chats</span>
+                        <span class="text-[10px] text-slate-400">Stored on disk</span>
+                    </div>
+                    <div id="chats-list" class="space-y-1">
+                        <!-- Populated dynamically via JS -->
+                        <div class="text-center py-8 text-slate-400 text-xs">No saved chats yet.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: PERSISTENT DOCUMENTS & MEMORY STORE -->
+            <div id="tab-content-docs" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-4 hidden">
+                <!-- Dropzone / Upload Box -->
+                <div>
+                    <label for="file-upload" class="border-2 border-dashed border-slate-300 rounded-xl p-3.5 text-center hover:bg-slate-50 hover:border-blue-400 transition cursor-pointer bg-white block select-none" id="upload-box">
+                        <div id="upload-icon-wrap" class="pointer-events-none">
+                            <svg class="w-6 h-6 text-blue-500 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                        </div>
+                        <span id="upload-box-title" class="text-xs text-slate-700 font-semibold block pointer-events-none">Upload Document</span>
+                        <span id="upload-box-subtitle" class="text-[10px] text-slate-400 block pointer-events-none">PDF, TXT, DOCX, MD &bull; Click or Drag</span>
+                    </label>
+                    <input type="file" id="file-upload" class="hidden" accept=".txt,.pdf,.docx,.md" onchange="uploadFile(this)">
+                    <div id="upload-status" class="text-xs text-green-600 mt-2 font-medium" style="display:none;"></div>
+                </div>
+
+                <!-- Persistent Documents List -->
+                <div class="flex-1 flex flex-col">
+                    <div class="flex items-center justify-between px-1 mb-2">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Memory Chunks</span>
+                        <button onclick="refreshDocumentsList()" title="Refresh documents" class="text-slate-400 hover:text-slate-600">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        </button>
+                    </div>
+
+                    <div id="documents-list" class="space-y-1.5 flex-1 overflow-y-auto">
+                        <!-- Populated dynamically via JS -->
+                        <div class="text-center py-6 text-slate-400 text-xs">No documents loaded.</div>
+                    </div>
+
+                    <div class="mt-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        <span><strong>Persistent Storage Active:</strong> Chunks stay in Hopfield memory across all chats and server restarts.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: RETRIEVAL & LLM ENGINE CONFIG -->
+            <div id="tab-content-settings" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-4 hidden text-xs">
+                <!-- Retrieval Paradigm -->
+                <div class="space-y-2">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Retrieval Paradigm</span>
+                    <div class="space-y-1.5">
+                        <label class="flex items-start p-2 rounded-lg border border-blue-200 bg-blue-50/50 cursor-pointer hover:bg-blue-50 transition">
+                            <input type="radio" name="retriever-mode" value="hopfield" checked class="mt-0.5 text-blue-600 focus:ring-blue-500">
+                            <div class="ml-2">
+                                <span class="block text-xs font-bold text-blue-900 leading-tight">Modern Hopfield Memory</span>
+                                <span class="block text-[10px] text-blue-700 leading-tight mt-0.5">Continuous attractor dynamics & trajectory discovery.</span>
+                            </div>
+                        </label>
+                        <label class="flex items-start p-2 rounded-lg border border-purple-200 bg-purple-50/30 cursor-pointer hover:bg-purple-50 transition">
+                            <input type="radio" name="retriever-mode" value="hybrid" class="mt-0.5 text-purple-600 focus:ring-purple-500">
+                            <div class="ml-2">
+                                <span class="block text-xs font-bold text-purple-900 leading-tight">Hybrid (BM25 + Neural RRF)</span>
+                                <span class="block text-[10px] text-purple-700 leading-tight mt-0.5">Combines keyword BM25 with attractor embeddings.</span>
+                            </div>
+                        </label>
+                        <label class="flex items-start p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50 transition">
+                            <input type="radio" name="retriever-mode" value="dense" class="mt-0.5 text-slate-600 focus:ring-slate-400">
+                            <div class="ml-2">
+                                <span class="block text-xs font-bold text-slate-800 leading-tight">Dense Cosine Baseline</span>
+                                <span class="block text-[10px] text-slate-500 leading-tight mt-0.5">Standard vector similarity without attractor relaxation.</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Parameters -->
+                <div class="space-y-2 pt-2 border-t border-slate-200">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Energy Function</label>
+                        <select id="energy-type" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white focus:ring-blue-500">
+                            <option value="softmax">Softmax (Continuous Exponential)</option>
+                            <option value="sparsemax">Sparsemax (Exact Sparse Support)</option>
+                            <option value="polynomial">Polynomial (High-Degree Attractor)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1 flex justify-between">
+                            <span>Temperature Beta (&beta;)</span> <span id="beta-val" class="text-blue-600 font-mono font-bold">8.0</span>
+                        </label>
+                        <input type="range" id="hopfield-beta" min="0.5" max="20" step="0.5" value="8.0" class="w-full" oninput="document.getElementById('beta-val').innerText=this.value">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1 flex justify-between">
+                            <span>Top-K Chunks</span> <span id="topk-val" class="text-blue-600 font-mono font-bold">5</span>
+                        </label>
+                        <input type="range" id="top-k" min="1" max="10" step="1" value="5" class="w-full" oninput="document.getElementById('topk-val').innerText=this.value">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Answer Depth & Style</label>
+                        <select id="answer-style" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white focus:ring-blue-500 font-medium text-slate-700">
+                            <option value="detailed" selected>Deep & Comprehensive (Multi-Paragraph Analysis)</option>
+                            <option value="conversational">Conversational (Natural Multi-Turn)</option>
+                            <option value="executive">Executive Summary (Bulleted Briefing)</option>
+                            <option value="concise">Concise Direct Fact (1-2 Sentences)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- LLM Config -->
+                <div class="space-y-2 pt-2 border-t border-slate-200">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">LLM Synthesizer</span>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Provider</label>
+                        <select id="llm-provider" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white focus:ring-blue-500 font-medium" onchange="updateLLMUI()">
+                            <option value="ollama" selected>Ollama (Local / Docker)</option>
+                            <option value="openai">OpenAI / Groq / OpenRouter API</option>
+                            <option value="mock">Mock LLM (Testing)</option>
+                            <option value="deterministic">Deterministic Engine (No LLM)</option>
+                        </select>
+                    </div>
+                    <div id="llm-model-group">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Model Name</label>
+                        <input type="text" id="llm-model" value="llama3.2:1b" placeholder="e.g. llama3.2:1b, gpt-4o-mini, llama-3.3-70b-versatile" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white font-mono">
+                    </div>
+                    <div id="llm-base-url-group">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Base URL</label>
+                        <input type="text" id="llm-base-url" value="http://localhost:11434/v1" placeholder="e.g. http://localhost:11434/v1 or https://api.openai.com/v1" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white font-mono">
+                    </div>
+                    <div id="llm-api-key-group" style="display: none;">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">API Key (Optional / Cloud)</label>
+                        <input type="password" id="llm-api-key" placeholder="sk-... (for OpenAI / Groq / OpenRouter)" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white font-mono">
+                    </div>
+                    <div id="llm-max-tokens-group">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Max Tokens</label>
+                        <input type="number" id="llm-max-tokens" value="2048" min="200" max="4096" step="128" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white font-mono">
+                    </div>
+                    <label class="flex items-center space-x-2 cursor-pointer pt-1">
+                        <input type="checkbox" id="use-projection" class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5" checked>
+                        <span class="text-[11px] font-medium text-slate-700">Use SQuAD Projection Layer</span>
+                    </label>
+                    <div id="llm-status-msg" class="text-[10px] text-slate-500 leading-tight"></div>
+                </div>
+            </div>
+
+            <!-- Sidebar Footer -->
+            <div class="p-3 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between text-[11px] text-slate-500">
+                <span id="footer-memory-stat">Memory: 0 chunks</span>
+                <span class="font-mono text-blue-600 font-bold">HAM v2.4</span>
+            </div>
+        </aside>
+
+        <!-- Main Workspace (Chat Area) -->
+        <main class="flex-1 flex flex-col bg-white relative overflow-hidden">
+            <!-- Scrollable Message Feed -->
+            <div id="results-area" class="flex-1 overflow-y-auto p-6 md:p-8 pb-36 chat-scroll">
+                
+                <!-- Empty State (ChatGPT Hero) -->
+                <div id="empty-state" class="max-w-3xl mx-auto flex flex-col items-center justify-center min-h-[60vh] text-center">
+                    <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-md mb-4">
+                        HAM
+                    </div>
+                    <h2 class="text-xl font-bold text-slate-800">What would you like to explore?</h2>
+                    <p class="text-xs text-slate-500 max-w-lg mt-1 mb-6">
+                        Ask questions across all your uploaded documents. Modern Hopfield Memory uses continuous attractor dynamics to pull together related passages and generate truthful, grounded answers.
+                    </p>
+
+                    <!-- Suggested Prompts / Chips -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5 w-full max-w-xl text-left">
+                        <button onclick="setQueryAndSearch('Where is YARN used?')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition shadow-2xs group">
+                            <span class="font-semibold block text-slate-800 group-hover:text-blue-700">Where is YARN used?</span>
+                            <span class="text-[11px] text-slate-400 block mt-0.5">Explore cluster resource management workloads</span>
+                        </button>
+                        <button onclick="setQueryAndSearch('What workloads does YARN support?')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition shadow-2xs group">
+                            <span class="font-semibold block text-slate-800 group-hover:text-blue-700">What workloads does YARN support?</span>
+                            <span class="text-[11px] text-slate-400 block mt-0.5">Compare MapReduce, Spark SQL, and streaming</span>
+                        </button>
+                        <button onclick="setQueryAndSearch('How does Modern Hopfield continuous energy minimization work?')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition shadow-2xs group">
+                            <span class="font-semibold block text-slate-800 group-hover:text-blue-700">How does continuous energy minimization work?</span>
+                            <span class="text-[11px] text-slate-400 block mt-0.5">Understand multi-hop attractor convergence</span>
+                        </button>
+                        <button onclick="setQueryAndSearch('Compare Hopfield retrieval with dense vector cosine similarity')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition shadow-2xs group">
+                            <span class="font-semibold block text-slate-800 group-hover:text-blue-700">Hopfield vs Dense Cosine Baseline</span>
+                            <span class="text-[11px] text-slate-400 block mt-0.5">Contrast attractor basins with static dot products</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Chat History Container -->
+                <div id="chat-history" class="max-w-3xl mx-auto space-y-6 hidden">
+                    <!-- Messages dynamically rendered here -->
+                </div>
+            </div>
+
+            <!-- Floating Prompt Input Bar (ChatGPT Style) -->
+            <div class="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-white via-white/95 to-transparent z-10 pointer-events-none">
+                <div class="max-w-3xl mx-auto pointer-events-auto">
+                    <!-- Quick Depth Selector Pills -->
+                    <div class="flex items-center gap-1.5 mb-2 px-1 pointer-events-auto overflow-x-auto pb-1">
+                        <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mr-1">Depth:</span>
+                        <button type="button" onclick="setQuickStyle('detailed')" id="pill-detailed" class="text-[11px] px-2.5 py-0.5 rounded-full font-semibold transition bg-blue-600 text-white shadow-2xs">⚡ Deep & Comprehensive</button>
+                        <button type="button" onclick="setQuickStyle('conversational')" id="pill-conversational" class="text-[11px] px-2.5 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">💬 Conversational</button>
+                        <button type="button" onclick="setQuickStyle('executive')" id="pill-executive" class="text-[11px] px-2.5 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">📋 Executive</button>
+                        <button type="button" onclick="setQuickStyle('concise')" id="pill-concise" class="text-[11px] px-2.5 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">🎯 Concise</button>
+                    </div>
+
+                    <div class="relative shadow-lg rounded-2xl border border-slate-200 bg-white flex items-end p-2 transition focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
+                        <!-- Attachment Upload Shortcut Button -->
+                        <button onclick="triggerFileInput()" title="Upload and index document into persistent memory" class="p-2 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-slate-100 transition flex-shrink-0">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                        </button>
+
+                        <!-- Input Field -->
+                        <textarea id="query-input" rows="1" placeholder="Message Hopfield Memory (e.g. multi-hop questions across uploaded documents)..." class="w-full px-3 py-2 outline-none text-slate-800 text-sm bg-transparent resize-none max-h-36" onkeydown="handleInputKey(event)" oninput="autoGrowTextarea(this)"></textarea>
+
+                        <!-- Send Button -->
+                        <button id="send-button" onclick="sendQuery()" class="p-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl text-white transition shadow-sm flex items-center justify-center h-10 w-10 flex-shrink-0">
+                            <svg id="send-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                            <div class="spinner" id="search-spinner"></div>
+                        </button>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 px-3 mt-1.5">
+                        <span>Press <kbd class="px-1 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-mono">Enter</kbd> to send, <kbd class="px-1 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-mono">Shift+Enter</kbd> for new line</span>
+                        <span id="quick-doc-hint">0 documents in continuous memory</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // State Management
+        let chatSessions = [];
+        let activeChatId = null;
+        let isSearching = false;
+
+        // On DOM Load
+        window.addEventListener('DOMContentLoaded', async () => {
+            initStorage();
+            await checkStatus();
+            await loadChats();
+            await refreshDocumentsList();
+            setupDragAndDrop();
+        });
+
+        function initStorage() {
+            try {
+                const stored = localStorage.getItem('ham_chats_v2');
+                if (stored) {
+                    chatSessions = JSON.parse(stored);
+                }
+            } catch (e) {
+                chatSessions = [];
+            }
+        }
+
+        function saveLocalChats() {
+            try {
+                localStorage.setItem('ham_chats_v2', JSON.stringify(chatSessions));
+            } catch (e) {}
+        }
+
+        // =====================================================================
+        // TAB NAVIGATION
+        // =====================================================================
+        function switchSidebarTab(tab) {
+            ['chats', 'docs', 'settings'].forEach(t => {
+                const btn = document.getElementById(`tab-btn-${t}`);
+                const content = document.getElementById(`tab-content-${t}`);
+                if (t === tab) {
+                    btn.className = "flex-1 py-1.5 px-2 rounded-lg bg-white shadow-2xs text-blue-700 flex items-center justify-center gap-1.5 border border-slate-200/80 transition";
+                    content.classList.remove('hidden');
+                } else {
+                    btn.className = "flex-1 py-1.5 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1.5 transition";
+                    content.classList.add('hidden');
+                }
+            });
+        }
+
+        // =====================================================================
+        // CHAT SESSION HANDLING (CHATGPT-STYLE)
+        // =====================================================================
+        async function loadChats() {
+            try {
+                const res = await fetch('/api/chats');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.chats && data.chats.length > 0) {
+                        // Merge server sessions
+                        chatSessions = data.chats;
+                        saveLocalChats();
+                    }
+                }
+            } catch (e) {}
+
+            renderChatsList();
+
+            // Select active chat or create first one
+            if (!activeChatId) {
+                if (chatSessions.length > 0) {
+                    selectChat(chatSessions[0].id);
+                } else {
+                    createNewChat();
+                }
+            } else {
+                selectChat(activeChatId);
+            }
+        }
+
+        function renderChatsList() {
+            const listEl = document.getElementById('chats-list');
+            const badgeEl = document.getElementById('chats-count-badge');
+            if (badgeEl) badgeEl.innerText = chatSessions.length;
+
+            if (chatSessions.length === 0) {
+                listEl.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs">No saved chats yet.</div>`;
+                return;
+            }
+
+            listEl.innerHTML = chatSessions.map(c => {
+                const isActive = c.id === activeChatId;
+                const activeCls = isActive 
+                    ? "bg-blue-50/80 border-blue-200 text-blue-900 font-semibold shadow-2xs" 
+                    : "hover:bg-slate-100/70 border-transparent text-slate-700";
+
+                return `
+                    <div class="group flex items-center justify-between p-2 rounded-xl border ${activeCls} transition cursor-pointer select-none" onclick="selectChat('${c.id}')">
+                        <div class="flex items-center gap-2 flex-1 min-w-0 pr-1">
+                            <svg class="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                            <span class="text-xs truncate">${escapeHtml(c.title || 'New Chat')}</span>
+                        </div>
+                        <button onclick="deleteChat(event, '${c.id}')" title="Delete chat" class="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-600 rounded transition text-slate-400">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function createNewChat() {
+            const newId = 'chat_' + Date.now();
+            const newSession = {
+                id: newId,
+                title: "New Chat",
+                created_at: Date.now() / 1000,
+                updated_at: Date.now() / 1000,
+                messages: []
+            };
+
+            chatSessions.unshift(newSession);
+            saveLocalChats();
+            renderChatsList();
+            selectChat(newId);
+
+            // Sync with backend
+            try {
+                fetch('/api/chats', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ chat_id: newId, title: "New Chat" })
+                });
+            } catch (e) {}
+
+            // Focus query input
+            const input = document.getElementById('query-input');
+            if (input) input.focus();
+        }
+
+        async function selectChat(chatId) {
+            activeChatId = chatId;
+            renderChatsList();
+
+            let session = chatSessions.find(c => c.id === chatId);
+            
+            // Try fetching full history from server if messages not loaded
+            if (!session || !session.messages || session.messages.length === 0) {
+                try {
+                    const res = await fetch(`/api/chats/${chatId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.chat) {
+                            session = data.chat;
+                            const idx = chatSessions.findIndex(c => c.id === chatId);
+                            if (idx >= 0) chatSessions[idx] = session;
+                            else chatSessions.unshift(session);
+                            saveLocalChats();
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            const titleEl = document.getElementById('active-chat-title');
+            if (titleEl) titleEl.innerText = session ? (session.title || 'New Chat') : 'New Chat';
+
+            renderActiveChatMessages(session ? (session.messages || []) : []);
+        }
+
+        function renderActiveChatMessages(messages) {
+            const emptyEl = document.getElementById('empty-state');
+            const historyEl = document.getElementById('chat-history');
+
+            if (!messages || messages.length === 0) {
+                emptyEl.classList.remove('hidden');
+                historyEl.classList.add('hidden');
+                historyEl.innerHTML = '';
+                return;
+            }
+
+            emptyEl.classList.add('hidden');
+            historyEl.classList.remove('hidden');
+            historyEl.innerHTML = '';
+
+            messages.forEach(msg => {
+                if (msg.role === 'user') {
+                    appendUserMessageToUI(msg.content);
+                } else if (msg.role === 'assistant') {
+                    appendAssistantMessageToUI(msg);
+                }
+            });
+
+            const resultsArea = document.getElementById('results-area');
+            resultsArea.scrollTop = resultsArea.scrollHeight;
+        }
+
+        async function deleteChat(event, chatId) {
+            event.stopPropagation();
+            if (!confirm("Delete this conversation?")) return;
+
+            chatSessions = chatSessions.filter(c => c.id !== chatId);
+            saveLocalChats();
+
+            try {
+                fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+            } catch (e) {}
+
+            if (activeChatId === chatId) {
+                if (chatSessions.length > 0) {
+                    selectChat(chatSessions[0].id);
+                } else {
+                    createNewChat();
+                }
+            } else {
+                renderChatsList();
+            }
+        }
+
+        // =====================================================================
+        // PERSISTENT DOCUMENTS MANAGEMENT (KNOWLEDGE BASE)
+        // =====================================================================
+        async function refreshDocumentsList() {
+            try {
+                const res = await fetch('/api/documents');
+                if (res.ok) {
+                    const data = await res.json();
+                    renderDocumentsList(data.documents || [], data.total_chunks || 0);
+                }
+            } catch (e) {}
+        }
+
+        function renderDocumentsList(docs, totalChunks) {
+            const listEl = document.getElementById('documents-list');
+            const badgeEl = document.getElementById('docs-count-badge');
+            const footerStat = document.getElementById('footer-memory-stat');
+            const quickHint = document.getElementById('quick-doc-hint');
+
+            if (badgeEl) badgeEl.innerText = docs.length;
+            if (footerStat) footerStat.innerText = `Memory: ${totalChunks} chunks`;
+            if (quickHint) quickHint.innerText = `${docs.length} documents in continuous memory (${totalChunks} chunks)`;
+
+            if (!docs || docs.length === 0) {
+                listEl.innerHTML = `<div class="text-center py-6 text-slate-400 text-xs">No documents in memory store.</div>`;
+                return;
+            }
+
+            listEl.innerHTML = docs.map(d => `
+                <div class="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200/70 hover:bg-slate-100/70 transition group text-xs">
+                    <div class="flex items-center gap-2 min-w-0 pr-1">
+                        <svg class="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                        <div class="min-w-0">
+                            <span class="font-medium text-slate-800 block truncate" title="${escapeHtml(d.source)}">${escapeHtml(d.source)}</span>
+                            <span class="text-[10px] text-slate-400 font-mono">${d.chunks} chunks &bull; ${(d.characters / 1024).toFixed(1)} KB</span>
+                        </div>
+                    </div>
+                    <button onclick="deleteDocument(event, '${escapeHtml(d.source)}')" title="Remove document from memory" class="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 rounded transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        async function deleteDocument(event, source) {
+            event.stopPropagation();
+            if (!confirm(`Remove '${source}' from Hopfield memory?`)) return;
+
+            try {
+                const res = await fetch(`/api/documents/${encodeURIComponent(source)}`, { method: 'DELETE' });
+                if (res.ok) {
+                    await refreshDocumentsList();
+                    await checkStatus();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || "Failed to remove document");
+                }
+            } catch (e) {
+                alert("Network error removing document: " + e.message);
+            }
+        }
+
+        // =====================================================================
+        // FILE UPLOAD HANDLING
+        // =====================================================================
+        function triggerFileInput() {
+            const input = document.getElementById('file-upload');
+            if (input) input.click();
+        }
+
+        function setupDragAndDrop() {
+            const uploadBox = document.getElementById('upload-box');
+            if (!uploadBox) return;
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                uploadBox.addEventListener(eventName, e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                uploadBox.addEventListener(eventName, () => {
+                    uploadBox.classList.add('bg-blue-50', 'border-blue-500');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                uploadBox.addEventListener(eventName, () => {
+                    uploadBox.classList.remove('bg-blue-50', 'border-blue-500');
+                }, false);
+            });
+
+            uploadBox.addEventListener('drop', e => {
+                const dt = e.dataTransfer;
+                if (dt && dt.files && dt.files.length > 0) {
+                    handleFileUpload(dt.files[0]);
+                }
+            });
+        }
+
+        async function handleFileUpload(file) {
+            if (!file) return;
+            const statusBox = document.getElementById('upload-status');
+            const titleEl = document.getElementById('upload-box-title');
+            const origTitle = "Upload Document";
+
+            if (titleEl) titleEl.innerText = `Ingesting ${file.name}...`;
+            if (statusBox) {
+                statusBox.style.display = 'block';
+                statusBox.className = "text-xs text-blue-600 mt-2 font-medium";
+                statusBox.innerText = `Parsing text & indexing into Hopfield memory...`;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/upload', { method: 'POST', body: formData });
+                let data;
+                const ct = response.headers.get("content-type");
+                if (ct && ct.includes("application/json")) {
+                    data = await response.json();
+                } else {
+                    data = { detail: await response.text() };
+                }
+
+                if (response.ok) {
+                    if (titleEl) titleEl.innerText = `✓ ${file.name} Indexed`;
+                    if (statusBox) {
+                        statusBox.className = "text-xs text-emerald-700 mt-2 font-medium bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg";
+                        statusBox.innerText = data.message;
+                    }
+                    await refreshDocumentsList();
+                    await checkStatus();
+                    setTimeout(() => {
+                        if (titleEl) titleEl.innerText = origTitle;
+                        if (statusBox) statusBox.style.display = 'none';
+                    }, 4000);
+                } else {
+                    const msg = data.detail || "Upload error";
+                    if (titleEl) titleEl.innerText = "Upload Failed";
+                    if (statusBox) {
+                        statusBox.className = "text-xs text-rose-700 mt-2 font-medium bg-rose-50 border border-rose-200 p-2.5 rounded-lg";
+                        statusBox.innerText = "Failed: " + msg;
+                    }
+                }
+            } catch (e) {
+                if (statusBox) {
+                    statusBox.className = "text-xs text-rose-700 mt-2 font-medium bg-rose-50 border border-rose-200 p-2.5 rounded-lg";
+                    statusBox.innerText = "Connection error: " + e.message;
+                }
+            } finally {
+                const input = document.getElementById('file-upload');
+                if (input) input.value = '';
+            }
+        }
+
+        function uploadFile(el) {
+            if (el && el.files && el.files.length > 0) {
+                handleFileUpload(el.files[0]);
+            }
+        }
+
+        // =====================================================================
+        // QUERY & GENERATION (SEARCH)
+        // =====================================================================
+        function handleInputKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendQuery();
+            }
+        }
+
+        function autoGrowTextarea(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+        }
+
+        function setQueryAndSearch(q) {
+            const input = document.getElementById('query-input');
+            input.value = q;
+            sendQuery();
+        }
+
+        async function sendQuery() {
+            if (isSearching) return;
+            const input = document.getElementById('query-input');
+            const query = input.value.trim();
+            if (!query) return;
+
+            // Ensure active chat session
+            if (!activeChatId) {
+                await createNewChat();
+            }
+
+            // UI Loading state
+            isSearching = true;
+            input.value = '';
+            input.style.height = 'auto';
+            
+            document.getElementById('empty-state').classList.add('hidden');
+            const history = document.getElementById('chat-history');
+            history.classList.remove('hidden');
+
+            const btnIcon = document.getElementById('send-icon');
+            const spinner = document.getElementById('search-spinner');
+            btnIcon.style.opacity = '0';
+            spinner.style.display = 'block';
+
+            // Append User Message to UI
+            appendUserMessageToUI(query);
+
+            const resultsArea = document.getElementById('results-area');
+            resultsArea.scrollTop = resultsArea.scrollHeight;
+
+            const selectedRetriever = (document.querySelector('input[name="retriever-mode"]:checked') || {}).value || 'hopfield';
+            const provVal = document.getElementById('llm-provider').value;
+            const modelVal = document.getElementById('llm-model').value.trim();
+            const baseUrlVal = document.getElementById('llm-base-url') ? document.getElementById('llm-base-url').value.trim() : '';
+            const apiKeyVal = document.getElementById('llm-api-key') ? document.getElementById('llm-api-key').value.trim() : '';
+            const maxTokensVal = document.getElementById('llm-max-tokens') ? parseInt(document.getElementById('llm-max-tokens').value) : 2048;
+            const styleVal = document.getElementById('answer-style').value;
+
+            const reqBody = {
+                query: query,
+                chat_id: activeChatId,
+                retriever_mode: selectedRetriever,
+                engine_mode: (selectedRetriever === "dense" ? "naive_rag" : "associative"),
+                answer_style: styleVal,
+                detail_level: styleVal,
+                energy_type: document.getElementById('energy-type').value,
+                hopfield_beta: parseFloat(document.getElementById('hopfield-beta').value),
+                top_k: parseInt(document.getElementById('top-k').value),
+                use_projection: document.getElementById('use-projection').checked,
+                llm_provider: provVal,
+                llm_model: modelVal || undefined,
+                llm_base_url: baseUrlVal || undefined,
+                llm_api_key: apiKeyVal || undefined,
+                max_tokens: maxTokensVal || 2048
+            };
+
+            try {
+                const response = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reqBody)
+                });
+
+                let data;
+                const ct = response.headers.get("content-type");
+                if (ct && ct.includes("application/json")) {
+                    data = await response.json();
+                } else {
+                    data = { detail: await response.text() };
+                }
+
+                if (!response.ok) {
+                    throw new Error(data.detail || `Search returned HTTP ${response.status}`);
+                }
+
+                // Append Assistant Message to UI
+                appendAssistantMessageToUI({
+                    role: 'assistant',
+                    content: data.answer,
+                    confidence: data.confidence,
+                    evidence: data.evidence,
+                    associative_diagnostics: data.associative_diagnostics,
+                    grounded_answer: data.grounded_answer,
+                    latencies: data.latencies,
+                    deduplication: data.deduplication
+                });
+
+                // Update session title in local state if newly auto-titled
+                if (data.chat_title) {
+                    const sess = chatSessions.find(c => c.id === activeChatId);
+                    if (sess) {
+                        sess.title = data.chat_title;
+                        const titleEl = document.getElementById('active-chat-title');
+                        if (titleEl) titleEl.innerText = data.chat_title;
+                        saveLocalChats();
+                        renderChatsList();
+                    }
+                }
+
+            } catch (err) {
+                appendErrorMessageToUI("Error generating answer: " + err.message);
+            } finally {
+                isSearching = false;
+                btnIcon.style.opacity = '1';
+                spinner.style.display = 'none';
+                resultsArea.scrollTop = resultsArea.scrollHeight;
+            }
+        }
+
+        // =====================================================================
+        // UI MESSAGE RENDERING (CHATGPT-STYLE)
+        // =====================================================================
+        function appendUserMessageToUI(text) {
+            const history = document.getElementById('chat-history');
+            const div = document.createElement('div');
+            div.className = "flex justify-end";
+            div.innerHTML = `
+                <div class="max-w-[85%] bg-blue-600 text-white rounded-2xl rounded-tr-xs px-4 py-3 shadow-xs text-sm leading-relaxed">
+                    ${escapeHtml(text)}
+                </div>
+            `;
+            history.appendChild(div);
+        }
+
+        function appendErrorMessageToUI(err) {
+            const history = document.getElementById('chat-history');
+            const div = document.createElement('div');
+            div.className = "flex justify-start";
+            div.innerHTML = `
+                <div class="max-w-[90%] bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl rounded-tl-xs p-4 text-xs leading-relaxed">
+                    <strong>Error:</strong> ${escapeHtml(err)}
+                </div>
+            `;
+            history.appendChild(div);
+        }
+
+        function appendAssistantMessageToUI(msg) {
+            const history = document.getElementById('chat-history');
+            const div = document.createElement('div');
+            div.className = "flex justify-start space-x-3";
+
+            const ga = msg.grounded_answer || {};
+            const provUsed = ga.provider_used || (msg.provider_used || 'ollama');
+            const modelUsed = ga.model_name || (msg.model_name || 'llama3.2:1b');
+            const conf = msg.confidence !== undefined ? (msg.confidence * 100).toFixed(1) : '95.0';
+            const latency = msg.latencies ? `${msg.latencies.total_ms}ms` : '3.1s';
+
+            // Citations highlighting
+            let formattedContent = escapeHtml(msg.content || '');
+            formattedContent = formattedContent.replace(/\[E(\d+)\]/g, '<span class="inline-flex items-center px-1.5 py-0.2 rounded-md bg-blue-100 text-blue-800 text-[11px] font-bold mx-0.5 border border-blue-200">[E$1]</span>');
+            formattedContent = formattedContent.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+
+            // Diagnostics accordion HTML
+            let diagHTML = '';
+            if (msg.associative_diagnostics && msg.associative_diagnostics.mode.includes("Hopfield")) {
+                const d = msg.associative_diagnostics;
+                let trajectoryHops = '';
+                if (d.trajectory && d.trajectory.length > 0) {
+                    trajectoryHops = d.trajectory.map(h => `
+                        <div class="flex items-start gap-2 text-[11px] bg-white p-2 rounded-lg border border-slate-200/80">
+                            <span class="font-bold text-blue-700 font-mono">Hop ${h.hop}</span>
+                            <div class="flex-1">
+                                <span class="font-medium text-slate-800">${escapeHtml(h.description)}</span>
+                                <div class="text-[10px] text-slate-400 mt-0.5 font-mono">Energy: ${h.energy} &bull; &Delta;: ${h.delta}</div>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                diagHTML = `
+                    <details class="group mt-3 border border-slate-200 rounded-xl overflow-hidden text-xs bg-slate-50">
+                        <summary class="px-4 py-2.5 font-semibold text-slate-700 cursor-pointer flex items-center justify-between hover:bg-slate-100 transition select-none">
+                            <span class="flex items-center gap-1.5 text-blue-900">
+                                <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                Hopfield Attractor Landscape Diagnostics
+                            </span>
+                            <span class="text-[10px] text-slate-400 font-mono group-open:rotate-180 transition">&or;</span>
+                        </summary>
+                        <div class="p-3.5 space-y-3 bg-gradient-to-r from-blue-50/40 to-indigo-50/40 border-t border-slate-200">
+                            <div class="grid grid-cols-3 gap-2 text-center">
+                                <div class="bg-white p-2 rounded-lg border border-blue-100 shadow-2xs">
+                                    <span class="text-[10px] text-slate-500 uppercase font-semibold block">Attractor Energy</span>
+                                    <span class="font-mono text-xs font-bold text-blue-900">${d.attractor_energy}</span>
+                                </div>
+                                <div class="bg-white p-2 rounded-lg border border-blue-100 shadow-2xs">
+                                    <span class="text-[10px] text-slate-500 uppercase font-semibold block">Basin Depth &Delta;E</span>
+                                    <span class="font-mono text-xs font-bold text-blue-900">${d.energy_depth}</span>
+                                </div>
+                                <div class="bg-white p-2 rounded-lg border border-blue-100 shadow-2xs">
+                                    <span class="text-[10px] text-slate-500 uppercase font-semibold block">Attractor Hops</span>
+                                    <span class="font-mono text-xs font-bold text-blue-900">${d.convergence_steps}</span>
+                                </div>
+                            </div>
+                            ${trajectoryHops ? `
+                                <div class="space-y-1.5 pt-1">
+                                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Associative Trajectory</span>
+                                    ${trajectoryHops}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </details>
+                `;
+            }
+
+            // Evidence passages accordion HTML
+            let evidenceHTML = '';
+            if (msg.evidence && msg.evidence.length > 0) {
+                evidenceHTML = `
+                    <details class="group mt-2 border border-slate-200 rounded-xl overflow-hidden text-xs bg-slate-50">
+                        <summary class="px-4 py-2 font-semibold text-slate-700 cursor-pointer flex items-center justify-between hover:bg-slate-100 transition select-none">
+                            <span class="flex items-center gap-1.5 text-slate-700">
+                                <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                Retrieved Evidence Passages (${msg.evidence.length})
+                            </span>
+                            <span class="text-[10px] text-slate-400 font-mono group-open:rotate-180 transition">&or;</span>
+                        </summary>
+                        <div class="p-3 space-y-2 bg-white border-t border-slate-200">
+                            ${msg.evidence.map((e, idx) => `
+                                <div class="p-2.5 rounded-lg border border-slate-100 bg-slate-50/70 text-xs space-y-1">
+                                    <div class="flex items-center justify-between text-[11px]">
+                                        <span class="font-bold text-blue-800">[E${idx+1}] &bull; ${escapeHtml(e.source || 'Doc')}</span>
+                                        <span class="font-mono text-slate-500">Score: ${Number(e.score).toFixed(4)}</span>
+                                    </div>
+                                    <p class="text-slate-700 leading-relaxed text-[11px]">${escapeHtml(e.text || '')}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </details>
+                `;
+            }
+
+            div.innerHTML = `
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 shadow-xs mt-1">
+                    HAM
+                </div>
+                <div class="flex-1 max-w-[88%]">
+                    <!-- Grounded Answer Card -->
+                    <div class="bg-white border border-slate-200 rounded-2xl rounded-tl-xs p-5 shadow-xs text-sm leading-relaxed text-slate-800">
+                        ${formattedContent}
+                        ${diagHTML}
+                        ${evidenceHTML}
+                        
+                        <!-- Metadata Footer -->
+                        <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-2">
+                            <div class="flex items-center gap-3">
+                                <span>Model: <strong class="text-slate-600 font-mono">${escapeHtml(modelUsed)}</strong></span>
+                                <span>Engine: <strong class="text-slate-600 font-mono">${escapeHtml(provUsed)}</strong></span>
+                                <span>Confidence: <strong class="text-emerald-700">${conf}%</strong></span>
+                            </div>
+                            <span class="font-mono text-slate-400">${latency}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            history.appendChild(div);
+        }
+
+        // =====================================================================
+        // STATUS & HELPERS
+        // =====================================================================
+        async function checkStatus() {
+            try {
+                const res = await fetch('/api/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    const badge = document.getElementById('pipeline-badge');
+                    if (data.ready) {
+                        badge.innerText = `${data.documents} docs (${data.chunks} chunks)`;
+                        badge.className = "text-[11px] px-2 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-800";
+                    } else {
+                        badge.innerText = "No Docs";
+                        badge.className = "text-[11px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800";
+                    }
+
+                    if (data.llm) {
+                        const pill = document.getElementById('llm-status-pill');
+                        const msg = document.getElementById('llm-status-msg');
+                        const modelInput = document.getElementById('llm-model');
+
+                        if (modelInput && !modelInput.dataset.userEdited && data.llm.model) {
+                            modelInput.value = data.llm.model;
+                        }
+
+                        if (data.llm.is_healthy) {
+                            pill.innerText = "LLM Ready";
+                            pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300";
+                            if (msg) msg.innerText = `Connected: ${data.llm.effective_provider} (${data.llm.model})`;
+                        } else if (data.llm.fallback_enabled) {
+                            pill.innerText = "Fallback Active";
+                            pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-300";
+                            if (msg) msg.innerText = "Ollama offline → Auto-fallback to deterministic engine active.";
+                        } else {
+                            pill.innerText = "Offline";
+                            pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-rose-100 text-rose-800 border border-rose-300";
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+
+        function setQuickStyle(style) {
+            const select = document.getElementById('answer-style');
+            if (select) select.value = style;
+            ['detailed', 'conversational', 'executive', 'concise'].forEach(s => {
+                const pill = document.getElementById(`pill-${s}`);
+                if (pill) {
+                    if (s === style) {
+                        pill.className = "text-[11px] px-2.5 py-0.5 rounded-full font-semibold transition bg-blue-600 text-white shadow-2xs";
+                    } else {
+                        pill.className = "text-[11px] px-2.5 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600";
+                    }
+                }
+            });
+        }
+
+        function updateLLMUI() {
+            const prov = document.getElementById('llm-provider').value;
+            const modelGrp = document.getElementById('llm-model-group');
+            const urlGrp = document.getElementById('llm-base-url-group');
+            const keyGrp = document.getElementById('llm-api-key-group');
+            const tokensGrp = document.getElementById('llm-max-tokens-group');
+
+            if (prov === 'deterministic') {
+                if (modelGrp) modelGrp.style.display = 'none';
+                if (urlGrp) urlGrp.style.display = 'none';
+                if (keyGrp) keyGrp.style.display = 'none';
+                if (tokensGrp) tokensGrp.style.display = 'none';
+            } else if (prov === 'openai') {
+                if (modelGrp) modelGrp.style.display = 'block';
+                if (urlGrp) urlGrp.style.display = 'block';
+                if (keyGrp) keyGrp.style.display = 'block';
+                if (tokensGrp) tokensGrp.style.display = 'block';
+                const urlInput = document.getElementById('llm-base-url');
+                if (urlInput && urlInput.value.includes('localhost:11434')) {
+                    urlInput.value = 'https://api.openai.com/v1';
+                }
+                const modelInput = document.getElementById('llm-model');
+                if (modelInput && modelInput.value.includes('llama3.2')) {
+                    modelInput.value = 'gpt-4o-mini';
+                }
+            } else {
+                if (modelGrp) modelGrp.style.display = 'block';
+                if (urlGrp) urlGrp.style.display = 'block';
+                if (keyGrp) keyGrp.style.display = 'none';
+                if (tokensGrp) tokensGrp.style.display = 'block';
+                const urlInput = document.getElementById('llm-base-url');
+                if (urlInput && urlInput.value.includes('api.openai.com')) {
+                    urlInput.value = 'http://localhost:11434/v1';
+                }
+                const modelInput = document.getElementById('llm-model');
+                if (modelInput && modelInput.value.includes('gpt-')) {
+                    modelInput.value = 'llama3.2:1b';
+                }
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>

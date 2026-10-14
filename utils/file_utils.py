@@ -62,20 +62,88 @@ def _clean_text(text: str) -> str:
 
 
 def _extract_pdf(file_obj) -> str:
-    """Extract text from PDF using PyPDF2."""
+    """
+    Extract text from PDF using pypdf, PyPDF2, or other available readers.
+    Supports decryption of blank passwords and tolerates malformed pages.
+    """
+    pdf_module = None
     try:
         import pypdf
-        reader = pypdf.PdfReader(file_obj)
-        pages = []
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                pages.append(page_text)
-        return _clean_text('\n\n'.join(pages))
+        pdf_module = pypdf
     except ImportError:
-        raise ImportError("pypdf required for PDF support: pip install pypdf")
-    except Exception as e:
-        raise ValueError(f"Failed to extract PDF text: {e}")
+        try:
+            import PyPDF2
+            pdf_module = PyPDF2
+        except ImportError:
+            pass
+
+    last_error = None
+    if pdf_module is not None:
+        try:
+            if hasattr(file_obj, "seek"):
+                file_obj.seek(0)
+            try:
+                reader = pdf_module.PdfReader(file_obj, strict=False)
+            except TypeError:
+                reader = pdf_module.PdfReader(file_obj)
+            if getattr(reader, "is_encrypted", False):
+                try:
+                    reader.decrypt("")
+                except Exception:
+                    pass
+            pages = []
+            for i, page in enumerate(reader.pages):
+                try:
+                    page_text = page.extract_text()
+                    if page_text and page_text.strip():
+                        pages.append(page_text)
+                except Exception as pe:
+                    continue
+            if pages:
+                return _clean_text('\n\n'.join(pages))
+        except Exception as e:
+            last_error = e
+
+    # Fallback to PyMuPDF (fitz) if installed
+    try:
+        import fitz
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
+        data = file_obj.read() if hasattr(file_obj, "read") else file_obj
+        doc = fitz.open(stream=data, filetype="pdf")
+        pages = []
+        for page in doc:
+            t = page.get_text()
+            if t and t.strip():
+                pages.append(t)
+        if pages:
+            return _clean_text('\n\n'.join(pages))
+    except Exception:
+        pass
+
+    # Fallback to pdfplumber if installed
+    try:
+        import pdfplumber
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
+        with pdfplumber.open(file_obj) as pdf:
+            pages = []
+            for p in pdf.pages:
+                t = p.extract_text()
+                if t and t.strip():
+                    pages.append(t)
+            if pages:
+                return _clean_text('\n\n'.join(pages))
+    except Exception:
+        pass
+
+    if pdf_module is None:
+        raise ImportError("No PDF parser installed. Please install pypdf: pip install pypdf")
+
+    err_detail = f" (Details: {last_error})" if last_error else ""
+    raise ValueError(
+        f"No extractable text found in PDF{err_detail}. The document may be empty, password-protected, or a scanned image requiring OCR."
+    )
 
 
 def _extract_docx(file_obj) -> str:

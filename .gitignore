@@ -27,3 +27,9 @@ venv.bak/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Local data & databases
+data/
+scratch/
+*.db
+mlflow.db

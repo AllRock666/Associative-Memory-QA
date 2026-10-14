@@ -71,7 +71,7 @@ init_state()
 # ---------------------------------------------------------
 # PIPELINE INITIALIZATION
 # ---------------------------------------------------------
-def get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_k, energy_type):
+def get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_k, energy_type, use_projection):
     from core.pipeline import HopfieldQAPipeline, PipelineConfig
     
     if st.session_state.pipeline is None:
@@ -84,6 +84,8 @@ def get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_
             use_fusion=True,
         )
         config.energy_type = energy_type
+        config.use_projection = use_projection
+        config.projection_path = "models/projection_squad.pt" if use_projection else None
         st.session_state.pipeline = HopfieldQAPipeline(config)
     else:
         p = st.session_state.pipeline
@@ -91,6 +93,7 @@ def get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_
         p.config.top_k = top_k
         p.config.chunk_size = chunk_size
         p.config.energy_type = energy_type
+        p.config.use_projection = use_projection
         p.memory.retriever.beta = hopfield_beta
         p.memory.retriever.energy_type = energy_type
         
@@ -108,12 +111,13 @@ with st.sidebar:
     with st.expander("⚙️ Advanced Settings", expanded=False):
         embedding_model = st.selectbox("Embedding Model", ["all-MiniLM-L6-v2", "all-mpnet-base-v2"])
         energy_type = st.selectbox("Energy Function", ["softmax", "sparsemax", "polynomial"], help="Changes the Hopfield attention landscape.")
+        use_projection = st.toggle("Learned Projection Layer", value=False, help="Uses InfoNCE-trained MLP to project queries into the Hopfield landscape.")
         hopfield_beta = st.slider("Temperature (Beta)", 0.1, 20.0, 8.0, 0.5)
         chunk_size = st.slider("Chunk Size", 128, 1024, 512, 64)
         chunk_overlap = st.slider("Chunk Overlap", 0, 256, 64, 16)
         top_k = st.slider("Retrieve Top-K", 1, 15, 3)
 
-    pipeline = get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_k, energy_type)
+    pipeline = get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_k, energy_type, use_projection)
 
     st.subheader("2. Knowledge Base")
     

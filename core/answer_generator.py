@@ -546,6 +546,8 @@ ANSWER:"""
         # Placeholder: in production, call your LLM API here
         # response = call_llm_api(prompt, self.model_name)
         raise NotImplementedError("External LLM integration not configured.")
+from typing import List, Dict, Any, Tuple
+
 
 class ExtractiveQAAnswerGenerator(AnswerGenerator):
     """
@@ -557,79 +559,103 @@ class ExtractiveQAAnswerGenerator(AnswerGenerator):
             from transformers import AutoTokenizer, AutoModelForQuestionAnswering
             import torch
         except ImportError:
-            raise ImportError("Please install transformers and torch")
+            raise ImportError("Please install transformers and torch to use ExtractiveQAAnswerGenerator")
             
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.qa_model = AutoModelForQuestionAnswering.from_pretrained(model_name).to(self.device)
-        self.qa_model.eval()
+        self.model = AutoModelForQuestionAnswering.from_pretrained(model_name)
+        self.model.eval()
 
     def generate(self, processed_query: ProcessedQuery, retrieved_chunks: List[RetrievalResult]) -> GeneratedAnswer:
         import torch
         
         if not retrieved_chunks:
-            return super().generate(processed_query, retrieved_chunks)
-            
-        # Concatenate retrieved chunks into a single context
-        context = " ".join([c.text for c in retrieved_chunks[:3]]) # Limit to top 3 for length
-        query = processed_query.cleaned
+            return GeneratedAnswer(
+                query=processed_query.original,
+                answer="I could not find any relevant information to answer your question.",
+                confidence=0.0,
+                evidence_chunks=[],
+                highlighted_passages=[],
+                sources=[],
+                answer_type="extractive_span",
+                generation_stats={"model": self.model_name}
+            )
+
+        question = processed_query.original
         
-        inputs = self.tokenizer(query, context, return_tensors='pt', truncation=True, max_length=512)
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        # Proper chunking to prevent truncation loss
+        best_score = float('-inf')
+        best_start = 0
+        best_end = 0
+        best_input_ids = None
+        best_chunk = retrieved_chunks[0]
         
-        with torch.no_grad():
-            outputs = self.qa_model(**inputs)
+        for chunk in retrieved_chunks:
+            context = chunk.text if hasattr(chunk, 'text') else chunk['text']
             
-            start_logits = outputs.start_logits.squeeze(0)
-            end_logits = outputs.end_logits.squeeze(0)
+            inputs = self.tokenizer(
+                question,
+                context,
+                add_special_tokens=True,
+                return_tensors="pt",
+                truncation="only_second",
+                max_length=512,
+                stride=128,
+                return_overflowing_tokens=True,
+                return_offsets_mapping=True,
+                padding="max_length"
+            )
             
-            # Mask out question tokens so we only predict in context
-            sequence_ids = inputs.get('token_type_ids', None)
-            if sequence_ids is None:
-                # RoBERTa doesn't use token_type_ids, so we find the context manually
-                # 0 for question, 1 for context in RoBERTa tokenizer output usually? No, it's None.
-                # Just mask the first N tokens corresponding to query + special tokens
-                query_len = len(self.tokenizer.tokenize(query)) + 2
-                mask = torch.ones_like(start_logits, dtype=torch.bool)
-                mask[:query_len] = False
-            else:
-                mask = (sequence_ids.squeeze(0) == 1)
+            # evaluate each window
+            for i in range(len(inputs["input_ids"])):
+                input_ids = inputs["input_ids"][i].unsqueeze(0)
+                attention_mask = inputs["attention_mask"][i].unsqueeze(0)
                 
-            start_logits = start_logits.masked_fill(~mask, -float('inf'))
-            end_logits = end_logits.masked_fill(~mask, -float('inf'))
-            
-            L = start_logits.size(0)
-            max_len = 30
-            scores = start_logits.unsqueeze(1) + end_logits.unsqueeze(0)
-            valid_mask = torch.triu(torch.ones(L, L, dtype=torch.bool, device=scores.device))
-            valid_mask &= (torch.arange(L, device=scores.device).unsqueeze(1) + max_len > torch.arange(L, device=scores.device).unsqueeze(0))
-            scores = scores.masked_fill(~valid_mask, -float('inf'))
-            
-            best = torch.argmax(scores)
-            start_idx = best.item() // L
-            end_idx = best.item() % L
-            
-            # True confidence from softmax
-            start_probs = torch.nn.functional.softmax(start_logits, dim=-1)
-            end_probs = torch.nn.functional.softmax(end_logits, dim=-1)
-            conf = (start_probs[start_idx] * end_probs[end_idx]).item()
-            
-        input_ids = inputs['input_ids'][0].tolist()
-        
-        if start_idx >= end_idx or start_idx == 0:
-            answer_text = "Could not extract a specific answer span. Context suggests: " + retrieved_chunks[0].text[:200] + "..."
-            conf = 0.3
-        else:
-            answer_tokens = input_ids[start_idx:end_idx+1]
+                with torch.no_grad():
+                    outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+                    start_logits = outputs.start_logits[0]
+                    end_logits = outputs.end_logits[0]
+                    
+                # Exclude question tokens from answer space
+                sequence_ids = inputs.sequence_ids(i)
+                context_mask = [1 if s == 1 else 0 for s in sequence_ids]
+                
+                # Mask out logits outside of context
+                for idx, mask_val in enumerate(context_mask):
+                    if mask_val == 0:
+                        start_logits[idx] = -10000
+                        end_logits[idx] = -10000
+                
+                start_probs = torch.nn.functional.softmax(start_logits, dim=-1)
+                end_probs = torch.nn.functional.softmax(end_logits, dim=-1)
+                
+                start_idx = torch.argmax(start_logits)
+                end_idx = torch.argmax(end_logits)
+                
+                score = (start_probs[start_idx] * end_probs[end_idx]).item()
+                if score > best_score and start_idx <= end_idx:
+                    best_score = score
+                    best_start = start_idx
+                    best_end = end_idx
+                    best_input_ids = input_ids[0]
+                    best_chunk = chunk
+
+        if best_score > float('-inf') and best_start > 0 and best_start <= best_end:
+            answer_tokens = best_input_ids[best_start:best_end+1]
             answer_text = self.tokenizer.decode(answer_tokens, skip_special_tokens=True)
+            conf = min(best_score, 1.0)
+        else:
+            first_text = retrieved_chunks[0].text if hasattr(retrieved_chunks[0], 'text') else retrieved_chunks[0]['text']
+            answer_text = "Could not extract a specific answer span. Context suggests: " + first_text[:200] + "..."
+            conf = 0.3
             
         return GeneratedAnswer(
-            query=query,
+            query=question,
             answer=answer_text,
             confidence=conf,
             evidence_chunks=retrieved_chunks,
             highlighted_passages=self._build_highlighted_passages(retrieved_chunks, processed_query.keywords),
-            sources=list(dict.fromkeys(c.source for c in retrieved_chunks)),
+            sources=list(dict.fromkeys(c.source if hasattr(c, 'source') else c.get('metadata', {}).get('source', 'Unknown') for c in retrieved_chunks)),
             answer_type="extractive_span",
-            generation_stats={"model": "deepset/roberta-base-squad2"}
+            generation_stats={"model": self.model_name}
         )

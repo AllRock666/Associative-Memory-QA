@@ -3,18 +3,40 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple, Optional
 
+
+def sparsemax(z, dim=-1):
+    z_sorted, _ = torch.sort(z, dim=dim, descending=True)
+    z_cumsum = torch.cumsum(z_sorted, dim=dim)
+    k = torch.arange(1, z.size(dim) + 1, device=z.device, dtype=z.dtype)
+    
+    shape = [1] * z.dim()
+    shape[dim] = z.size(dim)
+    k = k.view(*shape)
+    
+    is_gt = z_sorted > (z_cumsum - 1) / k
+    k_max = torch.sum(is_gt, dim=dim, keepdim=True)
+    
+    tau = (torch.gather(z_cumsum, dim, k_max - 1) - 1) / k_max
+    return torch.relu(z - tau)
+
 class QueryProjectionLayer(nn.Module):
     """
-    Optional trainable projection layer to separate the query embeddings
-    and provide a better landscape for the continuous Hopfield update.
+    Deep trainable projection layer with bottleneck expansion to separate query embeddings
+    and provide a highly expressive landscape for the continuous Hopfield update.
     """
     def __init__(self, dim: int):
         super().__init__()
+        hidden_dim = dim * 4
         self.net = nn.Sequential(
-            nn.Linear(dim, dim),
-            nn.LayerNorm(dim),
-            nn.ReLU(),
-            nn.Linear(dim, dim)
+            nn.Linear(dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_dim, dim)
         )
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -26,11 +48,12 @@ class HopfieldRetriever(nn.Module):
     Continuous Modern Hopfield Network Retriever.
     Computes the update rule iteratively: state_{t+1} = X * softmax(beta * X^T * state_t - M)
     """
-    def __init__(self, beta: float = 1.0, n_iter: int = 1, residual: bool = True, use_projection: bool = False, embedding_dim: int = 384):
+    def __init__(self, beta: float = 1.0, n_iter: int = 1, residual: bool = True, use_projection: bool = False, embedding_dim: int = 384, energy_type: str = 'softmax'):
         super().__init__()
         self.beta = beta
         self.n_iter = n_iter
         self.residual = residual
+        self.energy_type = energy_type
         
         # Untrained by default. PyTorchHopfieldMemory must opt-in to use it.
         self.use_projection = use_projection
@@ -64,9 +87,22 @@ class HopfieldRetriever(nn.Module):
         # Iterative attractor dynamics
         for _ in range(self.n_iter):
             projection = torch.bmm(state, stored_patterns.transpose(1, 2))
-            scaled_projection = self.beta * projection
-            M, _ = torch.max(scaled_projection, dim=-1, keepdim=True)
-            attention_weights = F.softmax(scaled_projection - M, dim=-1)
+            
+            if self.energy_type == 'softmax':
+                scaled_projection = self.beta * projection
+                M, _ = torch.max(scaled_projection, dim=-1, keepdim=True)
+                attention_weights = F.softmax(scaled_projection - M, dim=-1)
+            elif self.energy_type == 'sparsemax':
+                scaled_projection = self.beta * projection
+                attention_weights = sparsemax(scaled_projection, dim=-1)
+            elif self.energy_type == 'polynomial':
+                # Polynomial energy: E = -sum( max(0, X^T xi)^beta )
+                # Update rule uses activated projection
+                degree = max(2.0, self.beta)
+                activated = torch.relu(projection) ** degree
+                attention_weights = activated / (activated.sum(dim=-1, keepdim=True) + 1e-8)
+            else:
+                raise ValueError(f"Unknown energy type: {self.energy_type}")
             
             retrieved = torch.bmm(attention_weights, stored_patterns)
             
@@ -172,8 +208,8 @@ class RetrievalResult:
 
 class PyTorchHopfieldMemory:
     """Wrapper to mimic the old ModernHopfieldNetwork API but backed by PyTorch."""
-    def __init__(self, beta: float = 8.0, n_iter: int = 3, residual: bool = True, similarity_threshold: float = 0.05, use_projection: bool = False, embedding_dim: int = 384):
-        self.retriever = HopfieldRetriever(beta=beta, n_iter=n_iter, residual=residual, use_projection=use_projection, embedding_dim=embedding_dim)
+    def __init__(self, beta: float = 8.0, n_iter: int = 3, residual: bool = True, similarity_threshold: float = 0.05, use_projection: bool = False, embedding_dim: int = 384, energy_type: str = 'softmax'):
+        self.retriever = HopfieldRetriever(beta=beta, n_iter=n_iter, residual=residual, use_projection=use_projection, embedding_dim=embedding_dim, energy_type=energy_type)
         self.similarity_threshold = similarity_threshold
         self._patterns = None
         self._metadata = []
@@ -196,6 +232,11 @@ class PyTorchHopfieldMemory:
         patterns_norm = patterns / norms
         self._patterns = torch.tensor(patterns_norm, dtype=torch.float32, device=self.device)
         self._metadata = metadata
+
+    def clear(self) -> None:
+        """Clear all stored patterns and metadata."""
+        self._patterns = None
+        self._metadata = []
 
     def retrieve(self, query_embedding: np.ndarray, top_k: int = 5) -> List[RetrievalResult]:
         if self._patterns is None:

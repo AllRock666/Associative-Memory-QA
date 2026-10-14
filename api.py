@@ -1,0 +1,418 @@
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+import uvicorn
+import os
+import io
+import tempfile
+import traceback
+from typing import List, Optional, Dict, Any
+
+from core.pipeline import HopfieldQAPipeline, PipelineConfig
+from core.llm_provider import LLMConfig, create_llm_provider, MockLLMProvider
+from core.chat_manager import ChatManager
+from utils.file_utils import extract_text_from_file
+
+app = FastAPI(title="Hopfield QA API")
+
+pipeline = None
+chat_manager = ChatManager("data")
+
+class SearchRequest(BaseModel):
+    query: str
+    energy_type: Optional[str] = "softmax"
+    hopfield_beta: Optional[float] = 8.0
+    top_k: Optional[int] = 5
+    use_projection: Optional[bool] = True
+    retriever_mode: Optional[str] = "hopfield"  # "hopfield", "dense", "hybrid"
+    engine_mode: Optional[str] = "associative"  # legacy backwards compatibility
+    answer_style: Optional[str] = "conversational"  # "conversational" (LLM RAG), "detailed", "executive", "concise"
+    detail_level: Optional[str] = None  # "adaptive", "detailed", "standard", "concise"
+    llm_provider: Optional[str] = None  # "ollama", "openai", "mock", "deterministic"
+    llm_model: Optional[str] = None
+    llm_base_url: Optional[str] = None
+    llm_api_key: Optional[str] = None
+    max_tokens: Optional[int] = 2048
+    chat_id: Optional[str] = None
+    conversation_history: Optional[List[Dict[str, Any]]] = None
+
+class CreateChatRequest(BaseModel):
+    title: Optional[str] = None
+    chat_id: Optional[str] = None
+
+class UpdateChatRequest(BaseModel):
+    title: str
+
+@app.on_event("startup")
+def startup_event():
+    global pipeline
+    proj_path = "models/projection_squad.pt" if os.path.exists("models/projection_squad.pt") else None
+    config = PipelineConfig(
+        embedding_model="all-MiniLM-L6-v2",
+        chunk_size=512,
+        chunk_overlap=64,
+        hopfield_beta=8.0,
+        top_k=5,
+        use_fusion=True,
+        use_projection=(proj_path is not None),
+        projection_path=proj_path,
+        use_associative_engine=True,
+    )
+    pipeline = HopfieldQAPipeline(config)
+
+@app.get("/api/status")
+def get_status():
+    global pipeline
+    if not pipeline:
+        return {"ready": False, "documents": 0, "chunks": 0, "llm": {"available": False}}
+
+    is_avail = False
+    avail_reason = None
+    if hasattr(pipeline.answer_generator, "llm_provider") and pipeline.answer_generator.llm_provider:
+        is_avail, avail_reason = pipeline.answer_generator.llm_provider.is_available()
+
+    llm_status = {
+        "provider": pipeline.config.llm_provider,
+        "configured_provider": pipeline.config.llm_provider,
+        "effective_provider": pipeline.config.llm_provider,
+        "model": pipeline.config.llm_model,
+        "base_url": pipeline.config.llm_base_url,
+        "fallback_to_deterministic": pipeline.config.llm_fallback_to_deterministic,
+        "fallback_enabled": pipeline.config.llm_fallback_to_deterministic,
+        "available": is_avail,
+        "is_healthy": is_avail,
+        "status_message": avail_reason or "Provider is healthy and reachable.",
+        "fallback_reason": avail_reason if not is_avail else None
+    }
+
+    return {
+        "ready": pipeline.is_ready,
+        "documents": pipeline.n_documents,
+        "chunks": pipeline.n_chunks,
+        "llm": llm_status,
+    }
+
+@app.post("/api/search")
+def search(req: SearchRequest):
+    global pipeline
+    if not pipeline:
+        raise HTTPException(status_code=500, detail="Pipeline not initialized")
+        
+    pipeline.config.energy_type = req.energy_type
+    pipeline.config.hopfield_beta = req.hopfield_beta
+    pipeline.config.top_k = req.top_k or 5
+    pipeline.config.use_projection = req.use_projection
+    pipeline.memory.retriever.beta = req.hopfield_beta
+    pipeline.memory.retriever.energy_type = req.energy_type
+    pipeline.memory.retriever.use_projection = req.use_projection
+    
+    # Determine retriever mode
+    active_retriever = (req.retriever_mode or "hopfield").lower()
+    if req.engine_mode == "naive_rag" and req.retriever_mode == "hopfield":
+        active_retriever = "dense"
+        
+    style = req.detail_level or req.answer_style or "conversational"
+
+    # Optional dynamic LLM provider override
+    provider_override = None
+    if req.llm_provider:
+        p_name = req.llm_provider.lower().strip()
+        ovr_cfg = LLMConfig.from_env()
+        ovr_cfg.provider = p_name
+        if req.llm_model:
+            ovr_cfg.model = req.llm_model
+        if req.llm_base_url:
+            ovr_cfg.base_url = req.llm_base_url
+        if req.llm_api_key:
+            ovr_cfg.api_key = req.llm_api_key
+        if req.max_tokens:
+            ovr_cfg.max_tokens = req.max_tokens
+        provider_override = create_llm_provider(ovr_cfg)
+    
+    # Extract conversation history for multi-turn conversational context
+    history = req.conversation_history
+    if not history and req.chat_id:
+        chat_sess = chat_manager.get_session(req.chat_id)
+        if chat_sess:
+            history = [{"role": m["role"], "content": m["content"]} for m in chat_sess.get("messages", [])]
+
+    # Adaptive retrieval depth: scale k for detailed or explanatory questions
+    q_words = req.query.strip().split()
+    is_explanatory = any(w in req.query.lower() for w in [
+        "explain", "how", "why", "detail", "architecture", "mechanism",
+        "describe", "overview", "breakdown", "elaborate", "comprehensive", "workload"
+    ]) or len(q_words) >= 6
+
+    effective_k = req.top_k or 5
+    if is_explanatory and effective_k < 5:
+        effective_k = 5
+
+    try:
+        res = pipeline.query(
+            raw_query=req.query,
+            top_k=effective_k,
+            retriever_mode=active_retriever,
+            answer_style=style,
+            llm_provider_override=provider_override,
+            conversation_history=history
+        )
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    evidence_list = []
+    source_chunks = res.evidence_collection.chunks if (res.evidence_collection and res.evidence_collection.chunks) else res.retrieved_chunks
+    for i, chunk in enumerate(source_chunks, 1):
+        sim = getattr(chunk, 'similarity_score', getattr(chunk, 'hopfield_attention', 0.0))
+        meta = getattr(chunk, 'metadata', {}) or {}
+        is_core = getattr(chunk, 'is_core_attractor', meta.get("is_core_attractor", True))
+        evidence_list.append({
+            "citation_id": f"E{i}",
+            "chunk_id": getattr(chunk, 'chunk_id', f"chunk_{i}"),
+            "text": getattr(chunk, 'text', ''),
+            "score": float(sim) if sim is not None else 0.0,
+            "source": getattr(chunk, 'source', 'Unknown'),
+            "page_number": getattr(chunk, 'page_number', meta.get("page_number")),
+            "is_core_attractor": is_core,
+            "role": "Core Attractor Basin" if is_core else "Associative Bridge"
+        })
+    
+    associative_diagnostics = None
+    if res.associative_result:
+        ar = res.associative_result
+        trajectory_data = []
+        for hop in ar.trajectory:
+            trajectory_data.append({
+                "hop": hop.hop_index,
+                "energy": round(hop.energy, 4),
+                "delta": round(hop.state_delta, 4),
+                "description": hop.description,
+                "top_chunks": hop.activated_chunks[:2]
+            })
+        associative_diagnostics = {
+            "mode": f"Hopfield ({res.evidence_collection.retriever_name if res.evidence_collection else 'Associative'})",
+            "attractor_energy": round(ar.attractor_energy, 4),
+            "energy_depth": round(ar.energy_landscape_depth, 4),
+            "is_grounded": ar.is_grounded,
+            "convergence_steps": ar.convergence_steps,
+            "reasoning_path": ar.reasoning_path,
+            "trajectory": trajectory_data,
+            "num_core_chunks": len(ar.core_attractor_chunks),
+            "num_bridge_chunks": len(ar.associative_bridge_chunks)
+        }
+    else:
+        associative_diagnostics = {
+            "mode": f"{res.evidence_collection.retriever_name if res.evidence_collection else 'Dense Cosine'}",
+            "attractor_energy": None,
+            "energy_depth": None,
+            "is_grounded": len(evidence_list) > 0,
+            "convergence_steps": 1,
+            "reasoning_path": ["Static dot product ranking without continuous associative relaxation."],
+            "trajectory": [],
+            "num_core_chunks": len(evidence_list),
+            "num_bridge_chunks": 0
+        }
+
+    grounded_data = None
+    if res.grounded_answer:
+        ga = res.grounded_answer
+        grounded_data = {
+            "answer": ga.answer,
+            "abstained": ga.abstained,
+            "abstention_reason": ga.abstention_reason,
+            "confidence": round(ga.confidence, 4),
+            "claims": [
+                {
+                    "claim_text": c.claim_text,
+                    "evidence_ids": c.evidence_ids,
+                    "is_verified": c.is_verified,
+                    "unresolved_ids": c.unresolved_ids,
+                    "is_supported": getattr(c, 'is_supported', c.is_verified),
+                    "is_relevant": getattr(c, 'is_relevant', True),
+                    "is_unique": getattr(c, 'is_unique', True),
+                    "verification_rationale": getattr(c, 'verification_rationale', None)
+                } for c in ga.claims
+            ],
+            "provider_used": ga.provider_used,
+            "model_name": ga.model_name,
+            "fallback_occurred": ga.metadata.get("fallback_occurred", False),
+            "fallback_reason": ga.metadata.get("fallback_reason"),
+            "llm_config": ga.metadata.get("llm_config", {}),
+            "generation_time_ms": max(0.1, round(ga.generation_time_ms, 2)),
+            "style": ga.style,
+            "stage_latencies_ms": ga.metadata.get("stage_latencies_ms", {}),
+            "confidence_breakdown": ga.metadata.get("confidence_breakdown", {}),
+            "deduplication": getattr(res, "deduplication_diagnostics", {}) or ga.metadata.get("deduplication", {}),
+            "unique_verified_claims_count": ga.metadata.get("unique_verified_claims_count", len([c for c in ga.claims if c.is_verified])),
+            "total_claims_count": len(ga.claims)
+        }
+    
+    latencies = {
+        "retrieval_ms": round(res.retrieval_time_ms, 2),
+        "total_ms": round(res.total_time_ms, 2),
+        "stages": getattr(res, "stage_latencies_ms", {})
+    }
+
+    response_payload = {
+        "query": req.query,
+        "retriever_mode": active_retriever,
+        "engine_mode": "associative" if active_retriever in ("hopfield", "hybrid") else "naive_rag",
+        "answer": res.answer.answer,
+        "confidence": float(res.answer.confidence) if res.answer.confidence is not None else 0.0,
+        "evidence": evidence_list,
+        "grounded_answer": grounded_data,
+        "associative_diagnostics": associative_diagnostics,
+        "latencies": latencies,
+        "deduplication": getattr(res, "deduplication_diagnostics", {})
+    }
+
+    # Automatically persist turn to chat session if chat_id provided
+    if req.chat_id:
+        chat_sess = chat_manager.add_turn(req.chat_id, req.query, response_payload)
+        response_payload["chat_id"] = req.chat_id
+        response_payload["chat_title"] = chat_sess.get("title")
+
+    return response_payload
+
+
+# ==============================================================================
+# Multi-Chat Persistence Endpoints (ChatGPT-Style Sessions)
+# ==============================================================================
+
+@app.get("/api/chats")
+def list_chats():
+    """List all persisted chat conversations."""
+    return {"chats": chat_manager.list_sessions()}
+
+
+@app.post("/api/chats")
+def create_or_save_chat(req: Optional[CreateChatRequest] = None):
+    """Create a new chat conversation."""
+    title = req.title if req else None
+    c_id = req.chat_id if req else None
+    session = chat_manager.create_session(title=title, session_id=c_id)
+    return {"chat": session}
+
+
+@app.get("/api/chats/{chat_id}")
+def get_chat(chat_id: str):
+    """Retrieve full conversation history for a specific chat."""
+    session = chat_manager.get_session(chat_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return {"chat": session}
+
+
+@app.put("/api/chats/{chat_id}")
+def update_chat_title(chat_id: str, req: UpdateChatRequest):
+    """Update title of a chat conversation."""
+    session = chat_manager.update_session(chat_id, title=req.title)
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return {"chat": session}
+
+
+@app.delete("/api/chats/{chat_id}")
+def delete_chat(chat_id: str):
+    """Delete a chat conversation and remove from disk storage."""
+    deleted = chat_manager.delete_session(chat_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return {"success": True, "message": f"Chat {chat_id} deleted"}
+
+
+# ==============================================================================
+# Persistent Documents / Knowledge Base Endpoints
+# ==============================================================================
+
+@app.get("/api/documents")
+def list_documents():
+    """List all documents currently active and persisted in Hopfield memory."""
+    global pipeline
+    if not pipeline:
+        return {"documents": [], "total_documents": 0, "total_chunks": 0}
+        
+    chunk_counts = {}
+    for c in pipeline._all_chunks:
+        chunk_counts[c.source] = chunk_counts.get(c.source, 0) + 1
+        
+    docs = []
+    for source, text in pipeline._documents.items():
+        docs.append({
+            "source": source,
+            "chunks": chunk_counts.get(source, 0),
+            "characters": len(text)
+        })
+    docs.sort(key=lambda d: d["source"].lower())
+    return {
+        "documents": docs,
+        "total_documents": pipeline.n_documents,
+        "total_chunks": pipeline.n_chunks
+    }
+
+
+@app.delete("/api/documents/{source:path}")
+def remove_document(source: str):
+    """Remove a document and its chunks from memory and persist changes."""
+    global pipeline
+    if not pipeline:
+        raise HTTPException(status_code=500, detail="Pipeline not initialized")
+        
+    removed = pipeline.remove_document(source)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Document '{source}' not found in memory")
+        
+    return {
+        "success": True,
+        "message": f"Successfully removed '{source}' from Hopfield memory",
+        "remaining_documents": pipeline.n_documents,
+        "remaining_chunks": pipeline.n_chunks
+    }
+
+@app.post("/api/upload")
+async def upload_document(file: UploadFile = File(...)):
+    global pipeline
+    if not pipeline:
+        raise HTTPException(status_code=500, detail="Pipeline not initialized")
+        
+    MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB limit
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds maximum upload limit of 25MB (size: {len(content) / (1024 * 1024):.1f}MB)."
+        )
+
+    try:
+        bio = io.BytesIO(content)
+        text, _ = extract_text_from_file(bio, file.filename)
+            
+        if not text or not text.strip():
+            raise ValueError(f"Extracted text from '{file.filename}' is empty or unreadable. Please check the document format.")
+            
+        print(f"[API] Upload request received: {file.filename} ({len(content)} bytes)", flush=True)
+        docs = [(text, file.filename)]
+        pipeline.add_documents(docs)
+        total_chunks = pipeline.n_chunks
+        print(f"[API] Successfully ingested {file.filename}: {total_chunks} total chunks indexed.", flush=True)
+        return {
+            "message": f"Successfully ingested {file.filename} ({total_chunks} chunks indexed in Hopfield memory)."
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/")
+async def get_index():
+    response = FileResponse("static/index.html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+os.makedirs("static", exist_ok=True)
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+if __name__ == "__main__":
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)

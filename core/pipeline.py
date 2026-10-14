@@ -6,7 +6,7 @@ Ties together: Embeddings → Hopfield Memory → Query Processing → Answer Ge
 
 import numpy as np
 import time
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from pathlib import Path
 import json
@@ -17,6 +17,9 @@ from core.embeddings import DocumentChunker, EmbeddingEngine, Chunk
 from core.hopfield_torch import PyTorchHopfieldMemory, RetrievalResult
 from core.query_handler import QueryProcessor, ProcessedQuery
 from core.answer_generator import AnswerGenerator, GeneratedAnswer
+from core.associative_engine import HopfieldAssociativeEngine, AssociativeMemoryResult
+from core.schemas import EvidenceChunk, EvidenceCollection, GroundedAnswer
+from core.retrievers import HopfieldRetrieverAdapter, DenseRetrieverAdapter, HybridRetrieverAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,11 @@ class PipelineConfig:
     hopfield_beta: float = 8.0
     hopfield_n_iter: int = 1
     similarity_threshold: float = 0.05
+    use_projection: bool = False
+    projection_path: str = None
+    use_associative_engine: bool = True
+    default_retriever: str = "hopfield"  # "hopfield" | "dense" | "hybrid"
+    persistence_dir: str = "data"
 
     # Retrieval
     top_k: int = 5
@@ -46,6 +54,16 @@ class PipelineConfig:
     # Answer
     max_answer_length: int = 600
     min_confidence: float = 0.1
+
+    # LLM Answer Generation
+    llm_provider: str = "ollama"  # "ollama" | "openai" | "mock" | "deterministic"
+    llm_base_url: str = "http://localhost:11434/v1"
+    llm_model: str = "llama3.2"
+    llm_api_key: Optional[str] = None
+    llm_timeout_seconds: float = 60.0
+    llm_max_tokens: int = 800
+    llm_temperature: float = 0.2
+    llm_fallback_to_deterministic: bool = True
 
     def to_dict(self) -> Dict:
         return self.__dict__.copy()
@@ -61,6 +79,11 @@ class QueryResult:
     retrieval_time_ms: float
     total_time_ms: float
     attention_landscape: Optional[Dict] = None
+    associative_result: Optional[AssociativeMemoryResult] = None
+    grounded_answer: Optional[GroundedAnswer] = None
+    evidence_collection: Optional[EvidenceCollection] = None
+    stage_latencies_ms: Dict[str, float] = field(default_factory=dict)
+    deduplication_diagnostics: Dict[str, Any] = field(default_factory=dict)
 
 
 class HopfieldQAPipeline:
@@ -110,18 +133,64 @@ class HopfieldQAPipeline:
             beta=self.config.hopfield_beta,
             n_iter=self.config.hopfield_n_iter,
             similarity_threshold=self.config.similarity_threshold,
+            energy_type=getattr(self.config, 'energy_type', 'softmax'),
+            use_projection=self.config.use_projection
         )
+        if self.config.use_projection and self.config.projection_path:
+            import torch
+            try:
+                self.memory.retriever.projection.load_state_dict(torch.load(self.config.projection_path, map_location=self.memory.device, weights_only=True))
+                print(f"Loaded trained projection layer from {self.config.projection_path}")
+            except Exception as e:
+                print(f"Could not load projection weights: {e}")
         self.query_processor = QueryProcessor()
-        from core.answer_generator import ExtractiveQAAnswerGenerator
-        self.answer_generator = ExtractiveQAAnswerGenerator(
-            max_answer_length=self.config.max_answer_length,
-            min_confidence_threshold=self.config.min_confidence,
+        from core.generative_synthesizer import GenerativeRAGSynthesizer
+        from core.llm_provider import LLMConfig
+        llm_cfg = LLMConfig(
+            provider=getattr(self.config, 'llm_provider', 'ollama'),
+            base_url=getattr(self.config, 'llm_base_url', 'http://localhost:11434/v1'),
+            model=getattr(self.config, 'llm_model', 'llama3.2'),
+            api_key=getattr(self.config, 'llm_api_key', None),
+            timeout_seconds=getattr(self.config, 'llm_timeout_seconds', 60.0),
+            max_tokens=getattr(self.config, 'llm_max_tokens', 800),
+            temperature=getattr(self.config, 'llm_temperature', 0.2),
+            fallback_to_deterministic=getattr(self.config, 'llm_fallback_to_deterministic', True)
         )
+        self.answer_generator = GenerativeRAGSynthesizer(
+            llm_config=llm_cfg
+        )
+        self.associative_engine = HopfieldAssociativeEngine(
+            memory=self.memory,
+            beta=self.config.hopfield_beta,
+            max_hops=4,
+            alpha=0.7,
+        )
+        self.hopfield_retriever = HopfieldRetrieverAdapter(self.associative_engine)
+        self.dense_retriever = DenseRetrieverAdapter(self.memory)
+        self.hybrid_retriever = HybridRetrieverAdapter(self.hopfield_retriever, self.memory)
 
         # State
         self._all_chunks: List[Chunk] = []
         self._documents: Dict[str, str] = {}  # source → original text
         self._is_ready = False
+
+        # Document Persistence recovery
+        self._recover_persisted_index()
+
+    def _recover_persisted_index(self):
+        """Recover indexed documents from disk if available."""
+        pers_path = Path(self.config.persistence_dir) / "memory_store.json"
+        if pers_path.exists():
+            try:
+                with open(pers_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    docs = data.get("documents", {})
+                    if docs:
+                        logger.info(f"Recovering {len(docs)} persisted documents from {pers_path}...")
+                        for source, text in docs.items():
+                            self.add_document(text, source=source, persist=False)
+            except Exception as e:
+                logger.warning(f"Could not recover persisted document index: {e}")
 
     @property
     def is_ready(self) -> bool:
@@ -140,6 +209,7 @@ class HopfieldQAPipeline:
         text: str,
         source: str = "document",
         progress_callback=None,
+        persist: bool = True,
     ) -> Dict:
         """
         Add a document to the Hopfield memory.
@@ -177,6 +247,16 @@ class HopfieldQAPipeline:
         
         logger.info(f"Added document '{source}' with {len(chunks)} chunks.")
 
+        # Persist documents to disk if requested
+        if persist:
+            try:
+                p_dir = Path(self.config.persistence_dir)
+                p_dir.mkdir(parents=True, exist_ok=True)
+                with open(p_dir / "memory_store.json", "w", encoding="utf-8") as f:
+                    json.dump({"documents": self._documents}, f, indent=2)
+            except Exception as e:
+                logger.warning(f"Could not persist document store: {e}")
+
         elapsed = (time.time() - t0) * 1000
         self._is_ready = True
 
@@ -208,6 +288,35 @@ class HopfieldQAPipeline:
             results.append(result)
         return results
 
+    def remove_document(self, source: str) -> bool:
+        """
+        Remove a document and its chunks from memory and persist changes to disk.
+        """
+        if source not in self._documents:
+            return False
+
+        del self._documents[source]
+        self._all_chunks = [c for c in self._all_chunks if c.source != source]
+
+        if self._all_chunks:
+            self._rebuild_memory()
+        else:
+            if hasattr(self.memory, "clear"):
+                self.memory.clear()
+            self._is_ready = False
+
+        # Persist updated documents to disk
+        try:
+            p_dir = Path(self.config.persistence_dir)
+            p_dir.mkdir(parents=True, exist_ok=True)
+            with open(p_dir / "memory_store.json", "w", encoding="utf-8") as f:
+                json.dump({"documents": self._documents}, f, indent=2)
+            logger.info(f"Removed document '{source}' from Hopfield memory store.")
+        except Exception as e:
+            logger.warning(f"Could not persist document store after removal: {e}")
+
+        return True
+
     def _rebuild_memory(self):
         """Rebuild Hopfield memory from all stored chunks."""
         if not self._all_chunks:
@@ -236,6 +345,11 @@ class HopfieldQAPipeline:
         raw_query: str,
         top_k: Optional[int] = None,
         include_attention_landscape: bool = False,
+        use_associative_mode: bool = True,
+        answer_style: str = "conversational",
+        retriever_mode: Optional[str] = None,
+        llm_provider_override: Optional[Any] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> QueryResult:
         """
         Execute a complete query through the pipeline.
@@ -244,6 +358,12 @@ class HopfieldQAPipeline:
             raw_query: User's raw query string.
             top_k: Number of chunks to retrieve (defaults to config).
             include_attention_landscape: Whether to include full attention map.
+            use_associative_mode: Whether to execute Hopfield continuous attractor dynamics
+                                 (replacing static naive RAG similarity).
+            answer_style: "conversational" (LLM RAG style), "executive" (bulleted summary),
+                         or "concise".
+            retriever_mode: "hopfield" (Continuous Associative Memory), "dense" (Cosine Baseline),
+                           or "hybrid" (BM25 + Neural RRF).
 
         Returns:
             QueryResult with answer, evidence, and performance stats.
@@ -252,55 +372,134 @@ class HopfieldQAPipeline:
             raise RuntimeError("Pipeline not ready. Please add documents first.")
 
         k = top_k or self.config.top_k
-        t0 = time.time()
+        t0 = time.perf_counter()
         
-        logger.info(f"Processing query: '{raw_query}' (top_k={k})")
+        # Determine active retriever mode
+        if retriever_mode is None:
+            if not use_associative_mode:
+                mode = "dense"
+            else:
+                mode = getattr(self.config, 'default_retriever', 'hopfield')
+        else:
+            mode = retriever_mode.lower()
+
+        logger.info(f"Processing query: '{raw_query}' (mode={mode}, top_k={k}, style={answer_style})")
 
         # 1. Process query
         processed = self.query_processor.process(raw_query)
 
-        # 2. Embed query variants
-        variant_embeddings = []
-        for variant in processed.variants[:self.config.n_query_variants]:
-            emb = self.embedder.embed_query(variant)
-            variant_embeddings.append(emb)
+        # 2. Embed query
+        t_embed_start = time.perf_counter()
+        query_text = getattr(processed, 'cleaned', None) or raw_query
+        query_embedding = self.embedder.embed_query(query_text)
+        embed_time_ms = max(0.05, (time.perf_counter() - t_embed_start) * 1000)
 
-        t_retrieval_start = time.time()
-
-        # 3. Retrieve via Hopfield network
-        if self.config.use_fusion and len(variant_embeddings) > 1:
-            # Multi-query fusion for noisy/ambiguous queries
-            fusion_weights = [1.0] + [0.7] * (len(variant_embeddings) - 1)
-            retrieved = self.memory.retrieve_with_fusion(
-                variant_embeddings,
-                top_k=k,
-                fusion_weights=fusion_weights,
-            )
+        # 3. Select retriever adapter
+        if mode == "dense":
+            selected_retriever = self.dense_retriever
+        elif mode == "hybrid":
+            selected_retriever = self.hybrid_retriever
         else:
-            retrieved = self.memory.retrieve(variant_embeddings[0], top_k=k)
+            self.associative_engine.beta = self.config.hopfield_beta
+            selected_retriever = self.hopfield_retriever
 
-        retrieval_time = (time.time() - t_retrieval_start) * 1000
+        # 4. Execute retrieval via BaseRetriever
+        t_ret_start = time.perf_counter()
+        evidence_collection = selected_retriever.retrieve(
+            query=raw_query,
+            query_embedding=query_embedding,
+            top_k=k,
+            min_similarity_threshold=self.config.similarity_threshold
+        )
+        retrieval_time_ms = max(0.1, (time.perf_counter() - t_ret_start) * 1000)
 
-        # 4. Optional: attention landscape
+        associative_res = getattr(self.hopfield_retriever, 'last_result', None) if mode in ("hopfield", "hybrid") else None
+
+        # 5. Evidence Deduplication Stage (observable, preserves Hopfield rankings & diagnostics)
+        t_dedup_start = time.perf_counter()
+        from core.evidence_deduplicator import EvidenceDeduplicator
+        dedup_evidence_collection, dedup_diagnostics = EvidenceDeduplicator.deduplicate(evidence_collection)
+        dedup_time_ms = max(0.05, (time.perf_counter() - t_dedup_start) * 1000)
+
+        # 6. Optional: attention landscape
         landscape = None
-        if include_attention_landscape and variant_embeddings:
-            landscape = self.memory.get_attention_landscape(variant_embeddings[0])
+        if include_attention_landscape:
+            landscape = self.memory.get_attention_landscape(query_embedding)
 
-        # 5. Generate answer
-        answer = self.answer_generator.generate(processed, retrieved)
+        # 7. Generate answer using GenerativeRAGSynthesizer
+        t_synth_start = time.perf_counter()
+        grounded_answer = self.answer_generator.synthesize(
+            query=raw_query,
+            evidence=dedup_evidence_collection,
+            style=answer_style,
+            provider_override=llm_provider_override,
+            conversation_history=conversation_history
+        )
+        synth_time_ms = max(0.1, (time.perf_counter() - t_synth_start) * 1000)
 
-        total_time = (time.time() - t0) * 1000
-        
-        logger.info(f"Query completed in {total_time:.1f}ms with {len(retrieved)} chunks retrieved.")
+        # 8. Convert for backward-compatibility with legacy consumers
+        legacy_retrieved: List[RetrievalResult] = []
+        for i, c in enumerate(dedup_evidence_collection.chunks):
+            meta = c.metadata or {}
+            legacy_retrieved.append(
+                RetrievalResult(
+                    chunk_id=c.chunk_id,
+                    text=c.text,
+                    source=c.source,
+                    chunk_index=int(meta.get("chunk_index", i)),
+                    similarity_score=float(c.similarity_score),
+                    rank=c.rank or (i + 1),
+                    metadata=meta,
+                    hopfield_attention=float(c.hopfield_attention)
+                )
+            )
+
+        legacy_answer = GeneratedAnswer(
+            query=raw_query,
+            answer=grounded_answer.answer,
+            confidence=grounded_answer.confidence,
+            evidence_chunks=legacy_retrieved,
+            highlighted_passages=[
+                {"text": c.text, "chunk_id": c.chunk_id, "relevance": c.similarity_score}
+                for c in dedup_evidence_collection.chunks
+            ],
+            sources=dedup_evidence_collection.sources,
+            answer_type="grounded_rag",
+            generation_stats={
+                "provider": grounded_answer.provider_used,
+                "model": grounded_answer.model_name,
+                "time_ms": grounded_answer.generation_time_ms,
+                "abstained": grounded_answer.abstained,
+                "abstention_reason": grounded_answer.abstention_reason,
+            }
+        )
+
+        total_time = max(0.1, (time.perf_counter() - t0) * 1000)
+        logger.info(f"Query completed in {total_time:.1f}ms with {len(dedup_evidence_collection.chunks)} unique chunks (dedup removed {dedup_diagnostics['duplicates_removed']}, abstained={grounded_answer.abstained}).")
+
+        synth_stages = (grounded_answer.metadata.get("stage_latencies_ms") or {}) if grounded_answer else {}
+        stage_latencies = {
+            "embed_ms": round(embed_time_ms, 2),
+            "retrieval_ms": round(retrieval_time_ms, 2),
+            "dedup_ms": round(dedup_time_ms, 2),
+            "synthesis_ms": round(synth_time_ms, 2),
+            "total_ms": round(total_time, 2),
+            **synth_stages
+        }
 
         return QueryResult(
             query=raw_query,
             processed_query=processed,
-            retrieved_chunks=retrieved,
-            answer=answer,
-            retrieval_time_ms=retrieval_time,
-            total_time_ms=total_time,
+            retrieved_chunks=legacy_retrieved,
+            answer=legacy_answer,
+            retrieval_time_ms=round(retrieval_time_ms, 2),
+            total_time_ms=round(total_time, 2),
             attention_landscape=landscape,
+            associative_result=associative_res,
+            grounded_answer=grounded_answer,
+            evidence_collection=dedup_evidence_collection,
+            stage_latencies_ms=stage_latencies,
+            deduplication_diagnostics=dedup_diagnostics
         )
 
     def get_stats(self) -> Dict:
@@ -331,7 +530,16 @@ class HopfieldQAPipeline:
             beta=self.config.hopfield_beta,
             n_iter=self.config.hopfield_n_iter,
             similarity_threshold=self.config.similarity_threshold,
+            energy_type=getattr(self.config, 'energy_type', 'softmax'),
+            use_projection=self.config.use_projection
         )
+        if self.config.use_projection and self.config.projection_path:
+            import torch
+            try:
+                self.memory.retriever.projection.load_state_dict(torch.load(self.config.projection_path, map_location=self.memory.device, weights_only=True))
+                print(f"Loaded trained projection layer from {self.config.projection_path}")
+            except Exception as e:
+                print(f"Could not load projection weights: {e}")
         self.embedder.clear_cache()
 
     def load_sample_documents(self) -> List[Dict]:

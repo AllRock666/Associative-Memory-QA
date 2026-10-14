@@ -1,0 +1,43 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: hopfield-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_HOST=0.0.0.0
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    extra_hosts:
+      - "dd20bb891979d25aebc8bec07b2b3bbc.r2.cloudflarestorage.com:172.64.190.1"
+    restart: unless-stopped
+
+  hopfield-qa:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hopfield-qa-app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ollama
+    environment:
+      - LLM_PROVIDER=ollama
+      - LLM_BASE_URL=http://ollama:11434/v1
+      - LLM_MODEL=llama3.2:1b
+      - LLM_FALLBACK_TO_DETERMINISTIC=true
+      - PYTHONPATH=/app
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
+    name: hopfield_ollama_models
