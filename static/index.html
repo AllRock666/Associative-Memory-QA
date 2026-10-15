@@ -851,21 +851,169 @@
             history.appendChild(div);
         }
 
+        let assistantMessageCounter = 0;
+
+        function renderMarkdown(md, evidenceList, msgId) {
+            if (!md) return '';
+            let text = md.trim().replace(/\r\n/g, '\n');
+            let safe = escapeHtml(text);
+
+            // 1. Code blocks (```lang ... ```)
+            safe = safe.replace(/```([a-zA-Z0-9_\-]*)\n([\s\S]*?)```/g, function(match, lang, code) {
+                return `<pre class="bg-slate-900 text-slate-100 p-3.5 rounded-xl font-mono text-xs my-2.5 overflow-x-auto border border-slate-800"><code>${code}</code></pre>`;
+            });
+
+            // 2. Inline code (`code`)
+            safe = safe.replace(/`([^`]+)`/g, '<code class="bg-slate-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-mono border border-slate-200">$1</code>');
+
+            // 3. Headers: ### Subheading, ## Heading
+            safe = safe.replace(/^### (.*$)/gim, '<h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider mt-4 mb-2 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block"></span>$1</h3>');
+            safe = safe.replace(/^## (.*$)/gim, '<h2 class="text-sm font-bold text-slate-900 mt-4 mb-2 flex items-center gap-1.5">$1</h2>');
+
+            // 4. Bold text: **bold**
+            safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-slate-900">$1</strong>');
+
+            // 5. Italic text: *italic*
+            safe = safe.replace(/\*([^*]+)\*/g, '<em class="italic text-slate-700">$1</em>');
+
+            // 6. Blockquotes: > quote
+            safe = safe.replace(/^> (.*$)/gim, '<blockquote class="border-l-3 border-blue-500 pl-3 my-2 text-slate-600 italic bg-blue-50/30 py-1 rounded-r-lg">$1</blockquote>');
+
+            // 7. Bullet lists: lines starting with "- " or "* "
+            const lines = safe.split('\n');
+            let inList = false;
+            let processedLines = [];
+            for (let line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                    if (!inList) {
+                        processedLines.push('<ul class="space-y-1.5 my-2">');
+                        inList = true;
+                    }
+                    const itemContent = trimmed.substring(2);
+                    processedLines.push(`<li class="flex items-start gap-2 text-xs leading-relaxed text-slate-700"><span class="text-blue-500 mt-1 flex-shrink-0 leading-none">&bull;</span><span>${itemContent}</span></li>`);
+                } else {
+                    if (inList) {
+                        processedLines.push('</ul>');
+                        inList = false;
+                    }
+                    processedLines.push(line);
+                }
+            }
+            if (inList) processedLines.push('</ul>');
+            safe = processedLines.join('\n');
+
+            // 8. Interactive Citations [E1], [E2]
+            safe = safe.replace(/\[E(\d+)\]/g, function(match, num) {
+                const citeIdx = parseInt(num, 10);
+                let tooltip = `Supporting Evidence Passage [E${citeIdx}]`;
+                if (evidenceList && evidenceList[citeIdx - 1]) {
+                    const ev = evidenceList[citeIdx - 1];
+                    const src = ev.source || 'Doc';
+                    const snippet = (ev.text || '').replace(/\s+/g, ' ').substring(0, 100) + '...';
+                    tooltip = `[E${citeIdx}] ${src}: "${snippet}"`;
+                }
+                return `<button type="button" onclick="jumpToEvidence(${msgId}, ${citeIdx})" class="citation-pill inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white text-[11px] font-bold mx-0.5 border border-blue-200 cursor-pointer transition shadow-2xs group" title="${escapeHtml(tooltip)}"><svg class="w-2.5 h-2.5 text-blue-500 group-hover:text-white transition flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>[E${citeIdx}]</button>`;
+            });
+
+            // 9. Paragraphs (split by double newlines, ignoring block elements)
+            const blocks = safe.split(/\n\s*\n/);
+            const wrappedBlocks = blocks.map(block => {
+                const b = block.trim();
+                if (!b) return '';
+                if (b.startsWith('<h') || b.startsWith('<ul') || b.startsWith('<pre') || b.startsWith('<blockquote')) {
+                    return b;
+                }
+                return `<p class="text-slate-800 leading-relaxed text-xs my-1.5">${b.replace(/\n/g, '<br>')}</p>`;
+            });
+
+            return wrappedBlocks.filter(b => b.length > 0).join('\n');
+        }
+
+        function jumpToEvidence(msgId, citeIdx) {
+            const details = document.getElementById(`evidence-details-${msgId}`);
+            if (details) details.open = true;
+            setTimeout(() => {
+                const card = document.getElementById(`evidence-card-${msgId}-${citeIdx}`);
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    card.classList.add('ring-2', 'ring-blue-500', 'bg-blue-50');
+                    setTimeout(() => {
+                        card.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50');
+                    }, 2200);
+                }
+            }, 60);
+        }
+
+        function copyAnswerText(btn) {
+            const card = btn.closest('.answer-card');
+            if (!card) return;
+            const raw = card.getAttribute('data-raw-content') || card.innerText;
+            navigator.clipboard.writeText(raw).then(() => {
+                const orig = btn.innerHTML;
+                btn.innerHTML = `<svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg><span class="text-emerald-700 font-semibold">Copied!</span>`;
+                setTimeout(() => { btn.innerHTML = orig; }, 2000);
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = raw;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                btn.innerText = 'Copied!';
+                setTimeout(() => { btn.innerText = 'Copy'; }, 2000);
+            });
+        }
+
+        function copySnippet(btn, text) {
+            navigator.clipboard.writeText(text).then(() => {
+                const orig = btn.innerHTML;
+                btn.innerHTML = `<svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
+                setTimeout(() => { btn.innerHTML = orig; }, 1500);
+            });
+        }
+
         function appendAssistantMessageToUI(msg) {
             const history = document.getElementById('chat-history');
             const div = document.createElement('div');
             div.className = "flex justify-start space-x-3";
 
+            const msgId = ++assistantMessageCounter;
             const ga = msg.grounded_answer || {};
-            const provUsed = ga.provider_used || (msg.provider_used || 'ollama');
-            const modelUsed = ga.model_name || (msg.model_name || 'llama3.2:1b');
-            const conf = msg.confidence !== undefined ? (msg.confidence * 100).toFixed(1) : '95.0';
+            const provUsed = ga.provider_used || (msg.provider_used || 'deterministic_grounded_engine');
+            const modelUsed = ga.model_name || (msg.model_name || 'hopfield_evidence_synthesizer');
+            const confVal = msg.confidence !== undefined ? msg.confidence : 0.95;
+            const conf = (confVal * 100).toFixed(1);
             const latency = msg.latencies ? `${msg.latencies.total_ms}ms` : '3.1s';
+            const rawContent = msg.content || '';
 
-            // Citations highlighting
-            let formattedContent = escapeHtml(msg.content || '');
-            formattedContent = formattedContent.replace(/\[E(\d+)\]/g, '<span class="inline-flex items-center px-1.5 py-0.2 rounded-md bg-blue-100 text-blue-800 text-[11px] font-bold mx-0.5 border border-blue-200">[E$1]</span>');
-            formattedContent = formattedContent.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+            // Calibrated Grounding status
+            let confBadgeClass = "bg-emerald-50 text-emerald-800 border-emerald-200";
+            let confIcon = `<svg class="w-3 h-3 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
+            let confText = `Verified Grounded (${conf}%)`;
+            if (ga.abstained) {
+                confBadgeClass = "bg-rose-50 text-rose-800 border-rose-200";
+                confIcon = `<svg class="w-3 h-3 text-rose-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>`;
+                confText = "Abstained (Insufficient Evidence)";
+            } else if (confVal < 0.65) {
+                confBadgeClass = "bg-amber-50 text-amber-800 border-amber-200";
+                confIcon = `<svg class="w-3 h-3 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>`;
+                confText = `Moderate Confidence (${conf}%)`;
+            }
+
+            const claims = ga.claims || [];
+            const verifiedClaims = claims.filter(c => c.is_verified);
+            let claimsBadge = '';
+            if (claims.length > 0) {
+                claimsBadge = `
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200" title="${verifiedClaims.length} of ${claims.length} claims verified against retrieved passages">
+                        ${verifiedClaims.length}/${claims.length} Claims Verified
+                    </span>
+                `;
+            }
+
+            // Render Markdown & Citations
+            const formattedContent = renderMarkdown(rawContent, msg.evidence, msgId);
 
             // Diagnostics accordion HTML
             let diagHTML = '';
@@ -923,7 +1071,7 @@
             let evidenceHTML = '';
             if (msg.evidence && msg.evidence.length > 0) {
                 evidenceHTML = `
-                    <details class="group mt-2 border border-slate-200 rounded-xl overflow-hidden text-xs bg-slate-50">
+                    <details id="evidence-details-${msgId}" class="group mt-2 border border-slate-200 rounded-xl overflow-hidden text-xs bg-slate-50">
                         <summary class="px-4 py-2 font-semibold text-slate-700 cursor-pointer flex items-center justify-between hover:bg-slate-100 transition select-none">
                             <span class="flex items-center gap-1.5 text-slate-700">
                                 <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -933,10 +1081,19 @@
                         </summary>
                         <div class="p-3 space-y-2 bg-white border-t border-slate-200">
                             ${msg.evidence.map((e, idx) => `
-                                <div class="p-2.5 rounded-lg border border-slate-100 bg-slate-50/70 text-xs space-y-1">
+                                <div id="evidence-card-${msgId}-${idx+1}" class="p-3 rounded-xl border border-slate-100 bg-slate-50/70 text-xs space-y-1.5 transition duration-300">
                                     <div class="flex items-center justify-between text-[11px]">
-                                        <span class="font-bold text-blue-800">[E${idx+1}] &bull; ${escapeHtml(e.source || 'Doc')}</span>
-                                        <span class="font-mono text-slate-500">Score: ${Number(e.score).toFixed(4)}</span>
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="font-bold text-blue-700 font-mono bg-blue-100/70 px-1.5 py-0.5 rounded border border-blue-200">[E${idx+1}]</span>
+                                            <span class="font-semibold text-slate-800 truncate max-w-[220px]" title="${escapeHtml(e.source || 'Doc')}">${escapeHtml(e.source || 'Doc')}</span>
+                                            ${e.page_number ? `<span class="text-[10px] text-slate-400">p.${e.page_number}</span>` : ''}
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-mono text-[10px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">Score: ${Number(e.score).toFixed(4)}</span>
+                                            <button onclick="copySnippet(this, ${JSON.stringify(e.text || '')})" class="text-slate-400 hover:text-slate-600 p-0.5 rounded" title="Copy excerpt">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                            </button>
+                                        </div>
                                     </div>
                                     <p class="text-slate-700 leading-relaxed text-[11px]">${escapeHtml(e.text || '')}</p>
                                 </div>
@@ -952,8 +1109,26 @@
                 </div>
                 <div class="flex-1 max-w-[88%]">
                     <!-- Grounded Answer Card -->
-                    <div class="bg-white border border-slate-200 rounded-2xl rounded-tl-xs p-5 shadow-xs text-sm leading-relaxed text-slate-800">
-                        ${formattedContent}
+                    <div class="answer-card bg-white border border-slate-200 rounded-2xl rounded-tl-xs p-5 shadow-xs text-sm leading-relaxed text-slate-800" data-raw-content="${escapeHtml(rawContent)}">
+                        <!-- Header with Grounding Badge & Copy Button -->
+                        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${confBadgeClass}">
+                                    ${confIcon} <span>${confText}</span>
+                                </span>
+                                ${claimsBadge}
+                            </div>
+                            <button onclick="copyAnswerText(this)" class="copy-btn text-xs text-slate-400 hover:text-slate-700 flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition border border-transparent hover:border-slate-200 cursor-pointer" title="Copy answer to clipboard">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                <span>Copy</span>
+                            </button>
+                        </div>
+
+                        <!-- Rendered Markdown Body -->
+                        <div class="markdown-body text-slate-800">
+                            ${formattedContent}
+                        </div>
+
                         ${diagHTML}
                         ${evidenceHTML}
                         

@@ -222,6 +222,7 @@ class HopfieldAssociativeEngine:
 
         # Entity-aware hybrid co-attractor reinforcement
         effective_attn = final_attn.clone()
+        entity_scores = None
         if raw_query:
             import re
             STOP_TOKENS = {
@@ -231,7 +232,13 @@ class HopfieldAssociativeEngine:
                 'about', 'through', 'during', 'before', 'after', 'some', 'more', 'most',
                 'are', 'is', 'was', 'were', 'been', 'being', 'used', 'use', 'using',
                 'also', 'than', 'then', 'just', 'very', 'much', 'such', 'only', 'other',
-                'explain', 'overview', 'detail', 'detailed', 'their', 'responsibilities'
+                'explain', 'overview', 'detail', 'detailed', 'their', 'responsibilities',
+                'component', 'components', 'responsibility', 'work', 'works', 'working',
+                'workload', 'workloads', 'architecture', 'process', 'processes', 'role',
+                'roles', 'purpose', 'purposes', 'feature', 'features', 'aspect', 'aspects',
+                'function', 'functions', 'mechanism', 'mechanisms', 'part', 'parts',
+                'element', 'elements', 'tool', 'tools', 'type', 'types', 'system', 'systems',
+                'example', 'examples', 'advantage', 'advantages', 'benefit', 'benefits'
             }
             raw_entities = [
                 w.lower() for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', raw_query)
@@ -245,7 +252,8 @@ class HopfieldAssociativeEngine:
                     entity_scores[idx] = hits / len(raw_entities)
 
                 if entity_scores.max() > 0:
-                    effective_attn = final_attn * (1.0 + 2.0 * entity_scores)
+                    penalty_mask = torch.where(entity_scores > 0, 1.0 + 3.0 * entity_scores, 0.05)
+                    effective_attn = final_attn * penalty_mask
 
         core_vals, core_idxs = torch.topk(effective_attn, k=min(top_k, N))
         core_idxs_set = set(core_idxs.cpu().numpy().tolist())
@@ -259,7 +267,18 @@ class HopfieldAssociativeEngine:
                     seen.add(idx)
                     all_visited_ordered.append(idx)
 
-        bridge_idxs = [idx for idx in all_visited_ordered if idx not in core_idxs_set][:top_k]
+        # Filter candidate bridges: exclude core attractors
+        candidate_bridges = [idx for idx in all_visited_ordered if idx not in core_idxs_set]
+
+        # Avoid picking off-topic drift chunks that have 0 entity hits when entity hits exist
+        if entity_scores is not None and entity_scores.max() > 0:
+            entity_matching_bridges = [idx for idx in candidate_bridges if entity_scores[idx] > 0]
+            if entity_matching_bridges:
+                candidate_bridges = entity_matching_bridges
+
+        # Rank bridge chunks by their effective attention
+        candidate_bridges.sort(key=lambda idx: float(effective_attn[idx].item()), reverse=True)
+        bridge_idxs = candidate_bridges[:top_k]
 
         def build_retrieval_result(idx: int, rank: int, is_core: bool) -> RetrievalResult:
             meta = metadata[idx]

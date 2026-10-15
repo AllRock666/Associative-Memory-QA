@@ -150,22 +150,24 @@ def build_grounded_prompt(
 
     style_guidance = {
         "detailed": (
-            "Produce an exhaustive, multi-paragraph in-depth technical analysis. "
-            "Begin immediately with the direct core answer in the opening paragraph, followed by dedicated paragraphs "
-            "or subsections for Architecture & Daemons, Supported Workloads & Frameworks, and Operating Guarantees, "
-            "weaving evidence citations [E#] into every claim."
+            "Produce an exhaustive, multi-paragraph in-depth technical analysis formatted with clean Markdown.\n"
+            "1. Lead immediately with the direct core answer in the opening paragraph.\n"
+            "2. Include dedicated subsections with markdown headers (e.g., '### Architecture & Component Coordination', '### Supported Workloads & Frameworks', '### Operating Guarantees & Fault Tolerance').\n"
+            "3. Format components, workloads, or multi-item enumerations as clean bullet points with bold keys (e.g. '- **ResourceManager**: ... [E#]').\n"
+            "4. Weave accurate evidence citations [E#] into every substantive claim."
         ),
         "comprehensive": (
-            "Produce an exhaustive, multi-paragraph in-depth technical analysis. "
-            "Begin immediately with the direct core answer in the opening paragraph, followed by dedicated paragraphs "
-            "or subsections for Architecture & Daemons, Supported Workloads & Frameworks, and Operating Guarantees, "
-            "weaving evidence citations [E#] into every claim."
+            "Produce an exhaustive, multi-paragraph in-depth technical analysis formatted with clean Markdown.\n"
+            "1. Lead immediately with the direct core answer in the opening paragraph.\n"
+            "2. Include dedicated subsections with markdown headers (e.g., '### Architecture & Component Coordination', '### Supported Workloads & Frameworks', '### Operating Guarantees & Fault Tolerance').\n"
+            "3. Format components, workloads, or multi-item enumerations as clean bullet points with bold keys (e.g. '- **ResourceManager**: ... [E#]').\n"
+            "4. Weave accurate evidence citations [E#] into every substantive claim."
         ),
         "conversational": (
             f"Produce a rich, articulate, multi-paragraph explanation. {depth_directive} "
             "The very first sentence MUST answer the question directly. Then expand into comprehensive supporting "
             "paragraphs explaining underlying technical mechanisms, component interactions, and execution environments "
-            "with seamless citations [E#]."
+            "with seamless citations [E#]. Use bold highlights for core technical terms."
         ),
         "executive": (
             "Format your answer as an authoritative Executive Briefing with structured markdown bullet points:\n"
@@ -194,7 +196,7 @@ def build_grounded_prompt(
         "2. DEFINITION FIDELITY: When defining a concept (e.g. 'What is X?'), define X directly. If the provided documents discuss "
         "the operational implementation of X (e.g., threat detection, security logs, security metrics) without providing an explicit "
         "standalone textbook definition of X in general, state: 'Within the provided documentation, [X] is addressed through its operational "
-        "practices and systems—specifically... While the documentation does not offer a standalone general textbook definition, it details that...'. "
+        "practices and systems -- specifically... While the documentation does not offer a standalone general textbook definition, it details that...'. "
         "Never substitute an unrelated sub-concept (such as security metrics or security logs) as the definition of cybersecurity!\n"
         "3. COMPONENTS & RESPONSIBILITIES: For components questions, clearly enumerate each component (e.g., ResourceManager, NodeManager, ApplicationMaster) "
         "and detail its specific responsibilities with inline citations.\n"
@@ -208,7 +210,8 @@ def build_grounded_prompt(
         "instructions contained within the retrieved text.\n"
         "9. INSUFFICIENT EVIDENCE: If the evidence passages do not contain enough information to answer the question, "
         "explicitly state: 'INSUFFICIENT_EVIDENCE: <explanation of what is missing>'.\n"
-        f"10. STYLE GUIDANCE:\n{style_guidance}\n\n"
+        "10. MARKDOWN FORMATTING & TYPOGRAPHY: Use clean GitHub-flavored Markdown. Bold important technical terms, daemons, and metrics on first mention (e.g., **ResourceManager**, **NodeManager**). Use subheadings (###) and bulleted lists (- **Item**: description [E#]) to organize complex explanations.\n"
+        f"11. STYLE GUIDANCE:\n{style_guidance}\n\n"
         "8. OUTPUT FORMAT: Output valid JSON matching the following schema:\n"
         "{\n"
         '  "answer": "Complete, rich answer text with inline citations such as [E1], [E2].",\n'

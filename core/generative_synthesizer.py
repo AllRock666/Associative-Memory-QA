@@ -54,7 +54,8 @@ DISCOURSE_WORDS: Set[str] = {
     "standalone", "textbook", "definition", "details", "implemented", "organizational",
     "defense", "controls", "designed", "protect", "protecting", "aspects", "activities",
     "while", "not", "offer", "rather", "instead", "general", "monitoring",
-    "architecturally", "architecture", "global", "establishes", "identifies", "indicates", "demonstrates", "explains", "notes"
+    "architecturally", "architecture", "global", "establishes", "identifies", "indicates", "demonstrates", "explains", "notes",
+    "finding", "findings", "scope", "composed", "comprising", "primary", "key", "guarantee", "guarantees", "coordination", "summary", "executive"
 }
 
 # Regex patterns matching document cover pages, case study metadata, and course/author boilerplate
@@ -223,11 +224,14 @@ def clean_narrative_preamble(s: str) -> str:
     for pat in FILLER_PREFIXES:
         s = re.sub(pat, '', s, flags=re.I).strip()
 
-    # Normalize wordy phrases
+    # Normalize wordy phrases & broken PDF tokens
     s = re.sub(r'\bthe sophisticated orchestration of cluster resources via\b', 'orchestration of cluster resources by', s, flags=re.I)
     s = re.sub(r'\bthe sophisticated orchestration of\b', 'the orchestration of', s, flags=re.I)
     s = re.sub(r'\bwildly varying\b', 'diverse', s, flags=re.I)
     s = re.sub(r'\bmassive,\s*resource-intensive\b', 'resource-intensive', s, flags=re.I)
+    s = re.sub(r'\bco\s+mmunication\b', 'communication', s, flags=re.I)
+    s = re.sub(r'\bin\s+fra\s*structure\b', 'infrastructure', s, flags=re.I)
+    s = re.sub(r'\bmulti-\s*tenant\b', 'multi-tenant', s, flags=re.I)
 
     if s and s[0].islower():
         s = s[0].upper() + s[1:]
@@ -385,7 +389,10 @@ class CitationValidator:
                 verification_rationale = None
 
                 # Substantive content analysis
-                clean_claim = cls.CITATION_PATTERN.sub('', sent).lower()
+                clean_claim = cls.CITATION_PATTERN.sub('', sent)
+                clean_claim = re.sub(r'^\s*[-*•]\s*\*\*[^*]+\*\*:\s*', '', clean_claim)
+                clean_claim = re.sub(r'^\s*[-*•]\s*', '', clean_claim)
+                clean_claim = re.sub(r'[*_`#]', '', clean_claim).lower()
                 claim_words = [
                     w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', clean_claim)
                     if w not in STOP_WORDS and w not in DISCOURSE_WORDS
@@ -784,7 +791,7 @@ class GenerativeRAGSynthesizer:
                 m_cite = m_cand.citation_idx
                 s1 = (
                     f"Within the provided documentation, {target or 'cybersecurity'} is defined and addressed through its "
-                    f"operational practices—specifically security logs supporting threat detection, incident response, and "
+                    f"operational practices -- specifically security logs supporting threat detection, incident response, and "
                     f"forensic investigation to investigate security incidents and potential breaches [E{m_cite}]."
                 )
                 lead_sentences.append((s1, m_cite, m_cand))
@@ -987,13 +994,38 @@ class GenerativeRAGSynthesizer:
                 return f"{lead_sentences[0][0]} {lead_sentences[1][0]}", all_used_sentences
             return lead_sentences[0][0], all_used_sentences
 
+        elif style in ("detailed", "comprehensive"):
+            # Deep & Comprehensive Mode: Direct answer first followed by thematic markdown subsections
+            p1 = " ".join([ls[0] for ls in lead_sentences])
+            sections = [p1]
+
+            p2_parts = []
+            if arch_sents:
+                p2_parts.extend([s[0] for s in arch_sents[:2]])
+            elif other_sents:
+                p2_parts.append(other_sents[0][0])
+                other_sents = other_sents[1:]
+
+            if p2_parts:
+                sections.append("### Architecture & Component Coordination\n" + " ".join(p2_parts))
+
+            p3_parts = []
+            if guarantee_sents:
+                p3_parts.extend([s[0] for s in guarantee_sents[:2]])
+            elif other_sents:
+                p3_parts.extend([s[0] for s in other_sents[:2]])
+
+            if p3_parts:
+                sections.append("### Workload Execution & Operating Guarantees\n" + " ".join(p3_parts))
+
+            return "\n\n".join(sections), all_used_sentences
+
         else:
-            # Conversational / Detailed
+            # Conversational
             q_lower = query.lower()
             q_words = query.strip().split()
             is_deep = (
                 len(q_words) >= 6 or
-                style in ("detailed", "comprehensive") or
                 any(w in q_lower for w in [
                     "explain", "how", "why", "detail", "architecture", "overview",
                     "describe", "breakdown", "mechanism", "components", "elaborate", "and how"
