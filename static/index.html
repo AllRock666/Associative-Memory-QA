@@ -866,44 +866,78 @@
             // 2. Inline code (`code`)
             safe = safe.replace(/`([^`]+)`/g, '<code class="bg-slate-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-mono border border-slate-200">$1</code>');
 
-            // 3. Headers: ### Subheading, ## Heading
-            safe = safe.replace(/^### (.*$)/gim, '<h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider mt-4 mb-2 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block"></span>$1</h3>');
+            // 3. Horizontal rules: --- or ***
+            safe = safe.replace(/^(?:---|\*\*\*|___)\s*$/gm, '<hr class="my-4 border-slate-200">');
+
+            // 4. Headers: # Heading 1, ## Heading 2, ### Heading 3
+            safe = safe.replace(/^# (.*$)/gim, '<h1 class="text-sm font-bold text-slate-900 mt-4 mb-2 flex items-center gap-1.5">$1</h1>');
             safe = safe.replace(/^## (.*$)/gim, '<h2 class="text-sm font-bold text-slate-900 mt-4 mb-2 flex items-center gap-1.5">$1</h2>');
+            safe = safe.replace(/^### (.*$)/gim, '<h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider mt-4 mb-2 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block"></span>$1</h3>');
 
-            // 4. Bold text: **bold**
+            // 5. Bold & Italic: **bold**, *italic*
             safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-slate-900">$1</strong>');
-
-            // 5. Italic text: *italic*
             safe = safe.replace(/\*([^*]+)\*/g, '<em class="italic text-slate-700">$1</em>');
 
             // 6. Blockquotes: > quote
             safe = safe.replace(/^> (.*$)/gim, '<blockquote class="border-l-3 border-blue-500 pl-3 my-2 text-slate-600 italic bg-blue-50/30 py-1 rounded-r-lg">$1</blockquote>');
 
-            // 7. Bullet lists: lines starting with "- " or "* "
+            // 7. Markdown Tables: | col1 | col2 |
+            safe = safe.replace(/(?:^|\n)((?:\|[^\n]+\|\r?\n?){2,})/g, function(match, tableBlock) {
+                const rows = tableBlock.trim().split('\n').map(r => r.trim()).filter(r => r.length > 0);
+                if (rows.length < 2) return match;
+                
+                const isDelimiter = rows[1].includes('---') || rows[1].includes('-|-');
+                if (!isDelimiter) return match;
+
+                const parseCols = (rowStr) => {
+                    let parts = rowStr.split('|');
+                    if (parts.length > 0 && parts[0].trim() === '') parts.shift();
+                    if (parts.length > 0 && parts[parts.length - 1].trim() === '') parts.pop();
+                    return parts.map(p => p.trim());
+                };
+
+                const ths = parseCols(rows[0]).map(h => `<th class="px-3.5 py-2.5 font-bold text-slate-800 bg-slate-50 border-b border-slate-200">${h}</th>`).join('');
+                
+                let tbodyRows = [];
+                for (let i = 2; i < rows.length; i++) {
+                    const tds = parseCols(rows[i]).map(c => `<td class="px-3.5 py-2 text-slate-700 border-b border-slate-100 font-normal">${c}</td>`).join('');
+                    tbodyRows.push(`<tr class="hover:bg-slate-50/70 transition">${tds}</tr>`);
+                }
+
+                return `\n<div class="overflow-x-auto my-3 rounded-xl border border-slate-200 shadow-2xs"><table class="min-w-full text-xs text-left"><thead class="bg-slate-50"><tr>${ths}</tr></thead><tbody class="bg-white divide-y divide-slate-100">${tbodyRows.join('')}</tbody></table></div>\n`;
+            });
+
+            // 8. Bullet & Numbered lists
             const lines = safe.split('\n');
-            let inList = false;
+            let inUl = false;
+            let inOl = false;
             let processedLines = [];
             for (let line of lines) {
                 const trimmed = line.trim();
+                const numMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+
                 if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-                    if (!inList) {
-                        processedLines.push('<ul class="space-y-1.5 my-2">');
-                        inList = true;
-                    }
+                    if (inOl) { processedLines.push('</ol>'); inOl = false; }
+                    if (!inUl) { processedLines.push('<ul class="space-y-1.5 my-2">'); inUl = true; }
                     const itemContent = trimmed.substring(2);
                     processedLines.push(`<li class="flex items-start gap-2 text-xs leading-relaxed text-slate-700"><span class="text-blue-500 mt-1 flex-shrink-0 leading-none">&bull;</span><span>${itemContent}</span></li>`);
+                } else if (numMatch) {
+                    if (inUl) { processedLines.push('</ul>'); inUl = false; }
+                    if (!inOl) { processedLines.push('<ol class="space-y-1.5 my-2">'); inOl = true; }
+                    const num = numMatch[1];
+                    const itemContent = numMatch[2];
+                    processedLines.push(`<li class="flex items-start gap-2 text-xs leading-relaxed text-slate-700"><span class="font-bold text-blue-600 flex-shrink-0">${num}.</span><span>${itemContent}</span></li>`);
                 } else {
-                    if (inList) {
-                        processedLines.push('</ul>');
-                        inList = false;
-                    }
+                    if (inUl) { processedLines.push('</ul>'); inUl = false; }
+                    if (inOl) { processedLines.push('</ol>'); inOl = false; }
                     processedLines.push(line);
                 }
             }
-            if (inList) processedLines.push('</ul>');
+            if (inUl) processedLines.push('</ul>');
+            if (inOl) processedLines.push('</ol>');
             safe = processedLines.join('\n');
 
-            // 8. Interactive Citations [E1], [E2]
+            // 9. Interactive Citations [E1], [E2]
             safe = safe.replace(/\[E(\d+)\]/g, function(match, num) {
                 const citeIdx = parseInt(num, 10);
                 let tooltip = `Supporting Evidence Passage [E${citeIdx}]`;
@@ -916,12 +950,20 @@
                 return `<button type="button" onclick="jumpToEvidence(${msgId}, ${citeIdx})" class="citation-pill inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white text-[11px] font-bold mx-0.5 border border-blue-200 cursor-pointer transition shadow-2xs group" title="${escapeHtml(tooltip)}"><svg class="w-2.5 h-2.5 text-blue-500 group-hover:text-white transition flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>[E${citeIdx}]</button>`;
             });
 
-            // 9. Paragraphs (split by double newlines, ignoring block elements)
+            // 10. Paragraphs (split by double newlines, ignoring block elements)
             const blocks = safe.split(/\n\s*\n/);
             const wrappedBlocks = blocks.map(block => {
                 const b = block.trim();
                 if (!b) return '';
-                if (b.startsWith('<h') || b.startsWith('<ul') || b.startsWith('<pre') || b.startsWith('<blockquote')) {
+                if (
+                    b.startsWith('<h') ||
+                    b.startsWith('<ul') ||
+                    b.startsWith('<ol') ||
+                    b.startsWith('<pre') ||
+                    b.startsWith('<blockquote') ||
+                    b.startsWith('<hr') ||
+                    b.startsWith('<div class="overflow-x-auto')
+                ) {
                     return b;
                 }
                 return `<p class="text-slate-800 leading-relaxed text-xs my-1.5">${b.replace(/\n/g, '<br>')}</p>`;

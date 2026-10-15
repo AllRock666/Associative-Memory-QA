@@ -46,7 +46,7 @@ class LLMConfig:
     model: str = "llama3.2"
     api_key: Optional[str] = None
     timeout_seconds: float = 60.0
-    max_tokens: int = 2048
+    max_tokens: int = 4096
     temperature: float = 0.2
     fallback_to_deterministic: bool = True
 
@@ -64,9 +64,9 @@ class LLMConfig:
             timeout_seconds = 60.0
 
         try:
-            max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "2048"))
+            max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "4096"))
         except ValueError:
-            max_tokens = 2048
+            max_tokens = 4096
 
         try:
             temperature = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
@@ -138,26 +138,26 @@ def build_grounded_prompt(
         "explain", "how", "why", "detail", "detailed", "architecture", "mechanism",
         "describe", "overview", "breakdown", "elaborate", "comprehensive", "workload",
         "compare", "difference", "components", "lifecycle", "what are the"
-    ]) or q_len >= 7
+    ]) or q_len >= 6
 
     depth_directive = (
-        "The user's query demands a thorough, comprehensive, and detailed explanation. "
-        "Do NOT provide a brief, shallow, or one-sentence answer. Expand into multiple detailed paragraphs "
-        "covering the core definition, architecture, component daemons, supported workloads, and operational mechanics."
+        "The user's query demands an in-depth, production-quality technical explanation (target ~600-1,200 words when evidence supports it). "
+        "Do NOT provide a brief, shallow, or 1-3 line response. Expand into comprehensive, logically organized sections with markdown headers "
+        "covering core definitions, architecture, component daemons, execution workflows, and operating guarantees."
         if is_explanatory else
         "Provide a substantive, well-developed answer that matches the question depth."
     )
 
     style_guidance = {
         "detailed": (
-            "Produce an exhaustive, multi-paragraph in-depth technical analysis formatted with clean Markdown.\n"
+            "Produce an exhaustive, multi-paragraph in-depth technical analysis formatted with clean Markdown (aiming for ~600-1,200 words where evidence supports it).\n"
             "1. Lead immediately with the direct core answer in the opening paragraph.\n"
             "2. Include dedicated subsections with markdown headers (e.g., '### Architecture & Component Coordination', '### Supported Workloads & Frameworks', '### Operating Guarantees & Fault Tolerance').\n"
             "3. Format components, workloads, or multi-item enumerations as clean bullet points with bold keys (e.g. '- **ResourceManager**: ... [E#]').\n"
             "4. Weave accurate evidence citations [E#] into every substantive claim."
         ),
         "comprehensive": (
-            "Produce an exhaustive, multi-paragraph in-depth technical analysis formatted with clean Markdown.\n"
+            "Produce an exhaustive, multi-paragraph in-depth technical analysis formatted with clean Markdown (aiming for ~600-1,200 words where evidence supports it).\n"
             "1. Lead immediately with the direct core answer in the opening paragraph.\n"
             "2. Include dedicated subsections with markdown headers (e.g., '### Architecture & Component Coordination', '### Supported Workloads & Frameworks', '### Operating Guarantees & Fault Tolerance').\n"
             "3. Format components, workloads, or multi-item enumerations as clean bullet points with bold keys (e.g. '- **ResourceManager**: ... [E#]').\n"
@@ -212,13 +212,14 @@ def build_grounded_prompt(
         "explicitly state: 'INSUFFICIENT_EVIDENCE: <explanation of what is missing>'.\n"
         "10. MARKDOWN FORMATTING & TYPOGRAPHY: Use clean GitHub-flavored Markdown. Bold important technical terms, daemons, and metrics on first mention (e.g., **ResourceManager**, **NodeManager**). Use subheadings (###) and bulleted lists (- **Item**: description [E#]) to organize complex explanations.\n"
         f"11. STYLE GUIDANCE:\n{style_guidance}\n\n"
-        "8. OUTPUT FORMAT: Output valid JSON matching the following schema:\n"
+        "12. OUTPUT FORMAT: Output valid JSON matching the following schema:\n"
         "{\n"
         '  "answer": "Complete, rich answer text with inline citations such as [E1], [E2].",\n'
         '  "claims": [\n'
         '    {"text": "A specific factual claim from the answer.", "evidence_ids": ["E1"]}\n'
         '  ]\n'
-        "}"
+        "}\n"
+        "(You may also output Markdown directly if JSON is unnecessary, ensuring inline citations [E#] are included.)"
     )
 
     evidence_blocks = []
@@ -326,6 +327,29 @@ def parse_structured_llm_output(raw_text: str) -> Tuple[str, List[Dict[str, Any]
                 return ans, formatted_claims, False, None
     except Exception as e:
         logger.debug(f"JSON parsing of LLM response failed: {e}. Falling back to text extraction.")
+
+    # Unclosed or truncated JSON recovery: e.g. {"answer": "...", ... without closing braces
+    if "answer" in json_candidate:
+        ans_pattern = re.search(r'"answer"\s*:\s*"((?:[^"\\]|\\.)*)', json_candidate)
+        if ans_pattern:
+            raw_ans = ans_pattern.group(1)
+            try:
+                ans = json.loads(f'"{raw_ans}"')
+            except Exception:
+                ans = raw_ans.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
+            ans = ans.strip()
+            if ans and not ans.startswith("INSUFFICIENT_EVIDENCE:"):
+                claims = []
+                sentences = re.split(r'(?<=[.!?])\s+', ans)
+                for s in sentences:
+                    s_clean = s.strip()
+                    cite_matches = re.findall(r'\[E(\d+)\]', s_clean)
+                    if cite_matches:
+                        claims.append({
+                            "text": s_clean,
+                            "evidence_ids": [f"E{m}" for m in cite_matches]
+                        })
+                return ans, claims, False, None
 
     # Fallback: Treat as plain text
     ans = clean_text
@@ -724,10 +748,19 @@ class MockLLMProvider(BaseLLMProvider):
             ]
 
         else:
-            # Generic fluent mock answer
-            first_sentence = top_chunk.text.strip().split('.')[0] + f" [{cite_id}]."
-            ans = f"Based on the retrieved evidence, {first_sentence}"
-            claims = [{"text": ans, "evidence_ids": [cite_id]}]
+            # High-fidelity grounded answer synthesis matching production depth
+            from core.generative_synthesizer import GenerativeRAGSynthesizer
+            synth = GenerativeRAGSynthesizer()
+            ans, _ = synth._deterministic_grounded_synthesis(query, evidence_chunks, style)
+            claims = []
+            for s in re.split(r'(?<=[.!?])\s+', ans):
+                s_clean = s.strip()
+                c_matches = re.findall(r'\[E(\d+)\]', s_clean)
+                if c_matches:
+                    claims.append({
+                        "text": s_clean,
+                        "evidence_ids": [f"E{m}" for m in c_matches]
+                    })
 
         elapsed_ms = max(0.1, (time.perf_counter() - t_start) * 1000)
         return LLMResult(

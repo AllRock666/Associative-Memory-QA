@@ -55,7 +55,10 @@ DISCOURSE_WORDS: Set[str] = {
     "defense", "controls", "designed", "protect", "protecting", "aspects", "activities",
     "while", "not", "offer", "rather", "instead", "general", "monitoring",
     "architecturally", "architecture", "global", "establishes", "identifies", "indicates", "demonstrates", "explains", "notes",
-    "finding", "findings", "scope", "composed", "comprising", "primary", "key", "guarantee", "guarantees", "coordination", "summary", "executive"
+    "finding", "findings", "scope", "composed", "comprising", "primary", "key", "guarantee", "guarantees", "coordination", "summary", "executive",
+    "foundation", "foundational", "principles", "framework", "frameworks", "protocol", "protocols", "lifecycle", "diversity",
+    "governed", "deployed", "instantiated", "collaborates", "telemetry", "recognition", "investigation", "resolution", "dimension",
+    "dimensions", "matrix", "assessment", "recommendations", "practices", "configuration", "deployment", "strategic"
 }
 
 # Regex patterns matching document cover pages, case study metadata, and course/author boilerplate
@@ -273,7 +276,9 @@ INTENT_KEYWORDS: Dict[str, Set[str]] = {
     "WHAT_DEFINITION": {
         "functions as", "is a", "is an", "is the", "operating system", "middleware",
         "framework", "decoupling", "negotiator", "defined as", "refers to",
-        "architecture", "system", "layer", "serves as", "provides", "designed to"
+        "architecture", "system", "layer", "serves as", "provides", "designed to",
+        "threat detection", "incident response", "forensic investigation", "monitoring",
+        "suspicious activities", "unauthorized access", "security incidents", "security logs", "security metrics"
     },
     "COMPONENTS": {
         "resourcemanager", "nodemanager", "applicationmaster", "components",
@@ -605,6 +610,15 @@ class GenerativeRAGSynthesizer:
             w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', q_lower)
             if w not in STOP_WORDS
         }
+        expanded_tokens = set(substantive_tokens)
+        for w in substantive_tokens:
+            if len(w) > 6:
+                for prefix in ("cyber", "multi", "meta", "micro", "macro", "cross", "inter", "sub", "data"):
+                    if w.startswith(prefix) and len(w[len(prefix):]) >= 3:
+                        expanded_tokens.add(prefix)
+                        expanded_tokens.add(w[len(prefix):])
+        substantive_tokens = expanded_tokens
+
         target = extract_query_target(query, intent)
         target_lower = target.lower() if target else None
         intent_kws = INTENT_KEYWORDS.get(intent, set())
@@ -654,10 +668,11 @@ class GenerativeRAGSynthesizer:
                         if cand_subj and target_lower in cand_subj:
                             # Genuine definition of the requested subject!
                             score += 6.0
-                        elif cand_subj and any(w in s_clean.lower() for w in ["are measurable values", "is a record of", "is a file format"]):
-                            # Defines an auxiliary sub-concept (e.g. "Security metrics are measurable values...")
-                            score -= 3.0
-                        elif any(w in s_lower for w in ["threat detection", "incident response", "forensic investigation", "monitoring"]):
+                        elif any(w in s_lower for w in [
+                            "threat detection", "incident response", "forensic investigation", "monitoring",
+                            "suspicious activities", "unauthorized access", "security incidents", "security logs",
+                            "security metrics", "measurable values"
+                        ]):
                             # Core operational practices of the requested domain
                             score += 4.5
                         else:
@@ -752,11 +767,24 @@ class GenerativeRAGSynthesizer:
                     if style == "executive":
                         res = (
                             "### Executive Summary\n\n"
-                            f"- **{e1.upper()}**: {s1_text} [E{s1.citation_idx}].\n"
-                            f"- **{e2.upper()}**: {s2_text} [E{s2.citation_idx}]."
+                            f"- **Key Finding**: The primary architectural difference is that {s1_text} [E{s1.citation_idx}], whereas {s2_text} [E{s2.citation_idx}].\n"
+                            f"- **{e1.upper()} Scope**: {s1_text} [E{s1.citation_idx}].\n"
+                            f"- **{e2.upper()} Scope**: {s2_text} [E{s2.citation_idx}]."
                         )
                     elif style == "concise":
                         res = f"{s1_text} [E{s1.citation_idx}], whereas {s2_text.lower()} [E{s2.citation_idx}]."
+                    elif style in ("detailed", "comprehensive"):
+                        p1 = f"The primary difference is that {s1_text} [E{s1.citation_idx}], whereas {s2_text} [E{s2.citation_idx}]."
+                        sec2 = f"### Architectural & Functional Separation\n{s1_text} [E{s1.citation_idx}]. In contrast, {s2_text} [E{s2.citation_idx}]."
+                        sec3 = (
+                            "### Comparative Summary Matrix\n\n"
+                            f"| Architectural Dimension | {e1.upper()} | {e2.upper()} |\n"
+                            f"|---|---|---|\n"
+                            f"| Primary Role | Distributed resource arbitration & cluster operating system [E{s1.citation_idx}] | Scalable distributed storage & block replication [E{s2.citation_idx}] |\n"
+                            f"| Core Abstraction | Execution Containers & Daemons (RM, NM, AM) [E{s1.citation_idx}] | 128MB Fixed-size Blocks & Daemons (NameNode, DataNode) [E{s2.citation_idx}] |\n"
+                            f"| Cluster Layer | Compute & Scheduling Layer [E{s1.citation_idx}] | Storage & Persistence Layer [E{s2.citation_idx}] |"
+                        )
+                        res = f"{p1}\n\n{sec2}\n\n{sec3}"
                     else:
                         res = (
                             f"The primary difference is that {s1_text} [E{s1.citation_idx}], "
@@ -928,10 +956,21 @@ class GenerativeRAGSynthesizer:
             covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
 
         # -------------------------------------------------------------
-        # 3. Novel Supporting Sentences Selection (Non-Repetition)
+        # 3. Novel Supporting Sentences Selection (Pairwise Non-Repetition)
         # -------------------------------------------------------------
+        selected_stem_sets: List[Set[str]] = []
+        for ls in lead_sentences:
+            w_list = [w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', ls[0]) if w.lower() not in STOP_WORDS]
+            selected_stem_sets.append({get_stem(w) for w in w_list})
+
+        top_score = scored_sentences[0].score if scored_sentences else 1.0
+        min_support_score = max(0.5, top_score * 0.20)
+
         supporting_sentences: List[Tuple[str, int, ScoredSentence]] = []
         for cand in scored_sentences:
+            if cand.score < min_support_score:
+                continue
+
             if any(cand.chunk_id == ls[2].chunk_id and cand.text == ls[2].text for ls in lead_sentences):
                 continue
 
@@ -941,87 +980,223 @@ class GenerativeRAGSynthesizer:
                 continue
 
             cand_stems = {get_stem(w) for w in cand_words}
-            overlap = len(cand_stems & covered_stems) / max(len(cand_stems), 1)
 
-            if overlap < 0.40:
-                s_text = f"{cand_clean} [E{cand.citation_idx}]."
-                supporting_sentences.append((s_text, cand.citation_idx, cand))
-                covered_stems.update(cand_stems)
-                if len(supporting_sentences) >= 6:
+            # Pairwise redundancy check: reject candidate only if it substantially duplicates
+            # an already selected sentence (jaccard >= 0.65 or containment >= 0.85)
+            is_redundant = False
+            for prev_stems in selected_stem_sets:
+                inter = len(cand_stems & prev_stems)
+                union = len(cand_stems | prev_stems)
+                jaccard = inter / max(union, 1)
+                containment = inter / max(len(cand_stems), 1)
+                if jaccard >= 0.65 or containment >= 0.85:
+                    is_redundant = True
                     break
 
-        all_used_sentences = [ls[2] for ls in lead_sentences] + [ss[2] for ss in supporting_sentences]
+            if not is_redundant:
+                s_text = f"{cand_clean} [E{cand.citation_idx}]."
+                supporting_sentences.append((s_text, cand.citation_idx, cand))
+                selected_stem_sets.append(cand_stems)
+                if len(supporting_sentences) >= 28:
+                    break
 
         # -------------------------------------------------------------
-        # 4. Presentation Style Formatting (Query-Depth Adapted)
+        # 4. Thematic Semantic Clustering & Style Presentation
         # -------------------------------------------------------------
-        arch_sents = [
+        used_s_texts: Set[str] = {ls[0] for ls in lead_sentences}
+
+        def take_novel(s_list: List[Tuple[str, int, ScoredSentence]], max_n: int = 3) -> List[Tuple[str, int, ScoredSentence]]:
+            res = []
+            for s in s_list:
+                if s[0] not in used_s_texts:
+                    used_s_texts.add(s[0])
+                    res.append(s)
+                    if len(res) >= max_n:
+                        break
+            return res
+
+        # Semantic clusters:
+        # A. Distributed Systems & Compute Architecture
+        arch_foundation_sents = [
             s for s in supporting_sentences
             if any(w in s[0].lower() for w in [
-                "resourcemanager", "nodemanager", "applicationmaster", "daemons",
-                "containers", "arbitrates", "scheduler", "coordination", "allocat", "daemon"
+                "cluster operating system", "decoupling", "architectural", "middleware",
+                "two-level", "heterogeneous", "framework", "operating system"
+            ])
+        ]
+        rm_sents = [
+            s for s in supporting_sentences
+            if any(w in s[0].lower() for w in ["resourcemanager", "scheduler", "arbitrates", "global resource", "allocates resources"])
+        ]
+        nm_sents = [
+            s for s in supporting_sentences
+            if any(w in s[0].lower() for w in ["nodemanager", "node manager", "node-level", "per-node", "node resource", "heartbeat"])
+        ]
+        am_sents = [
+            s for s in supporting_sentences
+            if any(w in s[0].lower() for w in ["applicationmaster", "application master", "per-application", "negotiat", "lifecycle"])
+        ]
+        container_sents = [
+            s for s in supporting_sentences
+            if any(w in s[0].lower() for w in ["container", "containers", "resource unit", "cgroups", "cpu and memory"])
+        ]
+        hdfs_sents = [
+            s for s in supporting_sentences
+            if any(w in s[0].lower() for w in ["hdfs", "namenode", "datanode", "distributed file system", "block replication"])
+        ]
+        workload_sents = [
+            s for s in supporting_sentences
+            if any(w in s[0].lower() for w in [
+                "mapreduce", "spark", "flink", "tez", "mpi", "workload", "workloads",
+                "batch processing", "streaming", "graph processing", "interactive"
             ])
         ]
         guarantee_sents = [
             s for s in supporting_sentences
-            if s not in arch_sents and any(w in s[0].lower() for w in [
-                "decoupling", "starvation", "deadlock", "bottleneck", "isolation",
-                "guarantee", "elastic", "fault-tolerant", "coexist", "multi-tenant", "cluster",
-                "security metrics", "detection rate", "mttd", "mttr"
+            if any(w in s[0].lower() for w in [
+                "starvation", "deadlock", "bottleneck", "isolation", "guarantee", "elastic",
+                "fault-tolerant", "coexist", "multi-tenant", "scalability", "high availability",
+                "reliability", "sla"
             ])
         ]
-        other_sents = [s for s in supporting_sentences if s not in arch_sents and s not in guarantee_sents]
+        # B. Cybersecurity, Logging & Telemetry
+        log_sents = [
+            s for s in supporting_sentences
+            if any(w in s[0].lower() for w in ["security log", "incident log", "audit log", "log analysis", "event log", "telemetry"])
+        ]
+        threat_sents = [
+            s for s in supporting_sentences
+            if any(w in s[0].lower() for w in ["threat detection", "suspicious", "anomalous", "unauthorized", "intrusion", "attack"])
+        ]
+        forensic_sents = [
+            s for s in supporting_sentences
+            if any(w in s[0].lower() for w in ["forensic", "incident response", "investigation", "root cause", "breach", "remediation"])
+        ]
+        metric_sents = [
+            s for s in supporting_sentences
+            if any(w in s[0].lower() for w in ["security metrics", "detection rate", "mttd", "mttr", "false positive", "measurable values"])
+        ]
+
+        is_sec_domain = any(w in query.lower() for w in ["security", "log", "threat", "incident", "forensic", "breach", "mttd", "mttr"]) or (target and any(w in target.lower() for w in ["security", "log", "threat"]))
 
         if style == "executive":
             lines = ["### Executive Summary\n"]
             lines.append(f"- **Key Finding**: {lead_sentences[0][0]}")
-            if len(lead_sentences) > 1:
-                lines.append(f"- **Operational Scope & Workloads**: {lead_sentences[1][0]}")
-            elif other_sents:
-                lines.append(f"- **Operational Scope & Workloads**: {other_sents[0][0]}")
 
-            if arch_sents:
-                lines.append(f"- **Architecture & Coordination**: {arch_sents[0][0]}")
-            elif supporting_sentences:
-                lines.append(f"- **Architecture & Coordination**: {supporting_sentences[0][0]}")
+            if not is_sec_domain:
+                arch_picks = take_novel(rm_sents + nm_sents + am_sents + arch_foundation_sents, max_n=1)
+                if not arch_picks:
+                    arch_picks = take_novel(supporting_sentences, max_n=1)
+                if arch_picks:
+                    lines.append(f"- **Core Architecture & Entities**: {arch_picks[0][0]}")
 
-            if guarantee_sents:
-                lines.append(f"- **Operating Guarantees & Evaluation**: {guarantee_sents[0][0]}")
-            return "\n".join(lines), all_used_sentences
+                workload_picks = take_novel(workload_sents + container_sents, max_n=1)
+                if not workload_picks:
+                    workload_picks = take_novel(supporting_sentences, max_n=1)
+                if workload_picks:
+                    lines.append(f"- **Operational Scope & Workloads**: {workload_picks[0][0]}")
+
+                mech_picks = take_novel(am_sents + container_sents, max_n=1)
+                if not mech_picks:
+                    mech_picks = take_novel(supporting_sentences, max_n=1)
+                if mech_picks:
+                    lines.append(f"- **Execution Workflow & Policy**: {mech_picks[0][0]}")
+
+                guar_picks = take_novel(guarantee_sents, max_n=1)
+                if not guar_picks:
+                    guar_picks = take_novel(supporting_sentences, max_n=1)
+                if guar_picks:
+                    lines.append(f"- **Operating Guarantees & Risk Controls**: {guar_picks[0][0]}")
+            else:
+                arch_picks = take_novel(log_sents + threat_sents, max_n=1)
+                if not arch_picks:
+                    arch_picks = take_novel(supporting_sentences, max_n=1)
+                if arch_picks:
+                    lines.append(f"- **Core Architecture & Entities**: {arch_picks[0][0]}")
+
+                workload_picks = take_novel(log_sents + forensic_sents, max_n=1)
+                if not workload_picks:
+                    workload_picks = take_novel(supporting_sentences, max_n=1)
+                if workload_picks:
+                    lines.append(f"- **Operational Scope & Workloads**: {workload_picks[0][0]}")
+
+                mech_picks = take_novel(threat_sents, max_n=1)
+                if not mech_picks:
+                    mech_picks = take_novel(supporting_sentences, max_n=1)
+                if mech_picks:
+                    lines.append(f"- **Execution Workflow & Policy**: {mech_picks[0][0]}")
+
+                guar_picks = take_novel(metric_sents + forensic_sents, max_n=1)
+                if not guar_picks:
+                    guar_picks = take_novel(supporting_sentences, max_n=1)
+                if guar_picks:
+                    lines.append(f"- **Operating Guarantees & Risk Controls**: {guar_picks[0][0]}")
+
+            final_used = [ls[2] for ls in lead_sentences] + [s[2] for s in supporting_sentences if s[0] in used_s_texts]
+            return "\n".join(lines), final_used
 
         elif style == "concise":
-            if len(lead_sentences) > 1:
-                return f"{lead_sentences[0][0]} {lead_sentences[1][0]}", all_used_sentences
-            return lead_sentences[0][0], all_used_sentences
+            concise_parts = [ls[0] for ls in lead_sentences]
+            extra = take_novel(supporting_sentences, max_n=1)
+            if extra:
+                concise_parts.append(extra[0][0])
+            final_used = [ls[2] for ls in lead_sentences] + [s[2] for s in extra]
+            return " ".join(concise_parts), final_used
 
         elif style in ("detailed", "comprehensive"):
             # Deep & Comprehensive Mode: Direct answer first followed by thematic markdown subsections
-            p1 = " ".join([ls[0] for ls in lead_sentences])
-            sections = [p1]
+            p1_parts = [ls[0] for ls in lead_sentences]
+            lead_extra = take_novel(arch_foundation_sents, max_n=1)
+            if lead_extra:
+                p1_parts.append(lead_extra[0][0])
+            sections = [" ".join(p1_parts)]
 
-            p2_parts = []
-            if arch_sents:
-                p2_parts.extend([s[0] for s in arch_sents[:2]])
-            elif other_sents:
-                p2_parts.append(other_sents[0][0])
-                other_sents = other_sents[1:]
+            if not is_sec_domain:
+                # Distributed Systems / YARN subsections
+                comp_sents = []
+                comp_sents.extend(take_novel(rm_sents, max_n=2))
+                comp_sents.extend(take_novel(nm_sents, max_n=2))
+                comp_sents.extend(take_novel(am_sents, max_n=2))
+                comp_sents.extend(take_novel(container_sents, max_n=2))
+                if comp_sents:
+                    sections.append("### Core Daemons & Component Responsibilities\n" + " ".join([s[0] for s in comp_sents]))
 
-            if p2_parts:
-                sections.append("### Architecture & Component Coordination\n" + " ".join(p2_parts))
+                wl_sents = []
+                wl_sents.extend(take_novel(workload_sents, max_n=3))
+                wl_sents.extend(take_novel(container_sents, max_n=2))
+                wl_sents.extend(take_novel(hdfs_sents, max_n=2))
+                if wl_sents:
+                    sections.append("### Workload Execution Workflow & Framework Diversity\n" + " ".join([s[0] for s in wl_sents]))
 
-            p3_parts = []
-            if guarantee_sents:
-                p3_parts.extend([s[0] for s in guarantee_sents[:2]])
-            elif other_sents:
-                p3_parts.extend([s[0] for s in other_sents[:2]])
+                g_sents = take_novel(guarantee_sents, max_n=3)
+                if g_sents:
+                    sections.append("### Cluster Reliability, Isolation & Operational Guarantees\n" + " ".join([s[0] for s in g_sents]))
+            else:
+                # Cybersecurity subsections
+                telemetry_sents = take_novel(log_sents, max_n=3)
+                if telemetry_sents:
+                    sections.append("### Telemetry, Audit Logs & Event Monitoring\n" + " ".join([s[0] for s in telemetry_sents]))
 
-            if p3_parts:
-                sections.append("### Workload Execution & Operating Guarantees\n" + " ".join(p3_parts))
+                detection_sents = take_novel(threat_sents, max_n=3)
+                if detection_sents:
+                    sections.append("### Threat Detection & Incident Response Mechanics\n" + " ".join([s[0] for s in detection_sents]))
 
-            return "\n\n".join(sections), all_used_sentences
+                eval_sents = take_novel(metric_sents + forensic_sents, max_n=4)
+                if eval_sents:
+                    sections.append("### Forensic Investigation & Security Performance Metrics\n" + " ".join([s[0] for s in eval_sents]))
+
+            # Catch-all for other technical domains or remaining rich sentences
+            remaining = [s for s in supporting_sentences if s[0] not in used_s_texts]
+            if remaining:
+                extra_picks = take_novel(remaining, max_n=4)
+                if extra_picks:
+                    sections.append("### Operational Context & Technical Implementation Details\n" + " ".join([s[0] for s in extra_picks]))
+
+            final_used = [ls[2] for ls in lead_sentences] + [s[2] for s in supporting_sentences if s[0] in used_s_texts]
+            return "\n\n".join(sections), final_used
 
         else:
-            # Conversational
+            # Conversational Style: Direct answer followed by rich, coherent narrative paragraphs
             q_lower = query.lower()
             q_words = query.strip().split()
             is_deep = (
@@ -1032,35 +1207,53 @@ class GenerativeRAGSynthesizer:
                 ])
             )
 
-            p1 = " ".join([ls[0] for ls in lead_sentences])
+            p1_parts = [ls[0] for ls in lead_sentences]
 
             if not is_deep or not supporting_sentences:
-                if supporting_sentences:
-                    p1 += " " + supporting_sentences[0][0]
-                return p1, all_used_sentences
+                extra = take_novel(supporting_sentences, max_n=1)
+                if extra:
+                    p1_parts.append(extra[0][0])
+                final_used = [ls[2] for ls in lead_sentences] + [s[2] for s in extra]
+                return " ".join(p1_parts), final_used
 
-            paragraphs = [p1]
+            # Deep conversational: 3 to 4 substantive paragraphs
+            paragraphs = [" ".join(p1_parts)]
 
-            p2_parts = []
-            if arch_sents:
-                p2_parts.extend([s[0] for s in arch_sents[:2]])
-            elif other_sents:
-                p2_parts.append(other_sents[0][0])
-                other_sents = other_sents[1:]
+            # Paragraph 2: Core Components & Mechanics
+            p2_sents = []
+            if not is_sec_domain:
+                p2_sents.extend(take_novel(rm_sents + nm_sents + am_sents, max_n=2))
+            else:
+                p2_sents.extend(take_novel(threat_sents + log_sents, max_n=2))
+            if not p2_sents:
+                p2_sents.extend(take_novel(supporting_sentences, max_n=2))
+            if p2_sents:
+                paragraphs.append(" ".join([s[0] for s in p2_sents]))
 
-            if p2_parts:
-                paragraphs.append(" ".join(p2_parts))
+            # Paragraph 3: Execution Workflow & Workloads
+            p3_sents = []
+            if not is_sec_domain:
+                p3_sents.extend(take_novel(workload_sents + container_sents, max_n=2))
+            else:
+                p3_sents.extend(take_novel(forensic_sents + metric_sents, max_n=2))
+            if not p3_sents:
+                p3_sents.extend(take_novel(supporting_sentences, max_n=2))
+            if p3_sents:
+                paragraphs.append(" ".join([s[0] for s in p3_sents]))
 
-            p3_parts = []
-            if guarantee_sents:
-                p3_parts.extend([s[0] for s in guarantee_sents[:2]])
-            elif other_sents:
-                p3_parts.extend([s[0] for s in other_sents[:2]])
+            # Paragraph 4: Guarantees, Isolation & Resilience
+            p4_sents = []
+            if not is_sec_domain:
+                p4_sents.extend(take_novel(guarantee_sents, max_n=2))
+            else:
+                p4_sents.extend(take_novel(metric_sents, max_n=2))
+            if not p4_sents:
+                p4_sents.extend(take_novel(supporting_sentences, max_n=2))
+            if p4_sents:
+                paragraphs.append(" ".join([s[0] for s in p4_sents]))
 
-            if p3_parts:
-                paragraphs.append(" ".join(p3_parts))
-
-            return "\n\n".join(paragraphs), all_used_sentences
+            final_used = [ls[2] for ls in lead_sentences] + [s[2] for s in supporting_sentences if s[0] in used_s_texts]
+            return "\n\n".join(paragraphs), final_used
 
     def synthesize(
         self,

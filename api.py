@@ -33,7 +33,7 @@ class SearchRequest(BaseModel):
     llm_model: Optional[str] = None
     llm_base_url: Optional[str] = None
     llm_api_key: Optional[str] = None
-    max_tokens: Optional[int] = 2048
+    max_tokens: Optional[int] = 4096
     chat_id: Optional[str] = None
     conversation_history: Optional[List[Dict[str, Any]]] = None
 
@@ -137,16 +137,25 @@ def search(req: SearchRequest):
         if chat_sess:
             history = [{"role": m["role"], "content": m["content"]} for m in chat_sess.get("messages", [])]
 
-    # Adaptive retrieval depth: scale k for detailed or explanatory questions
+    # Adaptive retrieval depth: scale k for detailed, multi-aspect, or explanatory questions
+    q_lower = req.query.lower()
     q_words = req.query.strip().split()
-    is_explanatory = any(w in req.query.lower() for w in [
-        "explain", "how", "why", "detail", "architecture", "mechanism",
-        "describe", "overview", "breakdown", "elaborate", "comprehensive", "workload"
+    is_multi_aspect = any(w in q_lower for w in [
+        "explain", "architecture", "components", "mechanism", "mechanisms", "responsibilities",
+        "difference", "compare", "breakdown", "elaborate", "comprehensive", "lifecycle",
+        "and how", "and what", "overview", "workflow", "workloads", "detail", "detailed",
+        "how does", "why does"
     ]) or len(q_words) >= 6
 
-    effective_k = req.top_k or 5
-    if is_explanatory and effective_k < 5:
-        effective_k = 5
+    user_k = req.top_k
+    if user_k and user_k > 5:
+        effective_k = user_k
+    elif style in ("detailed", "comprehensive", "technical") or is_multi_aspect:
+        effective_k = 12
+    elif style == "executive" or any(w in q_lower for w in ["what is", "define", "meaning", "concept"]):
+        effective_k = 8
+    else:
+        effective_k = 6
 
     try:
         res = pipeline.query(
