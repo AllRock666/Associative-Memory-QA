@@ -240,10 +240,25 @@ class HopfieldAssociativeEngine:
                 'element', 'elements', 'tool', 'tools', 'type', 'types', 'system', 'systems',
                 'example', 'examples', 'advantage', 'advantages', 'benefit', 'benefits'
             }
-            raw_entities = [
+            extracted_tokens = [
                 w.lower() for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', raw_query)
                 if w.lower() not in STOP_TOKENS
             ]
+            raw_entities_set = set(extracted_tokens)
+            compound_prefixes = ("cyber", "micro", "multi", "meta", "hyper", "infra", "auto", "inter", "data")
+            for tok in list(raw_entities_set):
+                sub_parts = re.split(r'[-_]', tok)
+                if len(sub_parts) > 1:
+                    for sp in sub_parts:
+                        if len(sp) >= 3 and sp not in STOP_TOKENS:
+                            raw_entities_set.add(sp)
+                for pfx in compound_prefixes:
+                    if tok.startswith(pfx) and len(tok) > len(pfx) + 3:
+                        remainder = tok[len(pfx):]
+                        if remainder not in STOP_TOKENS and len(remainder) >= 3:
+                            raw_entities_set.add(pfx)
+                            raw_entities_set.add(remainder)
+            raw_entities = list(raw_entities_set)
             if raw_entities:
                 entity_scores = torch.zeros(N, device=device)
                 for idx in range(N):

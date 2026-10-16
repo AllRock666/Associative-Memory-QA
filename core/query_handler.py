@@ -226,22 +226,112 @@ class QueryProcessor:
 
         return unique_variants[:5]  # cap at 5 variants
 
-    def process(self, raw_query: str) -> ProcessedQuery:
+    @classmethod
+    def contextualize_query(
+        cls,
+        raw_query: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None
+    ) -> str:
+        """
+        Multi-turn coreference resolution for query embedding and retrieval.
+        Substitutes anaphoric pronouns ('it', 'its', 'they', 'their', 'this system', 'the system')
+        with the primary entity / topic established in prior conversation turns.
+        """
+        if not conversation_history:
+            return raw_query
+
+        q_lower = raw_query.lower().strip()
+        ANAPHORA_PATTERNS = [
+            (r'\b(?:where\s+is|where\s+are)\s+it\b', 'where is {entity}'),
+            (r'\b(?:how\s+does|how\s+do)\s+it\b', 'how does {entity}'),
+            (r'\b(?:what\s+is|what\s+are)\s+it\b', 'what is {entity}'),
+            (r'\b(?:why\s+is|why\s+does)\s+it\b', 'why does {entity}'),
+            (r'\b(?:what\s+are)\s+(?:its|their)\b', 'what are {entity}\'s'),
+            (r'\b(?:explain|describe)\s+its\b', 'explain {entity}\'s'),
+            (r'\b(?:explain|describe)\s+it\b', 'explain {entity}'),
+            (r'\b(?:can|does|do|will|is|are)\s+it\b', r'\g<0>'.replace('it', '{entity}')),
+            (r'\b(?:can|does|do|will|is|are)\s+they\b', r'\g<0>'.replace('they', '{entity}')),
+            (r'\babout\s+it\b', 'about {entity}'),
+            (r'\bfor\s+it\b', 'for {entity}'),
+            (r'\bwith\s+it\b', 'with {entity}'),
+            (r'\b(?:in|on|to)\s+it\b', r'\g<0>'.replace('it', '{entity}')),
+            (r'\bthis\s+system\b', '{entity}'),
+            (r'\bthe\s+system\b', '{entity}'),
+        ]
+
+        needs_resolution = False
+        for pat, _ in ANAPHORA_PATTERNS:
+            if re.search(pat, q_lower):
+                needs_resolution = True
+                break
+
+        if not needs_resolution and not re.search(r'\b(it|its|their|they)\b', q_lower):
+            return raw_query
+
+        # Extract target entity from recent turns (from newest to oldest)
+        recent_entity = None
+        for turn in reversed(conversation_history):
+            role = turn.get("role")
+            content = turn.get("content", "").strip()
+            if not content:
+                continue
+
+            if role == "user":
+                # Look for target entity in user query
+                m = re.search(r'(?:what\s+is|what\s+are|define|explain|where\s+is|how\s+does)\s+(?:a\s+|an\s+|the\s+)?([a-zA-Z0-9_\-\s]{2,40}?)(?:\?|$|\.|\,)', content, re.I)
+                if m:
+                    cand = m.group(1).strip()
+                    cand = re.sub(r'\s+(?:used|applied|deployed|for|in|mean|means)$', '', cand, flags=re.I).strip()
+                    if cand.lower() not in cls.STOPWORDS:
+                        recent_entity = cand
+                        break
+            elif role == "assistant":
+                # Check for strong leading entity in assistant response (e.g. "YARN is used in...", "Cybersecurity is...")
+                m = re.match(r'^(?:[A-Za-z0-9_\-\s]+?:\s+)?([A-Za-z0-9_\-]+)\s+(?:is|was|refers|functions|operates)\b', content)
+                if m:
+                    cand = m.group(1).strip()
+                    if cand.lower() not in cls.STOPWORDS and len(cand) > 2:
+                        recent_entity = cand
+                        break
+
+        if not recent_entity:
+            return raw_query
+
+        # Substitute anaphora with identified entity
+        contextualized = raw_query
+        for pat, template in ANAPHORA_PATTERNS:
+            replacement = template.format(entity=recent_entity)
+            contextualized = re.sub(pat, replacement, contextualized, flags=re.I)
+
+        # Handle remaining standalone " it " / " its " if query is very short (e.g. "Where is it?")
+        if len(raw_query.split()) <= 6:
+            contextualized = re.sub(r'\bits\b', f"{recent_entity}'s", contextualized, flags=re.I)
+            contextualized = re.sub(r'\b(it|they)\b', recent_entity, contextualized, flags=re.I)
+
+        return contextualized.strip()
+
+    def process(
+        self,
+        raw_query: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None
+    ) -> ProcessedQuery:
         """
         Full query processing pipeline.
 
         Steps:
-        1. Clean text
-        2. Detect noise
-        3. Expand abbreviations
-        4. Extract keywords
-        5. Detect query type
-        6. Generate variants
+        1. Contextualize query with conversation history (coreference resolution)
+        2. Clean text
+        3. Detect noise
+        4. Expand abbreviations
+        5. Extract keywords
+        6. Detect query type
+        7. Generate variants
 
         Returns:
             ProcessedQuery with all processed fields populated.
         """
-        cleaned = self._clean_text(raw_query)
+        contextualized = self.contextualize_query(raw_query, conversation_history)
+        cleaned = self._clean_text(contextualized)
         is_noisy, noise_score = self._detect_noise(cleaned)
 
         if self.expand_abbreviations:
@@ -262,8 +352,10 @@ class QueryProcessor:
             metadata={
                 "n_variants": len(variants),
                 "n_keywords": len(keywords),
+                "contextualized_query": contextualized if contextualized != raw_query else None
             }
         )
 
     def batch_process(self, queries: List[str]) -> List[ProcessedQuery]:
         return [self.process(q) for q in queries]
+

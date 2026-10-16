@@ -460,3 +460,163 @@ def test_markdown_tables_and_lists_syntax(rich_yarn_evidence):
     # Verify citation format [E#]
     citations = re.findall(r'\[E\d+\]', res.answer)
     assert len(citations) >= 2
+
+
+# ---------------------------------------------------------------------------
+# Test 13: Multi-Turn Coreference Resolution (Contextualized Querying)
+# ---------------------------------------------------------------------------
+def test_multi_turn_coreference_resolution():
+    from core.query_handler import QueryProcessor
+
+    processor = QueryProcessor()
+    history = [
+        {"role": "user", "content": "What is Apache YARN?"},
+        {"role": "assistant", "content": "Apache YARN is a distributed cluster operating system and resource manager."}
+    ]
+
+    # 1. Anaphoric pronoun "it" resolved to "Apache YARN"
+    q1 = "Where is it used?"
+    res1 = processor.process(q1, conversation_history=history)
+    assert "apache yarn" in res1.cleaned.lower()
+    assert "where is apache yarn used" in res1.cleaned.lower()
+    assert res1.metadata.get("contextualized_query") is not None
+
+    # 2. Possessive pronoun "its" resolved
+    q2 = "Explain its core components"
+    res2 = processor.process(q2, conversation_history=history)
+    assert "apache yarn" in res2.cleaned.lower()
+
+    # 3. Direct query without anaphora left intact
+    q3 = "What is cybersecurity?"
+    res3 = processor.process(q3, conversation_history=history)
+    assert "cybersecurity" in res3.cleaned.lower()
+    assert "apache yarn" not in res3.cleaned.lower()
+
+
+# ---------------------------------------------------------------------------
+# Test 14: Compound Entity Expansion in Associative Retrieval
+# ---------------------------------------------------------------------------
+def test_compound_entity_expansion_associative():
+    import torch
+    from core.associative_engine import HopfieldAssociativeEngine
+    from core.hopfield_torch import PyTorchHopfieldMemory
+
+    memory = PyTorchHopfieldMemory()
+    device = memory.device
+    patterns = torch.randn(3, 64, device=device)
+    patterns = torch.nn.functional.normalize(patterns, p=2, dim=-1)
+
+    metadata = [
+        {"chunk_id": "c1", "text": "Network security and cyber defense logs are vital for monitoring.", "source": "sec.pdf"},
+        {"chunk_id": "c2", "text": "Multi-tenant clusters require strong isolation between jobs.", "source": "cluster.pdf"},
+        {"chunk_id": "c3", "text": "Microservices communicate via lightweight HTTP or gRPC interfaces.", "source": "arch.pdf"},
+    ]
+    memory.store(patterns.cpu().numpy(), metadata)
+    engine = HopfieldAssociativeEngine(memory=memory)
+
+    # Query with compound word "cybersecurity"
+    res = engine.retrieve_associative(
+        query_embedding=patterns[0].cpu().numpy(),
+        top_k=2,
+        raw_query="What is cybersecurity?"
+    )
+
+    # c1 should be activated as core attractor basin
+    top_ids = [c.chunk_id for c in res.core_attractor_chunks]
+    assert "c1" in top_ids
+
+
+# ---------------------------------------------------------------------------
+# Test 15: General Technical Domain Dynamic Deep Synthesis
+# ---------------------------------------------------------------------------
+def test_general_domain_dynamic_deep_synthesis():
+    chunks = [
+        EvidenceChunk(
+            chunk_id="c_trans_1",
+            doc_id="transformer_paper.pdf",
+            source="Attention Is All You Need.pdf",
+            text=(
+                "The Transformer architecture relies entirely on self-attention mechanisms to compute "
+                "representations of its input and output without using sequence-aligned recurrent networks."
+            ),
+            similarity_score=0.91,
+            rank=1,
+            page_number=1,
+            is_core_attractor=True
+        ),
+        EvidenceChunk(
+            chunk_id="c_trans_2",
+            doc_id="transformer_paper.pdf",
+            source="Attention Is All You Need.pdf",
+            text=(
+                "Multi-head attention allows the model to jointly attend to information from different "
+                "representation subspaces at different positions across the sequence."
+            ),
+            similarity_score=0.87,
+            rank=2,
+            page_number=3,
+            is_core_attractor=True
+        ),
+        EvidenceChunk(
+            chunk_id="c_trans_3",
+            doc_id="transformer_paper.pdf",
+            source="Attention Is All You Need.pdf",
+            text=(
+                "Scaled dot-product attention computes compatibility scores between queries and keys, "
+                "scaling by the square root of key dimension to prevent vanishing gradients."
+            ),
+            similarity_score=0.84,
+            rank=3,
+            page_number=4,
+            is_core_attractor=False
+        ),
+        EvidenceChunk(
+            chunk_id="c_trans_4",
+            doc_id="transformer_paper.pdf",
+            source="Attention Is All You Need.pdf",
+            text=(
+                "By dispensing with recurrence, the Transformer achieves significant training speedups, "
+                "enhanced scalability, and superior parallelization efficiency on modern GPU accelerators."
+            ),
+            similarity_score=0.80,
+            rank=4,
+            page_number=5,
+            is_core_attractor=False
+        ),
+    ]
+    evidence = EvidenceCollection(query="Explain the Transformer architecture", chunks=chunks, retriever_name="HopfieldRetriever")
+    synthesizer = GenerativeRAGSynthesizer(llm_config=LLMConfig(provider="deterministic"))
+
+    # Detailed style on general domain
+    res = synthesizer.synthesize(
+        query="Explain the Transformer architecture and its attention mechanisms.",
+        evidence=evidence,
+        style="detailed"
+    )
+
+    # 1. Direct answer first
+    assert "Transformer architecture" in res.answer
+    assert "[E1]" in res.answer
+
+    # 2. Dynamic thematic sections generated for general domain
+    assert "### Structural Foundations & Core Principles" in res.answer
+    assert "### Operational Mechanics & Process Workflow" in res.answer
+    assert "### Performance Characteristics & Technical Guarantees" in res.answer
+
+    # 3. Substantive content
+    assert "Multi-head attention" in res.answer
+    assert "Scaled dot-product attention" in res.answer
+
+
+# ---------------------------------------------------------------------------
+# Test 16: Sentence and Artifact Smoothing
+# ---------------------------------------------------------------------------
+def test_sentence_and_artifact_smoothing():
+    from core.generative_synthesizer import smooth_evidence_sentence
+
+    # Slide / bullet prefix stripped
+    assert smooth_evidence_sentence("• Deployment: Serve via FastAPI and Uvicorn.") == "Serve via FastAPI and Uvicorn."
+    assert smooth_evidence_sentence("- Overview: The system architecture provides distributed memory.") == "The system architecture provides distributed memory."
+    assert smooth_evidence_sentence("Slide 3: Scalable compute clusters and") == "Scalable compute clusters"
+    assert smooth_evidence_sentence("· Key takeaways: Modern Hopfield Networks converge.") == "Modern Hopfield Networks converge."
+

@@ -41,9 +41,13 @@
         </div>
 
         <!-- Right: Status and Quick Controls -->
-        <div class="flex items-center space-x-3 text-xs">
+        <div class="flex items-center space-x-2 text-xs">
             <div id="llm-status-pill" class="text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200" title="Checking status...">Checking LLM...</div>
-            <button onclick="createNewChat()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-2xs transition">
+            <button onclick="exportChatMarkdown()" title="Export active conversation to Markdown (.md)" class="bg-white hover:bg-slate-100 text-slate-700 font-medium px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-200 shadow-2xs transition cursor-pointer">
+                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                <span class="hidden sm:inline">Export</span>
+            </button>
+            <button onclick="createNewChat()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-2xs transition cursor-pointer">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
                 <span>New Chat</span>
             </button>
@@ -938,6 +942,9 @@
             safe = processedLines.join('\n');
 
             // 9. Interactive Citations [E1], [E2]
+            if (evidenceList) {
+                messageEvidenceCache[msgId] = evidenceList;
+            }
             safe = safe.replace(/\[E(\d+)\]/g, function(match, num) {
                 const citeIdx = parseInt(num, 10);
                 let tooltip = `Supporting Evidence Passage [E${citeIdx}]`;
@@ -947,7 +954,7 @@
                     const snippet = (ev.text || '').replace(/\s+/g, ' ').substring(0, 100) + '...';
                     tooltip = `[E${citeIdx}] ${src}: "${snippet}"`;
                 }
-                return `<button type="button" onclick="jumpToEvidence(${msgId}, ${citeIdx})" class="citation-pill inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white text-[11px] font-bold mx-0.5 border border-blue-200 cursor-pointer transition shadow-2xs group" title="${escapeHtml(tooltip)}"><svg class="w-2.5 h-2.5 text-blue-500 group-hover:text-white transition flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>[E${citeIdx}]</button>`;
+                return `<button type="button" onclick="jumpToEvidence(${msgId}, ${citeIdx})" onmouseenter="showCitationPreview(event, ${msgId}, ${citeIdx})" onmouseleave="hideCitationPreview()" class="citation-pill inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white text-[11px] font-bold mx-0.5 border border-blue-200 cursor-pointer transition shadow-2xs group" title="${escapeHtml(tooltip)}"><svg class="w-2.5 h-2.5 text-blue-500 group-hover:text-white transition flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>[E${citeIdx}]</button>`;
             });
 
             // 10. Paragraphs (split by double newlines, ignoring block elements)
@@ -970,6 +977,109 @@
             });
 
             return wrappedBlocks.filter(b => b.length > 0).join('\n');
+        }
+
+        const messageEvidenceCache = {};
+
+        function showCitationPreview(e, msgId, citeIdx) {
+            const card = document.getElementById('citation-preview-card');
+            if (!card) return;
+            const evList = messageEvidenceCache[msgId];
+            if (!evList || !evList[citeIdx - 1]) return;
+            const ev = evList[citeIdx - 1];
+
+            const source = escapeHtml(ev.source || 'Document');
+            const page = ev.page_number ? `Page ${ev.page_number}` : null;
+            const scoreVal = ev.similarity_score !== undefined ? ev.similarity_score : (ev.score || 0);
+            const score = typeof scoreVal === 'number' ? scoreVal.toFixed(3) : scoreVal;
+            const isCore = ev.is_core_attractor;
+            const roleBadge = isCore 
+                ? `<span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded">Core Attractor</span>`
+                : `<span class="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-1.5 py-0.5 rounded">Associative Bridge</span>`;
+            const cleanText = (ev.text || '').replace(/\s+/g, ' ').trim();
+            const snippet = escapeHtml(cleanText.length > 200 ? cleanText.substring(0, 200) + '...' : cleanText);
+
+            card.innerHTML = `
+                <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 mb-2">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="font-bold text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">[E${citeIdx}]</span>
+                        <span class="font-semibold text-xs text-slate-800 truncate max-w-[140px]" title="${source}">${source}</span>
+                        ${page ? `<span class="text-[10px] text-slate-400">(${page})</span>` : ''}
+                    </div>
+                    ${roleBadge}
+                </div>
+                <p class="text-xs text-slate-600 leading-relaxed italic">"${snippet}"</p>
+                <div class="mt-2 pt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+                    <span>Score: <strong class="text-slate-600 font-mono">${score}</strong></span>
+                    <span class="text-blue-600 font-medium">Click pill to jump</span>
+                </div>
+            `;
+
+            // Position preview card above or below the pill
+            const rect = e.currentTarget.getBoundingClientRect();
+            card.classList.remove('hidden');
+            const cardHeight = card.offsetHeight || 130;
+            const top = rect.top > cardHeight + 10 ? rect.top - cardHeight - 8 : rect.bottom + 8;
+            const left = Math.max(10, Math.min(window.innerWidth - 360, rect.left - 20));
+            card.style.top = `${top}px`;
+            card.style.left = `${left}px`;
+        }
+
+        function hideCitationPreview() {
+            const card = document.getElementById('citation-preview-card');
+            if (card) card.classList.add('hidden');
+        }
+
+        function exportChatMarkdown() {
+            const session = chatSessions.find(c => c.id === activeChatId);
+            if (!session || !session.messages || session.messages.length === 0) {
+                alert("Current conversation is empty. Nothing to export.");
+                return;
+            }
+
+            const title = session.title || "HopfieldQA Conversation";
+            const dateStr = new Date().toLocaleString();
+            let md = `# ${title}\n\n`;
+            md += `*Exported from Hopfield Memory Workspace on ${dateStr}*\n\n`;
+            md += `---\n\n`;
+
+            session.messages.forEach((msg, idx) => {
+                if (msg.role === 'user') {
+                    md += `## User\n\n${msg.content.trim()}\n\n`;
+                } else if (msg.role === 'assistant') {
+                    md += `## Assistant (HopfieldQA)\n\n`;
+                    md += `${(msg.content || '').trim()}\n\n`;
+
+                    if (msg.grounded_answer && msg.grounded_answer.provider_used) {
+                        md += `> **Model**: ${msg.grounded_answer.model_name || 'N/A'} | **Provider**: ${msg.grounded_answer.provider_used} | **Confidence**: ${((msg.confidence !== undefined ? msg.confidence : 0.95) * 100).toFixed(1)}%\n\n`;
+                    }
+
+                    if (msg.evidence && msg.evidence.length > 0) {
+                        md += `### Cited Evidence Passages\n\n`;
+                        msg.evidence.forEach((ev, eIdx) => {
+                            const eNum = eIdx + 1;
+                            const src = ev.source || 'Document';
+                            const score = (ev.similarity_score !== undefined ? ev.similarity_score : (ev.score || 0)).toFixed(3);
+                            const role = ev.is_core_attractor ? "Core Attractor" : "Associative Bridge";
+                            const page = ev.page_number ? ` (Page ${ev.page_number})` : '';
+                            md += `**[E${eNum}] ${src}${page}** *(Role: ${role}, Score: ${score})*\n`;
+                            md += `> ${ev.text.trim().replace(/\n/g, '\n> ')}\n\n`;
+                        });
+                    }
+                    md += `---\n\n`;
+                }
+            });
+
+            const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const safeTitle = (title.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 40) || 'chat');
+            a.download = `${safeTitle}_export.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         function jumpToEvidence(msgId, citeIdx) {
@@ -1298,5 +1408,7 @@
                 .replace(/'/g, "&#039;");
         }
     </script>
+    <!-- Floating Citation Hover Preview Card -->
+    <div id="citation-preview-card" class="fixed hidden z-50 w-80 max-w-sm bg-white rounded-xl shadow-xl border border-slate-200 p-3 pointer-events-none transition-opacity duration-150 text-left"></div>
 </body>
 </html>

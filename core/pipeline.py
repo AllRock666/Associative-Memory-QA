@@ -52,7 +52,7 @@ class PipelineConfig:
     n_query_variants: int = 3
 
     # Answer
-    max_answer_length: int = 600
+    max_answer_length: int = 2000
     min_confidence: float = 0.1
 
     # LLM Answer Generation
@@ -61,7 +61,7 @@ class PipelineConfig:
     llm_model: str = "llama3.2"
     llm_api_key: Optional[str] = None
     llm_timeout_seconds: float = 60.0
-    llm_max_tokens: int = 800
+    llm_max_tokens: int = 4096
     llm_temperature: float = 0.2
     llm_fallback_to_deterministic: bool = True
 
@@ -152,7 +152,7 @@ class HopfieldQAPipeline:
             model=getattr(self.config, 'llm_model', 'llama3.2'),
             api_key=getattr(self.config, 'llm_api_key', None),
             timeout_seconds=getattr(self.config, 'llm_timeout_seconds', 60.0),
-            max_tokens=getattr(self.config, 'llm_max_tokens', 800),
+            max_tokens=getattr(self.config, 'llm_max_tokens', 4096),
             temperature=getattr(self.config, 'llm_temperature', 0.2),
             fallback_to_deterministic=getattr(self.config, 'llm_fallback_to_deterministic', True)
         )
@@ -385,8 +385,8 @@ class HopfieldQAPipeline:
 
         logger.info(f"Processing query: '{raw_query}' (mode={mode}, top_k={k}, style={answer_style})")
 
-        # 1. Process query
-        processed = self.query_processor.process(raw_query)
+        # 1. Process query (with multi-turn coreference contextualization)
+        processed = self.query_processor.process(raw_query, conversation_history=conversation_history)
 
         # 2. Embed query
         t_embed_start = time.perf_counter()
@@ -406,7 +406,7 @@ class HopfieldQAPipeline:
         # 4. Execute retrieval via BaseRetriever
         t_ret_start = time.perf_counter()
         evidence_collection = selected_retriever.retrieve(
-            query=raw_query,
+            query=query_text,
             query_embedding=query_embedding,
             top_k=k,
             min_similarity_threshold=self.config.similarity_threshold
