@@ -1048,6 +1048,9 @@
                     md += `## User\n\n${msg.content.trim()}\n\n`;
                 } else if (msg.role === 'assistant') {
                     md += `## Assistant (HopfieldQA)\n\n`;
+                    if (msg.contextualized_query && msg.contextualized_query.trim().toLowerCase() !== (msg.query || '').trim().toLowerCase()) {
+                        md += `*Understood Context*: **${msg.contextualized_query}**\n\n`;
+                    }
                     md += `${(msg.content || '').trim()}\n\n`;
 
                     if (msg.grounded_answer && msg.grounded_answer.provider_used) {
@@ -1255,6 +1258,17 @@
                 `;
             }
 
+            // Contextualized Query resolution indicator
+            let contextPillHTML = '';
+            if (msg.contextualized_query && msg.contextualized_query.trim().toLowerCase() !== (msg.query || '').trim().toLowerCase()) {
+                contextPillHTML = `
+                    <div class="mb-3 flex items-center gap-2 text-[11px] text-indigo-700 bg-indigo-50/80 border border-indigo-200/80 rounded-xl px-3 py-1.5 w-fit shadow-2xs">
+                        <svg class="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span>Understood context: <strong class="font-semibold text-indigo-900">${escapeHtml(msg.contextualized_query)}</strong></span>
+                    </div>
+                `;
+            }
+
             div.innerHTML = `
                 <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 shadow-xs mt-1">
                     HAM
@@ -1275,6 +1289,8 @@
                                 <span>Copy</span>
                             </button>
                         </div>
+
+                        ${contextPillHTML}
 
                         <!-- Rendered Markdown Body -->
                         <div class="markdown-body text-slate-800">

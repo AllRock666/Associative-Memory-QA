@@ -620,3 +620,41 @@ def test_sentence_and_artifact_smoothing():
     assert smooth_evidence_sentence("Slide 3: Scalable compute clusters and") == "Scalable compute clusters"
     assert smooth_evidence_sentence("· Key takeaways: Modern Hopfield Networks converge.") == "Modern Hopfield Networks converge."
 
+
+# ---------------------------------------------------------------------------
+# Test 17: Multi-Turn Pipeline Contextualized Synthesis
+# ---------------------------------------------------------------------------
+def test_pipeline_multiturn_contextualized_synthesis():
+    from core.pipeline import HopfieldQAPipeline, PipelineConfig
+    from core.llm_provider import LLMConfig
+
+    cfg = PipelineConfig(
+        chunk_size=200,
+        chunk_overlap=50,
+        llm_provider="deterministic",
+        top_k=2
+    )
+    pipeline = HopfieldQAPipeline(config=cfg)
+
+    doc = (
+        "Yet Another Resource Negotiator (YARN) functions as the cluster operating system, "
+        "separating resource management from job scheduling and execution frameworks. "
+        "YARN enables heterogeneous workloads across Hadoop clusters, scheduling diverse "
+        "engines including MapReduce batch processing, Spark SQL analytics, and Flink streaming."
+    )
+    pipeline.add_document(doc, source="yarn_overview.txt", persist=False)
+
+    history = [
+        {"role": "user", "content": "What is Apache YARN?"},
+        {"role": "assistant", "content": "Apache YARN is a distributed cluster operating system and resource manager."}
+    ]
+
+    res = pipeline.query("Where is it used?", conversation_history=history)
+
+    assert res.processed_query.metadata.get("contextualized_query") is not None
+    assert "apache yarn" in res.processed_query.metadata["contextualized_query"].lower()
+    assert res.grounded_answer is not None
+    assert "YARN" in res.grounded_answer.answer or "Yarn" in res.grounded_answer.answer
+    assert re.search(r'\[E\d+\]', res.grounded_answer.answer)
+
+

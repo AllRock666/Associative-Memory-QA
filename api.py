@@ -263,8 +263,10 @@ def search(req: SearchRequest):
         "stages": getattr(res, "stage_latencies_ms", {})
     }
 
+    contextualized_q = getattr(getattr(res, "processed_query", None), "metadata", {}).get("contextualized_query")
     response_payload = {
         "query": req.query,
+        "contextualized_query": contextualized_q,
         "retriever_mode": active_retriever,
         "engine_mode": "associative" if active_retriever in ("hopfield", "hybrid") else "naive_rag",
         "answer": res.answer.answer,

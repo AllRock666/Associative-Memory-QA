@@ -1341,12 +1341,18 @@ class GenerativeRAGSynthesizer:
             # Deep conversational: 3 to 4 substantive paragraphs
             paragraphs = [" ".join(p1_parts)]
 
+            def sent_tokens(s_tuple):
+                return set(re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s_tuple[0].lower()))
+
             # Paragraph 2: Core Components & Mechanics
             p2_sents = []
-            if not is_sec_domain:
-                p2_sents.extend(take_novel(rm_sents + nm_sents + am_sents, max_n=2))
-            else:
+            if is_yarn_domain:
+                p2_sents.extend(take_novel(rm_sents + nm_sents + am_sents + arch_foundation_sents, max_n=2))
+            elif is_sec_domain:
                 p2_sents.extend(take_novel(threat_sents + log_sents, max_n=2))
+            else:
+                found_kws = {'foundation', 'concept', 'principle', 'overview', 'definition', 'core', 'architecture', 'design', 'model', 'structure', 'system', 'layer', 'theory'}
+                p2_sents.extend(take_novel([s for s in supporting_sentences if sent_tokens(s) & found_kws], max_n=2))
             if not p2_sents:
                 p2_sents.extend(take_novel(supporting_sentences, max_n=2))
             if p2_sents:
@@ -1354,10 +1360,13 @@ class GenerativeRAGSynthesizer:
 
             # Paragraph 3: Execution Workflow & Workloads
             p3_sents = []
-            if not is_sec_domain:
+            if is_yarn_domain:
                 p3_sents.extend(take_novel(workload_sents + container_sents, max_n=2))
-            else:
+            elif is_sec_domain:
                 p3_sents.extend(take_novel(forensic_sents + metric_sents, max_n=2))
+            else:
+                work_kws = {'process', 'workflow', 'mechanism', 'execution', 'operation', 'method', 'function', 'pipeline', 'interact', 'step', 'algorithm', 'procedure', 'compute', 'computes', 'computation', 'calculate', 'scaling', 'attend', 'attention'}
+                p3_sents.extend(take_novel([s for s in supporting_sentences if sent_tokens(s) & work_kws], max_n=2))
             if not p3_sents:
                 p3_sents.extend(take_novel(supporting_sentences, max_n=2))
             if p3_sents:
@@ -1365,10 +1374,13 @@ class GenerativeRAGSynthesizer:
 
             # Paragraph 4: Guarantees, Isolation & Resilience
             p4_sents = []
-            if not is_sec_domain:
+            if is_yarn_domain:
                 p4_sents.extend(take_novel(guarantee_sents, max_n=2))
-            else:
+            elif is_sec_domain:
                 p4_sents.extend(take_novel(metric_sents, max_n=2))
+            else:
+                guar_kws = {'guarantee', 'performance', 'result', 'benefit', 'advantage', 'scalability', 'efficiency', 'reliability', 'limitation', 'trade-off', 'constraint', 'accuracy', 'speedup', 'speedups', 'training', 'parallelization'}
+                p4_sents.extend(take_novel([s for s in supporting_sentences if sent_tokens(s) & guar_kws], max_n=2))
             if not p4_sents:
                 p4_sents.extend(take_novel(supporting_sentences, max_n=2))
             if p4_sents:
@@ -1458,51 +1470,63 @@ class GenerativeRAGSynthesizer:
 
         # Try LLM Provider if configured
         if provider_name != "deterministic" and active_provider is not None:
-            try:
-                llm_res = active_provider.generate(
-                    query=query,
-                    evidence_chunks=clean_evidence.chunks,
-                    style=style,
-                    conversation_history=conversation_history
-                )
-                if llm_res.is_abstained:
-                    elapsed = max(0.1, (time.perf_counter() - t_start) * 1000)
-                    return GroundedAnswer(
-                        query=query,
-                        answer=llm_res.answer,
-                        claims=[],
-                        cited_evidence=[],
-                        abstained=True,
-                        abstention_reason=llm_res.abstention_reason,
-                        confidence=0.0,
-                        provider_used=llm_res.provider_used,
-                        model_name=llm_res.model_name,
-                        generation_time_ms=round(elapsed, 2),
-                        style=style,
-                        metadata={
-                            "deduplication": dedup_diagnostics,
-                            "stage_latencies_ms": {
-                                "dedup_ms": round(dedup_ms, 2),
-                                "synthesis_ms": round(llm_res.latency_ms, 2),
-                                "total_ms": round(elapsed, 2)
-                            }
-                        }
-                    )
-                generated_text = llm_res.answer
-                provider_used = llm_res.provider_used
-                model_name = llm_res.model_name
-                llm_prompt_tokens = llm_res.prompt_tokens
-                llm_completion_tokens = llm_res.completion_tokens
-            except Exception as e:
+            is_ok, unavail_reason = active_provider.is_available()
+            if not is_ok:
                 if self.llm_config.fallback_to_deterministic:
-                    logger.warning(
-                        f"LLM generation failed via {provider_name} ({getattr(active_provider, 'model_name', 'unknown')}): {e}. "
+                    logger.info(
+                        f"LLM Provider '{provider_name}' ({getattr(active_provider, 'model_name', 'unknown')}) is unavailable: {unavail_reason}. "
                         "Executing deterministic grounded fallback."
                     )
                     fallback_occurred = True
-                    fallback_reason = f"Provider '{provider_name}' error: {e}"
+                    fallback_reason = f"Provider '{provider_name}' error: {unavail_reason}"
                 else:
-                    raise
+                    raise LLMConnectionError(f"Provider '{provider_name}' unavailable: {unavail_reason}")
+            else:
+                try:
+                    llm_res = active_provider.generate(
+                        query=query,
+                        evidence_chunks=clean_evidence.chunks,
+                        style=style,
+                        conversation_history=conversation_history
+                    )
+                    if llm_res.is_abstained:
+                        elapsed = max(0.1, (time.perf_counter() - t_start) * 1000)
+                        return GroundedAnswer(
+                            query=query,
+                            answer=llm_res.answer,
+                            claims=[],
+                            cited_evidence=[],
+                            abstained=True,
+                            abstention_reason=llm_res.abstention_reason,
+                            confidence=0.0,
+                            provider_used=llm_res.provider_used,
+                            model_name=llm_res.model_name,
+                            generation_time_ms=round(elapsed, 2),
+                            style=style,
+                            metadata={
+                                "deduplication": dedup_diagnostics,
+                                "stage_latencies_ms": {
+                                    "dedup_ms": round(dedup_ms, 2),
+                                    "synthesis_ms": round(llm_res.latency_ms, 2),
+                                    "total_ms": round(elapsed, 2)
+                                }
+                            }
+                        )
+                    generated_text = llm_res.answer
+                    provider_used = llm_res.provider_used
+                    model_name = llm_res.model_name
+                    llm_prompt_tokens = llm_res.prompt_tokens
+                    llm_completion_tokens = llm_res.completion_tokens
+                except Exception as e:
+                    if self.llm_config.fallback_to_deterministic:
+                        logger.warning(
+                            f"LLM generation failed via {provider_name} ({getattr(active_provider, 'model_name', 'unknown')}): {e}. "
+                            "Executing deterministic grounded fallback."
+                        )
+                        fallback_occurred = True
+                        fallback_reason = f"Provider '{provider_name}' error: {e}"
+                    else:
+                        raise
 
         # Fallback or Deterministic Execution
         if generated_text is None:

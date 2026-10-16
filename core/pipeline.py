@@ -429,7 +429,7 @@ class HopfieldQAPipeline:
         # 7. Generate answer using GenerativeRAGSynthesizer
         t_synth_start = time.perf_counter()
         grounded_answer = self.answer_generator.synthesize(
-            query=raw_query,
+            query=query_text,
             evidence=dedup_evidence_collection,
             style=answer_style,
             provider_override=llm_provider_override,
