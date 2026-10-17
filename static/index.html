@@ -185,13 +185,39 @@
                         <input type="range" id="top-k" min="1" max="10" step="1" value="5" class="w-full" oninput="document.getElementById('topk-val').innerText=this.value">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Answer Depth & Style</label>
-                        <select id="answer-style" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white focus:ring-blue-500 font-medium text-slate-700">
-                            <option value="detailed" selected>Deep & Comprehensive (Multi-Paragraph Analysis)</option>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Answer Format & Mark Tier</label>
+                        <select id="answer-format-select" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white focus:ring-blue-500 font-medium text-slate-700">
+                            <option value="auto" selected>Auto-Detect from Query</option>
+                            <option value="2_mark">2-Mark Answer (Concise &bull; 40-70 words)</option>
+                            <option value="5_mark">5-Mark Answer (Core + 3-4 Points &bull; 140-200 words)</option>
+                            <option value="8_mark">8-Mark Answer (In-Depth Technical Breakdown &bull; 260-380 words)</option>
+                            <option value="10_mark">10-Mark Answer (Exhaustive + Comparative Matrix &bull; 350-500 words)</option>
+                            <option value="comparison">Comparative Analysis (Side-by-side Table)</option>
+                            <option value="worked_example">Worked Walkthrough (Setup, Steps, State)</option>
+                            <option value="structured_notes">Revision Cheat-Sheet (Key Terms + High-Yield Points)</option>
+                            <option value="detailed">Deep & Comprehensive (Multi-Paragraph Analysis)</option>
                             <option value="conversational">Conversational (Natural Multi-Turn)</option>
                             <option value="executive">Executive Summary (Bulleted Briefing)</option>
                             <option value="concise">Concise Direct Fact (1-2 Sentences)</option>
                         </select>
+                        <input type="hidden" id="answer-style" value="detailed">
+                    </div>
+                </div>
+
+                <!-- Web Augmentation & Knowledge Memory -->
+                <div class="space-y-2 pt-2 border-t border-slate-200">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Web Augmentation & Memory</span>
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="web-search-enabled-chk" class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5" onchange="syncWebSearchToggle()">
+                        <span class="text-[11px] font-medium text-slate-700">Enable Web Search Augmentation</span>
+                    </label>
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="force-web-search-chk" class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
+                        <span class="text-[11px] text-slate-600">Force Web Research (Bypass document sufficiency check)</span>
+                    </label>
+                    <div class="flex items-center justify-between pt-1">
+                        <span class="text-[11px] text-slate-500">Persistent Web Knowledge:</span>
+                        <button type="button" onclick="clearKnowledgeCache()" class="text-[10px] text-rose-600 hover:text-rose-800 font-semibold px-2 py-0.5 rounded border border-rose-200 hover:bg-rose-50 transition">Clear Cache</button>
                     </div>
                 </div>
 
@@ -283,13 +309,23 @@
             <!-- Floating Prompt Input Bar (ChatGPT Style) -->
             <div class="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-white via-white/95 to-transparent z-10 pointer-events-none">
                 <div class="max-w-3xl mx-auto pointer-events-auto">
-                    <!-- Quick Depth Selector Pills -->
-                    <div class="flex items-center gap-1.5 mb-2 px-1 pointer-events-auto overflow-x-auto pb-1">
-                        <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mr-1">Depth:</span>
-                        <button type="button" onclick="setQuickStyle('detailed')" id="pill-detailed" class="text-[11px] px-2.5 py-0.5 rounded-full font-semibold transition bg-blue-600 text-white shadow-2xs">⚡ Deep & Comprehensive</button>
-                        <button type="button" onclick="setQuickStyle('conversational')" id="pill-conversational" class="text-[11px] px-2.5 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">💬 Conversational</button>
-                        <button type="button" onclick="setQuickStyle('executive')" id="pill-executive" class="text-[11px] px-2.5 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">📋 Executive</button>
-                        <button type="button" onclick="setQuickStyle('concise')" id="pill-concise" class="text-[11px] px-2.5 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">🎯 Concise</button>
+                    <!-- Quick Format & Depth Selector Pills -->
+                    <div class="flex items-center gap-1.5 mb-2 px-1 pointer-events-auto overflow-x-auto pb-1 text-[11px]">
+                        <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mr-1">Format:</span>
+                        <button type="button" onclick="setQuickFormat('auto')" id="pill-fmt-auto" class="px-2 py-0.5 rounded-full font-semibold transition bg-blue-600 text-white shadow-2xs">⚡ Auto</button>
+                        <button type="button" onclick="setQuickFormat('2_mark')" id="pill-fmt-2_mark" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">2-Mark</button>
+                        <button type="button" onclick="setQuickFormat('5_mark')" id="pill-fmt-5_mark" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">5-Mark</button>
+                        <button type="button" onclick="setQuickFormat('8_mark')" id="pill-fmt-8_mark" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">8-Mark</button>
+                        <button type="button" onclick="setQuickFormat('10_mark')" id="pill-fmt-10_mark" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">10-Mark</button>
+                        <button type="button" onclick="setQuickFormat('comparison')" id="pill-fmt-comparison" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">📊 Table</button>
+                        <button type="button" onclick="setQuickFormat('worked_example')" id="pill-fmt-worked_example" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">🛠️ Example</button>
+                        <button type="button" onclick="setQuickFormat('structured_notes')" id="pill-fmt-structured_notes" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">📝 Notes</button>
+
+                        <!-- Web Augmentation Toggle -->
+                        <button type="button" onclick="toggleWebSearch()" id="web-search-toggle-btn" class="ml-auto text-[11px] px-2.5 py-0.5 rounded-full font-semibold transition flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 cursor-pointer flex-shrink-0" title="Toggle web augmentation when document evidence is missing or insufficient">
+                            <span>🌐 Web Augment</span>
+                            <span id="web-search-dot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+                        </button>
                     </div>
 
                     <div class="relative shadow-lg rounded-2xl border border-slate-200 bg-white flex items-end p-2 transition focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
@@ -757,6 +793,10 @@
             const maxTokensVal = document.getElementById('llm-max-tokens') ? parseInt(document.getElementById('llm-max-tokens').value) : 2048;
             const styleVal = document.getElementById('answer-style').value;
 
+            const formatVal = (document.getElementById('answer-format-select') || {}).value || 'auto';
+            const webSearchEnabled = isWebSearchActive();
+            const forceWebSearch = (document.getElementById('force-web-search-chk') || {}).checked || false;
+
             const reqBody = {
                 query: query,
                 chat_id: activeChatId,
@@ -764,6 +804,9 @@
                 engine_mode: (selectedRetriever === "dense" ? "naive_rag" : "associative"),
                 answer_style: styleVal,
                 detail_level: styleVal,
+                answer_format: formatVal !== 'auto' ? formatVal : undefined,
+                web_search_enabled: webSearchEnabled,
+                force_web_search: forceWebSearch,
                 energy_type: document.getElementById('energy-type').value,
                 hopfield_beta: parseFloat(document.getElementById('hopfield-beta').value),
                 top_k: parseInt(document.getElementById('top-k').value),
@@ -803,7 +846,12 @@
                     associative_diagnostics: data.associative_diagnostics,
                     grounded_answer: data.grounded_answer,
                     latencies: data.latencies,
-                    deduplication: data.deduplication
+                    deduplication: data.deduplication,
+                    web_search_used: data.web_search_used,
+                    cached_knowledge_used: data.cached_knowledge_used,
+                    format_detected: data.format_detected,
+                    sufficiency_decision: data.sufficiency_decision,
+                    web_sources: data.web_sources
                 });
 
                 // Update session title in local state if newly auto-titled
@@ -941,20 +989,29 @@
             if (inOl) processedLines.push('</ol>');
             safe = processedLines.join('\n');
 
-            // 9. Interactive Citations [E1], [E2]
+            // 9. Interactive Citations [E1], [D1], [W1]
             if (evidenceList) {
                 messageEvidenceCache[msgId] = evidenceList;
             }
-            safe = safe.replace(/\[E(\d+)\]/g, function(match, num) {
+            safe = safe.replace(/\[([EDW]?)(\d+)\]/g, function(match, prefix, num) {
                 const citeIdx = parseInt(num, 10);
-                let tooltip = `Supporting Evidence Passage [E${citeIdx}]`;
-                if (evidenceList && evidenceList[citeIdx - 1]) {
-                    const ev = evidenceList[citeIdx - 1];
-                    const src = ev.source || 'Doc';
+                const ev = (evidenceList && evidenceList[citeIdx - 1]) ? evidenceList[citeIdx - 1] : null;
+                const isWeb = prefix === 'W' || (ev && (ev.source_type === 'web' || !!ev.url));
+                const pfx = prefix || (isWeb ? 'W' : 'D');
+                const pillLabel = `[${pfx}${citeIdx}]`;
+                const pillColor = isWeb
+                    ? "bg-emerald-50 text-emerald-800 hover:bg-emerald-600 hover:text-white border-emerald-300"
+                    : "bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border-blue-200";
+                let tooltip = `Supporting Evidence Passage ${pillLabel}`;
+                if (ev) {
+                    const src = ev.source || (isWeb ? 'Web Source' : 'Document');
                     const snippet = (ev.text || '').replace(/\s+/g, ' ').substring(0, 100) + '...';
-                    tooltip = `[E${citeIdx}] ${src}: "${snippet}"`;
+                    tooltip = `${pillLabel} ${src}: "${snippet}"`;
                 }
-                return `<button type="button" onclick="jumpToEvidence(${msgId}, ${citeIdx})" onmouseenter="showCitationPreview(event, ${msgId}, ${citeIdx})" onmouseleave="hideCitationPreview()" class="citation-pill inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white text-[11px] font-bold mx-0.5 border border-blue-200 cursor-pointer transition shadow-2xs group" title="${escapeHtml(tooltip)}"><svg class="w-2.5 h-2.5 text-blue-500 group-hover:text-white transition flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>[E${citeIdx}]</button>`;
+                const iconSvg = isWeb
+                    ? `<svg class="w-2.5 h-2.5 text-emerald-600 group-hover:text-white transition flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>`
+                    : `<svg class="w-2.5 h-2.5 text-blue-500 group-hover:text-white transition flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>`;
+                return `<button type="button" onclick="jumpToEvidence(${msgId}, ${citeIdx})" onmouseenter="showCitationPreview(event, ${msgId}, ${citeIdx})" onmouseleave="hideCitationPreview()" class="citation-pill inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md ${pillColor} text-[11px] font-bold mx-0.5 border cursor-pointer transition shadow-2xs group" title="${escapeHtml(tooltip)}">${iconSvg}${pillLabel}</button>`;
             });
 
             // 10. Paragraphs (split by double newlines, ignoring block elements)
@@ -992,23 +1049,29 @@
             const page = ev.page_number ? `Page ${ev.page_number}` : null;
             const scoreVal = ev.similarity_score !== undefined ? ev.similarity_score : (ev.score || 0);
             const score = typeof scoreVal === 'number' ? scoreVal.toFixed(3) : scoreVal;
-            const isCore = ev.is_core_attractor;
-            const roleBadge = isCore 
-                ? `<span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded">Core Attractor</span>`
-                : `<span class="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-1.5 py-0.5 rounded">Associative Bridge</span>`;
+            const isWeb = ev.source_type === 'web' || !!ev.url;
+            const pfx = isWeb ? 'W' : 'D';
+            const roleBadge = isWeb
+                ? `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded">🌐 Web Research</span>`
+                : (ev.is_core_attractor 
+                    ? `<span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded">Core Attractor</span>`
+                    : `<span class="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-1.5 py-0.5 rounded">Associative Bridge</span>`);
             const cleanText = (ev.text || '').replace(/\s+/g, ' ').trim();
             const snippet = escapeHtml(cleanText.length > 200 ? cleanText.substring(0, 200) + '...' : cleanText);
+
+            const urlHTML = ev.url ? `<div class="text-[10px] text-blue-600 truncate mt-1"><a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" class="hover:underline flex items-center gap-1"><svg class="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> ${escapeHtml(ev.url)}</a></div>` : '';
 
             card.innerHTML = `
                 <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 mb-2">
                     <div class="flex items-center gap-1.5 min-w-0">
-                        <span class="font-bold text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">[E${citeIdx}]</span>
+                        <span class="font-bold text-xs ${isWeb ? 'text-emerald-800 bg-emerald-50 border-emerald-300' : 'text-blue-700 bg-blue-50 border-blue-200'} px-1.5 py-0.5 rounded border">[${pfx}${citeIdx}]</span>
                         <span class="font-semibold text-xs text-slate-800 truncate max-w-[140px]" title="${source}">${source}</span>
                         ${page ? `<span class="text-[10px] text-slate-400">(${page})</span>` : ''}
                     </div>
                     ${roleBadge}
                 </div>
-                <p class="text-xs text-slate-600 leading-relaxed italic">"${snippet}"</p>
+                ${urlHTML}
+                <p class="text-xs text-slate-600 leading-relaxed italic mt-1.5">"${snippet}"</p>
                 <div class="mt-2 pt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
                     <span>Score: <strong class="text-slate-600 font-mono">${score}</strong></span>
                     <span class="text-blue-600 font-medium">Click pill to jump</span>
@@ -1235,13 +1298,26 @@
                             <span class="text-[10px] text-slate-400 font-mono group-open:rotate-180 transition">&or;</span>
                         </summary>
                         <div class="p-3 space-y-2 bg-white border-t border-slate-200">
-                            ${msg.evidence.map((e, idx) => `
+                            ${msg.evidence.map((e, idx) => {
+                                const isWeb = e.source_type === 'web' || !!e.url;
+                                const pfx = isWeb ? `W${idx+1}` : `D${idx+1}`;
+                                const badgeClass = isWeb 
+                                    ? "bg-emerald-100/70 text-emerald-800 border-emerald-300" 
+                                    : "bg-blue-100/70 text-blue-700 border-blue-200";
+                                const sourceDisplay = e.url 
+                                    ? `<a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer" class="font-semibold text-blue-600 hover:underline truncate max-w-[200px] flex items-center gap-1" title="${escapeHtml(e.url)}">
+                                        <svg class="w-3 h-3 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                        <span>${escapeHtml(e.title || (new URL(e.url).hostname))}</span>
+                                       </a>`
+                                    : `<span class="font-semibold text-slate-800 truncate max-w-[220px]" title="${escapeHtml(e.source || 'Doc')}">${escapeHtml(e.source || 'Doc')}</span>`;
+                                return `
                                 <div id="evidence-card-${msgId}-${idx+1}" class="p-3 rounded-xl border border-slate-100 bg-slate-50/70 text-xs space-y-1.5 transition duration-300">
                                     <div class="flex items-center justify-between text-[11px]">
                                         <div class="flex items-center gap-1.5">
-                                            <span class="font-bold text-blue-700 font-mono bg-blue-100/70 px-1.5 py-0.5 rounded border border-blue-200">[E${idx+1}]</span>
-                                            <span class="font-semibold text-slate-800 truncate max-w-[220px]" title="${escapeHtml(e.source || 'Doc')}">${escapeHtml(e.source || 'Doc')}</span>
+                                            <span class="font-bold font-mono px-1.5 py-0.5 rounded border ${badgeClass}">[${pfx}]</span>
+                                            ${sourceDisplay}
                                             ${e.page_number ? `<span class="text-[10px] text-slate-400">p.${e.page_number}</span>` : ''}
+                                            ${isWeb ? `<span class="text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded border border-emerald-200 font-medium">Web</span>` : ''}
                                         </div>
                                         <div class="flex items-center gap-2">
                                             <span class="font-mono text-[10px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">Score: ${Number(e.score).toFixed(4)}</span>
@@ -1252,7 +1328,7 @@
                                     </div>
                                     <p class="text-slate-700 leading-relaxed text-[11px]">${escapeHtml(e.text || '')}</p>
                                 </div>
-                            `).join('')}
+                            `}).join('')}
                         </div>
                     </details>
                 `;
@@ -1269,6 +1345,18 @@
                 `;
             }
 
+            let webBadge = '';
+            if (msg.web_search_used) {
+                webBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">🌐 Web Augmented</span>`;
+            } else if (msg.cached_knowledge_used) {
+                webBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-800 border border-cyan-300">🧠 Knowledge Cache</span>`;
+            }
+
+            let formatBadge = '';
+            if (msg.format_detected) {
+                formatBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">📝 Format: ${escapeHtml(msg.format_detected)}</span>`;
+            }
+
             div.innerHTML = `
                 <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 shadow-xs mt-1">
                     HAM
@@ -1283,6 +1371,8 @@
                                     ${confIcon} <span>${confText}</span>
                                 </span>
                                 ${claimsBadge}
+                                ${webBadge}
+                                ${formatBadge}
                             </div>
                             <button onclick="copyAnswerText(this)" class="copy-btn text-xs text-slate-400 hover:text-slate-700 flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition border border-transparent hover:border-slate-200 cursor-pointer" title="Copy answer to clipboard">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
@@ -1371,6 +1461,69 @@
                     }
                 }
             });
+        }
+
+        let isWebSearchToggleActive = false;
+
+        function setQuickFormat(fmt) {
+            const select = document.getElementById('answer-format-select');
+            if (select) select.value = fmt;
+            ['auto', '2_mark', '5_mark', '8_mark', '10_mark', 'comparison', 'worked_example', 'structured_notes'].forEach(f => {
+                const pill = document.getElementById(`pill-fmt-${f}`);
+                if (pill) {
+                    if (f === fmt) {
+                        pill.className = "px-2 py-0.5 rounded-full font-semibold transition bg-blue-600 text-white shadow-2xs";
+                    } else {
+                        pill.className = "px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600";
+                    }
+                }
+            });
+        }
+
+        function isWebSearchActive() {
+            const chk = document.getElementById('web-search-enabled-chk');
+            return isWebSearchToggleActive || (chk && chk.checked);
+        }
+
+        function toggleWebSearch() {
+            isWebSearchToggleActive = !isWebSearchToggleActive;
+            const chk = document.getElementById('web-search-enabled-chk');
+            if (chk) chk.checked = isWebSearchToggleActive;
+            updateWebSearchUI();
+        }
+
+        function syncWebSearchToggle() {
+            const chk = document.getElementById('web-search-enabled-chk');
+            isWebSearchToggleActive = chk ? chk.checked : false;
+            updateWebSearchUI();
+        }
+
+        function updateWebSearchUI() {
+            const btn = document.getElementById('web-search-toggle-btn');
+            const dot = document.getElementById('web-search-dot');
+            if (btn && dot) {
+                if (isWebSearchToggleActive) {
+                    btn.className = "ml-auto text-[11px] px-2.5 py-0.5 rounded-full font-semibold transition flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs cursor-pointer flex-shrink-0";
+                    dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+                } else {
+                    btn.className = "ml-auto text-[11px] px-2.5 py-0.5 rounded-full font-semibold transition flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 cursor-pointer flex-shrink-0";
+                    dot.className = "w-2 h-2 rounded-full bg-slate-400";
+                }
+            }
+        }
+
+        async function clearKnowledgeCache() {
+            if (!confirm("Clear all persistent web knowledge cached from searches?")) return;
+            try {
+                const res = await fetch('/api/knowledge', { method: 'DELETE' });
+                if (res.ok) {
+                    alert("Persistent web knowledge cache cleared successfully.");
+                } else {
+                    alert("Could not clear knowledge cache.");
+                }
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
         }
 
         function updateLLMUI() {

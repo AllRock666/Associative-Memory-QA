@@ -15,7 +15,7 @@ import numpy as np
 
 @dataclass
 class EvidenceChunk:
-    """A standardized evidence passage retrieved from document memory."""
+    """A standardized evidence passage retrieved from document or web memory."""
     chunk_id: str
     doc_id: str
     source: str
@@ -27,11 +27,47 @@ class EvidenceChunk:
     char_offset_start: Optional[int] = None
     char_offset_end: Optional[int] = None
     is_core_attractor: bool = True
+    source_type: str = "document"  # "document" | "web" | "cached_knowledge"
+    url: Optional[str] = None
+    title: Optional[str] = None
+    published_date: Optional[str] = None
+    content_hash: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def citation_header(self, cite_idx: int) -> str:
+        """Citation header formatted with source distinction [D#] vs [W#]."""
+        if self.source_type == "web":
+            url_part = f" ({self.url})" if self.url else ""
+            return f"[W{cite_idx}] Web: {self.source}{url_part}"
+        elif self.source_type == "cached_knowledge":
+            return f"[K{cite_idx}] Cached: {self.source}"
+        return f"[D{cite_idx}] Source: {self.source}"
 
     def to_citation_header(self, cite_idx: int) -> str:
         """Standardized citation string for prompts and UI."""
-        return f"[E{cite_idx}] (Source: {self.source}, Chunk: {self.chunk_id})"
+        return self.citation_header(cite_idx)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize chunk to dictionary with all web and provenance fields."""
+        return {
+            "chunk_id": self.chunk_id,
+            "doc_id": self.doc_id,
+            "source": self.source,
+            "text": self.text,
+            "similarity_score": self.similarity_score,
+            "hopfield_attention": self.hopfield_attention,
+            "rank": self.rank,
+            "page_number": self.page_number,
+            "char_offset_start": self.char_offset_start,
+            "char_offset_end": self.char_offset_end,
+            "is_core_attractor": self.is_core_attractor,
+            "source_type": self.source_type,
+            "url": self.url,
+            "title": self.title,
+            "published_date": self.published_date,
+            "content_hash": self.content_hash,
+            "metadata": self.metadata
+        }
 
 
 @dataclass
@@ -129,6 +165,10 @@ class GroundedAnswer:
                 {
                     "chunk_id": c.chunk_id,
                     "source": c.source,
+                    "source_type": getattr(c, "source_type", "document"),
+                    "url": getattr(c, "url", None),
+                    "title": getattr(c, "title", None),
+                    "published_date": getattr(c, "published_date", None),
                     "text": c.text,
                     "similarity_score": round(c.similarity_score, 4),
                     "hopfield_attention": round(c.hopfield_attention, 4),

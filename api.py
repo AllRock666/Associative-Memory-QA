@@ -36,6 +36,9 @@ class SearchRequest(BaseModel):
     max_tokens: Optional[int] = 4096
     chat_id: Optional[str] = None
     conversation_history: Optional[List[Dict[str, Any]]] = None
+    web_search_enabled: Optional[bool] = None
+    force_web_search: Optional[bool] = False
+    answer_format: Optional[str] = None
 
 class CreateChatRequest(BaseModel):
     title: Optional[str] = None
@@ -164,7 +167,10 @@ def search(req: SearchRequest):
             retriever_mode=active_retriever,
             answer_style=style,
             llm_provider_override=provider_override,
-            conversation_history=history
+            conversation_history=history,
+            web_search_enabled=req.web_search_enabled,
+            force_web_search=bool(req.force_web_search),
+            answer_format=req.answer_format
         )
     except Exception as e:
         traceback.print_exc()
@@ -182,6 +188,10 @@ def search(req: SearchRequest):
             "text": getattr(chunk, 'text', ''),
             "score": float(sim) if sim is not None else 0.0,
             "source": getattr(chunk, 'source', 'Unknown'),
+            "source_type": getattr(chunk, 'source_type', meta.get('source_type', 'document')),
+            "url": getattr(chunk, 'url', meta.get('url')),
+            "title": getattr(chunk, 'title', meta.get('title')),
+            "published_date": getattr(chunk, 'published_date', meta.get('published_date')),
             "page_number": getattr(chunk, 'page_number', meta.get("page_number")),
             "is_core_attractor": is_core,
             "role": "Core Attractor Basin" if is_core else "Associative Bridge"
@@ -275,7 +285,13 @@ def search(req: SearchRequest):
         "grounded_answer": grounded_data,
         "associative_diagnostics": associative_diagnostics,
         "latencies": latencies,
-        "deduplication": getattr(res, "deduplication_diagnostics", {})
+        "deduplication": getattr(res, "deduplication_diagnostics", {}),
+        "web_search_used": getattr(res, "web_search_used", False),
+        "cached_knowledge_used": getattr(res, "cached_knowledge_used", False),
+        "format_detected": getattr(res, "format_detected", None),
+        "format_requested": req.answer_format or req.detail_level or req.answer_style,
+        "sufficiency_decision": getattr(res, "sufficiency_decision", None),
+        "web_sources": getattr(res, "web_sources", [])
     }
 
     # Automatically persist turn to chat session if chat_id provided
@@ -413,6 +429,69 @@ async def upload_document(file: UploadFile = File(...)):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==============================================================================
+# Answer Formats & Exam Rubrics Endpoints
+# ==============================================================================
+
+@app.get("/api/formats")
+def list_formats():
+    """List available answer formats and academic/technical mark rubrics."""
+    from core.format_guidance import FORMAT_CATALOG
+    catalog_list = []
+    for fid, g in FORMAT_CATALOG.items():
+        catalog_list.append({
+            "format_id": fid,
+            "name": getattr(g, "name", g.display_name),
+            "display_name": g.display_name,
+            "target_words": g.expected_word_range,
+            "mark_weight": g.target_marks,
+            "description": g.expected_word_range,
+            "outline": g.structural_outline,
+            "target_components": g.target_components
+        })
+    return {"formats": catalog_list}
+
+
+# ==============================================================================
+# Persistent Web Knowledge Memory Endpoints
+# ==============================================================================
+
+@app.get("/api/knowledge")
+def list_knowledge():
+    """List cached persistent web knowledge memory entries."""
+    global pipeline
+    if not pipeline or not hasattr(pipeline, "knowledge_memory"):
+        return {"entries": [], "total_entries": 0}
+    entries = pipeline.knowledge_memory.get_all_entries()
+    return {
+        "entries": [e.to_dict() for e in entries],
+        "total_entries": len(entries)
+    }
+
+
+@app.delete("/api/knowledge")
+def clear_knowledge():
+    """Clear all persistent web knowledge memory entries."""
+    global pipeline
+    if not pipeline or not hasattr(pipeline, "knowledge_memory"):
+        raise HTTPException(status_code=500, detail="Pipeline not initialized")
+    pipeline.knowledge_memory.clear()
+    return {"success": True, "message": "Persistent knowledge memory cleared"}
+
+
+@app.delete("/api/knowledge/{entry_id}")
+def delete_knowledge_entry(entry_id: str):
+    """Delete a specific persistent knowledge memory entry."""
+    global pipeline
+    if not pipeline or not hasattr(pipeline, "knowledge_memory"):
+        raise HTTPException(status_code=500, detail="Pipeline not initialized")
+    found = pipeline.knowledge_memory.delete_entry(entry_id)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Knowledge entry '{entry_id}' not found")
+    return {"success": True, "message": f"Knowledge entry '{entry_id}' deleted"}
+
 
 @app.get("/")
 async def get_index():

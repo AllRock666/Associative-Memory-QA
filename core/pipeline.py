@@ -65,6 +65,15 @@ class PipelineConfig:
     llm_temperature: float = 0.2
     llm_fallback_to_deterministic: bool = True
 
+    # Web Augmentation & Persistent Knowledge Memory
+    web_search_enabled: bool = False
+    web_search_provider: str = "mock"  # "mock" | "duckduckgo"
+    web_fetch_timeout_seconds: float = 8.0
+    web_cache_path: str = "data/web_memory_store.json"
+    sufficiency_min_chunks: int = 2
+    sufficiency_min_similarity: float = 0.35
+    sufficiency_min_entity_coverage: float = 0.5
+
     def to_dict(self) -> Dict:
         return self.__dict__.copy()
 
@@ -84,6 +93,12 @@ class QueryResult:
     evidence_collection: Optional[EvidenceCollection] = None
     stage_latencies_ms: Dict[str, float] = field(default_factory=dict)
     deduplication_diagnostics: Dict[str, Any] = field(default_factory=dict)
+    web_search_used: bool = False
+    cached_knowledge_used: bool = False
+    format_detected: Optional[str] = None
+    format_requested: Optional[str] = None
+    sufficiency_decision: Optional[Dict[str, Any]] = None
+    web_sources: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class HopfieldQAPipeline:
@@ -168,6 +183,40 @@ class HopfieldQAPipeline:
         self.hopfield_retriever = HopfieldRetrieverAdapter(self.associative_engine)
         self.dense_retriever = DenseRetrieverAdapter(self.memory)
         self.hybrid_retriever = HybridRetrieverAdapter(self.hopfield_retriever, self.memory)
+
+        # Web Search & Persistent Knowledge Memory
+        from core.knowledge_memory import PersistentKnowledgeMemory
+        from core.web_search import DuckDuckGoSearchProvider, MockWebSearchProvider, WebPageExtractor, WebResearchConfig
+        from core.retrieval_coordinator import RetrievalCoordinator, SufficiencyEvaluator
+        from core.format_detector import FormatDetector
+
+        self.knowledge_memory = PersistentKnowledgeMemory(
+            filepath=getattr(self.config, 'web_cache_path', 'data/web_memory_store.json')
+        )
+        provider_name = getattr(self.config, 'web_search_provider', 'duckduckgo').lower()
+        if provider_name == "mock":
+            self.web_search_provider = MockWebSearchProvider()
+        else:
+            self.web_search_provider = DuckDuckGoSearchProvider()
+
+        self.web_extractor = WebPageExtractor(
+            timeout=getattr(self.config, 'web_fetch_timeout_seconds', 8.0)
+        )
+        self.web_config = WebResearchConfig(
+            enabled=getattr(self.config, 'web_search_enabled', False),
+            provider=provider_name,
+            fetch_timeout_seconds=getattr(self.config, 'web_fetch_timeout_seconds', 8.0)
+        )
+        self.retrieval_coordinator = RetrievalCoordinator(
+            doc_retriever=self.hopfield_retriever,
+            embedder=self.embedder,
+            chunker=self.chunker,
+            knowledge_memory=self.knowledge_memory,
+            web_search_provider=self.web_search_provider,
+            web_extractor=self.web_extractor,
+            web_config=self.web_config
+        )
+        self.format_detector = FormatDetector()
 
         # State
         self._all_chunks: List[Chunk] = []
@@ -350,9 +399,12 @@ class HopfieldQAPipeline:
         retriever_mode: Optional[str] = None,
         llm_provider_override: Optional[Any] = None,
         conversation_history: Optional[List[Dict[str, str]]] = None,
+        web_search_enabled: Optional[bool] = None,
+        force_web_search: bool = False,
+        answer_format: Optional[str] = None,
     ) -> QueryResult:
         """
-        Execute a complete query through the pipeline.
+        Execute a complete query through the pipeline with multi-source retrieval coordinator.
 
         Args:
             raw_query: User's raw query string.
@@ -360,19 +412,27 @@ class HopfieldQAPipeline:
             include_attention_landscape: Whether to include full attention map.
             use_associative_mode: Whether to execute Hopfield continuous attractor dynamics
                                  (replacing static naive RAG similarity).
-            answer_style: "conversational" (LLM RAG style), "executive" (bulleted summary),
-                         or "concise".
+            answer_style: "conversational", "detailed", "executive", "concise", etc.
             retriever_mode: "hopfield" (Continuous Associative Memory), "dense" (Cosine Baseline),
                            or "hybrid" (BM25 + Neural RRF).
+            web_search_enabled: Whether web search augmentation is active.
+            force_web_search: Whether to force web research even if documents are present.
+            answer_format: Examination mark tier or genre (2_mark, 5_mark, 8_mark, 10_mark, comparison, etc.).
 
         Returns:
             QueryResult with answer, evidence, and performance stats.
         """
-        if not self.is_ready:
+        effective_web_search = self.config.web_search_enabled if web_search_enabled is None else web_search_enabled
+        if not self.is_ready and not (effective_web_search or force_web_search):
             raise RuntimeError("Pipeline not ready. Please add documents first.")
 
         k = top_k or self.config.top_k
         t0 = time.perf_counter()
+
+        # Format & Intent Detection
+        explicit_fmt = answer_format or answer_style
+        detected_fmt, _ = self.format_detector.detect_format(raw_query, explicit_preference=explicit_fmt)
+        active_style = detected_fmt or answer_style or "conversational"
         
         # Determine active retriever mode
         if retriever_mode is None:
@@ -383,7 +443,7 @@ class HopfieldQAPipeline:
         else:
             mode = retriever_mode.lower()
 
-        logger.info(f"Processing query: '{raw_query}' (mode={mode}, top_k={k}, style={answer_style})")
+        logger.info(f"Processing query: '{raw_query}' (mode={mode}, top_k={k}, style={active_style}, web_search={effective_web_search})")
 
         # 1. Process query (with multi-turn coreference contextualization)
         processed = self.query_processor.process(raw_query, conversation_history=conversation_history)
@@ -403,41 +463,42 @@ class HopfieldQAPipeline:
             self.associative_engine.beta = self.config.hopfield_beta
             selected_retriever = self.hopfield_retriever
 
-        # 4. Execute retrieval via BaseRetriever
+        # 4. Multi-Source Retrieval via RetrievalCoordinator
         t_ret_start = time.perf_counter()
-        evidence_collection = selected_retriever.retrieve(
+        self.retrieval_coordinator.doc_retriever = selected_retriever
+        coord_res = self.retrieval_coordinator.retrieve(
             query=query_text,
             query_embedding=query_embedding,
             top_k=k,
-            min_similarity_threshold=self.config.similarity_threshold
+            format_id=active_style,
+            web_search_enabled=effective_web_search,
+            force_web_search=force_web_search
         )
         retrieval_time_ms = max(0.1, (time.perf_counter() - t_ret_start) * 1000)
 
+        dedup_evidence_collection = coord_res.evidence_collection
+        dedup_diagnostics = coord_res.dedup_diagnostics or {"duplicates_removed": 0}
+        dedup_time_ms = 0.1
+
         associative_res = getattr(self.hopfield_retriever, 'last_result', None) if mode in ("hopfield", "hybrid") else None
 
-        # 5. Evidence Deduplication Stage (observable, preserves Hopfield rankings & diagnostics)
-        t_dedup_start = time.perf_counter()
-        from core.evidence_deduplicator import EvidenceDeduplicator
-        dedup_evidence_collection, dedup_diagnostics = EvidenceDeduplicator.deduplicate(evidence_collection)
-        dedup_time_ms = max(0.05, (time.perf_counter() - t_dedup_start) * 1000)
-
-        # 6. Optional: attention landscape
+        # 5. Optional: attention landscape
         landscape = None
         if include_attention_landscape:
             landscape = self.memory.get_attention_landscape(query_embedding)
 
-        # 7. Generate answer using GenerativeRAGSynthesizer
+        # 6. Generate answer using GenerativeRAGSynthesizer
         t_synth_start = time.perf_counter()
         grounded_answer = self.answer_generator.synthesize(
             query=query_text,
             evidence=dedup_evidence_collection,
-            style=answer_style,
+            style=active_style,
             provider_override=llm_provider_override,
             conversation_history=conversation_history
         )
         synth_time_ms = max(0.1, (time.perf_counter() - t_synth_start) * 1000)
 
-        # 8. Convert for backward-compatibility with legacy consumers
+        # 7. Convert for backward-compatibility with legacy consumers
         legacy_retrieved: List[RetrievalResult] = []
         for i, c in enumerate(dedup_evidence_collection.chunks):
             meta = c.metadata or {}
@@ -475,7 +536,7 @@ class HopfieldQAPipeline:
         )
 
         total_time = max(0.1, (time.perf_counter() - t0) * 1000)
-        logger.info(f"Query completed in {total_time:.1f}ms with {len(dedup_evidence_collection.chunks)} unique chunks (dedup removed {dedup_diagnostics['duplicates_removed']}, abstained={grounded_answer.abstained}).")
+        logger.info(f"Query completed in {total_time:.1f}ms with {len(dedup_evidence_collection.chunks)} unique chunks (web_used={coord_res.web_search_performed}, cached_used={coord_res.cached_knowledge_used}, abstained={grounded_answer.abstained}).")
 
         synth_stages = (grounded_answer.metadata.get("stage_latencies_ms") or {}) if grounded_answer else {}
         stage_latencies = {
@@ -499,7 +560,13 @@ class HopfieldQAPipeline:
             grounded_answer=grounded_answer,
             evidence_collection=dedup_evidence_collection,
             stage_latencies_ms=stage_latencies,
-            deduplication_diagnostics=dedup_diagnostics
+            deduplication_diagnostics=dedup_diagnostics,
+            web_search_used=coord_res.web_search_performed,
+            cached_knowledge_used=coord_res.cached_knowledge_used,
+            format_detected=detected_fmt,
+            format_requested=answer_format or answer_style,
+            sufficiency_decision=coord_res.sufficiency_decision.__dict__ if coord_res.sufficiency_decision else None,
+            web_sources=coord_res.web_sources
         )
 
     def get_stats(self) -> Dict:

@@ -231,7 +231,23 @@ class PyTorchHopfieldMemory:
         norms = np.where(norms < 1e-8, 1.0, norms)
         patterns_norm = patterns / norms
         self._patterns = torch.tensor(patterns_norm, dtype=torch.float32, device=self.device)
-        self._metadata = metadata
+        self._metadata = list(metadata)
+
+    def add_patterns(self, patterns: np.ndarray, metadata: List[Dict]) -> None:
+        """Incrementally append new patterns and metadata without rebuilding existing memory."""
+        if patterns is None or len(patterns) == 0:
+            return
+        norms = np.linalg.norm(patterns, axis=1, keepdims=True)
+        norms = np.where(norms < 1e-8, 1.0, norms)
+        patterns_norm = patterns / norms
+        new_tensor = torch.tensor(patterns_norm, dtype=torch.float32, device=self.device)
+
+        if self._patterns is None or self._patterns.shape[0] == 0:
+            self._patterns = new_tensor
+            self._metadata = list(metadata)
+        else:
+            self._patterns = torch.cat([self._patterns, new_tensor], dim=0)
+            self._metadata.extend(metadata)
 
     def clear(self) -> None:
         """Clear all stored patterns and metadata."""
