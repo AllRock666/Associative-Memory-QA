@@ -52,9 +52,9 @@ class AnswerGenerator:
 
     def __init__(
         self,
-        max_answer_length: int = 600,
+        max_answer_length: int = 16000,
         min_confidence_threshold: float = 0.1,
-        top_sentences: int = 5,
+        top_sentences: int = 10,
     ):
         self.max_answer_length = max_answer_length
         self.min_confidence_threshold = min_confidence_threshold
@@ -334,11 +334,6 @@ class AnswerGenerator:
             lines.append(f"\n**Example / Note:** {example}")
 
         answer = "\n".join(lines).strip()
-
-        # Final length guard
-        if len(answer) > self.max_answer_length + 400:
-            answer = answer[:self.max_answer_length + 400].rsplit('\n', 1)[0] + "\n- *(truncated)*"
-
         return answer
 
     def _build_highlighted_passages(
@@ -357,8 +352,8 @@ class AnswerGenerator:
                 pattern = re.compile(re.escape(kw), re.IGNORECASE)
                 highlighted_words.extend([m.start() for m in pattern.finditer(text)])
 
-            # Truncate passage for display
-            display_text = text[:300] + ("..." if len(text) > 300 else "")
+            # Keep full passage text flexible for display
+            display_text = text
 
             passages.append({
                 "text": display_text,

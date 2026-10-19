@@ -52,7 +52,7 @@ class PipelineConfig:
     n_query_variants: int = 3
 
     # Answer
-    max_answer_length: int = 2000
+    max_answer_length: int = 16000
     min_confidence: float = 0.1
 
     # LLM Answer Generation
@@ -61,7 +61,7 @@ class PipelineConfig:
     llm_model: str = "llama3.2"
     llm_api_key: Optional[str] = None
     llm_timeout_seconds: float = 60.0
-    llm_max_tokens: int = 4096
+    llm_max_tokens: int = 8192
     llm_temperature: float = 0.2
     llm_fallback_to_deterministic: bool = True
 

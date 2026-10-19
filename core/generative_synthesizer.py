@@ -880,43 +880,42 @@ class GenerativeRAGSynthesizer:
                             # Genuine definition of the requested subject!
                             score += 6.0
                         elif cand_subj and any(w in s_clean.lower() for w in ["are measurable values", "is a record of", "is a file format"]):
-                            # Defines an auxiliary sub-concept (e.g. "Security metrics are measurable values...")
+                            # Defines an auxiliary sub-concept rather than the primary target
                             score -= 3.0
-                        elif any(w in q_lower for w in ["security", "log", "threat", "forensic"]) and any(w in s_lower for w in [
-                            "threat detection", "incident response", "forensic investigation", "monitoring",
-                            "suspicious activities", "unauthorized access", "security incidents", "security logs"
-                        ]):
-                            # Core operational practices of the security domain
-                            score += 4.5
-                        else:
-                            if target_lower in s_lower:
-                                score += 3.0
+                        elif target_lower in s_lower:
+                            score += 3.5
                     else:
-                        if any(w in s_lower for w in ["functions as", "is a", "is the", "was a", "was the", "operating system", "decoupling", "defined as"]):
-                            score += 2.0
+                        if any(w in s_lower for w in ["functions as", "is a", "is an", "is the", "was a", "was the", "defined as", "refers to", "serves as"]):
+                            score += 2.5
 
-                elif intent in ("COMPONENTS", "HOW_MECHANISM", "ARCHITECTURE"):
-                    if any(w in s_lower for w in ["resourcemanager", "nodemanager", "applicationmaster", "components", "daemons", "containers", "competition", "competitions", "mind saga", "group discussion", "debate"]):
+                elif intent in ("COMPONENTS", "ARCHITECTURE"):
+                    if any(w in s_lower for w in ["component", "components", "consists of", "composed of", "daemons", "containers", "modules", "elements", "architecture", "structure", "rounds"]):
+                        score += 3.0
+                    if target_lower and target_lower in s_lower:
+                        score += 2.0
+
+                elif intent == "HOW_MECHANISM":
+                    if any(w in s_lower for w in ["mechanism", "workflow", "process", "coordinates", "arbitrates", "monitors", "allocates", "manages", "executes", "lifecycle"]):
                         score += 3.0
                     if target_lower and target_lower in s_lower:
                         score += 2.0
 
                 elif intent == "WHERE":
-                    if any(w in s_lower for w in ["multi-tenant", "workload", "batch", "spark", "mapreduce", "flink", "streaming", "cluster"]):
+                    if any(w in s_lower for w in ["environment", "workload", "cluster", "platform", "production", "system", "deployed", "used in", "multi-tenant"]):
                         score += 2.5
                     if target_lower and target_lower in s_lower:
                         score += 2.0
 
                 elif intent == "WHY_PURPOSE":
-                    if any(w in s_lower for w in ["decoupling", "bottleneck", "isolation", "starvation", "guarantees", "solve", "overcome"]):
+                    if any(w in s_lower for w in ["purpose", "designed to", "aims to", "solves", "prevents", "guarantees", "overcome", "isolation", "efficiency"]):
                         score += 2.5
 
                 elif intent == "COMPARISON":
-                    if any(w in s_lower for w in ["storage", "compute", "whereas", "in contrast", "while", "unlike"]):
+                    if any(w in s_lower for w in ["whereas", "in contrast", "while", "unlike", "differ", "difference"]):
                         score += 2.5
 
                 elif intent == "MULTI_PART":
-                    if any(w in s_lower for w in ["multi-tenant", "workload", "batch", "spark", "mapreduce", "resourcemanager", "nodemanager"]):
+                    if any(w in s_lower for w in ["used", "environment", "cluster", "workload", "architecture", "component", "coordination", "multi-tenant"]):
                         score += 2.5
 
                 scored.append(ScoredSentence(
@@ -965,7 +964,7 @@ class GenerativeRAGSynthesizer:
         if not scored_sentences:
             top_c = chunks[0] if chunks else None
             if top_c:
-                excerpt = top_c.text.strip().split('\n')[0][:200]
+                excerpt = top_c.text.strip()
                 return f"Based on the retrieved documentation, {excerpt} [E1].", []
             return f"The retrieved documents contain reference to {query}, but lacked sufficient detail [E1].", []
 
@@ -1002,23 +1001,13 @@ class GenerativeRAGSynthesizer:
                     elif style in ("detailed", "comprehensive"):
                         p1 = f"The primary difference is that {s1_text} [E{s1.citation_idx}], whereas {s2_text} [E{s2.citation_idx}]."
                         sec2 = f"### Architectural & Functional Separation\n{s1_text} [E{s1.citation_idx}]. In contrast, {s2_text} [E{s2.citation_idx}]."
-                        if is_yarn_domain and any(w in query.lower() for w in ["hdfs", "storage", "compute", "namenode"]):
-                            sec3 = (
-                                "### Comparative Summary Matrix\n\n"
-                                f"| Architectural Dimension | {e1.upper()} | {e2.upper()} |\n"
-                                f"|---|---|---|\n"
-                                f"| Primary Role | Distributed resource arbitration & cluster operating system [E{s1.citation_idx}] | Scalable distributed storage & block replication [E{s2.citation_idx}] |\n"
-                                f"| Core Abstraction | Execution Containers & Daemons (RM, NM, AM) [E{s1.citation_idx}] | 128MB Fixed-size Blocks & Daemons (NameNode, DataNode) [E{s2.citation_idx}] |\n"
-                                f"| Cluster Layer | Compute & Scheduling Layer [E{s1.citation_idx}] | Storage & Persistence Layer [E{s2.citation_idx}] |"
-                            )
-                        else:
-                            sec3 = (
-                                "### Comparative Summary Matrix\n\n"
-                                f"| Dimension | {e1.upper()} | {e2.upper()} |\n"
-                                f"|---|---|---|\n"
-                                f"| Core Characteristic | {s1_text} [E{s1.citation_idx}] | {s2_text} [E{s2.citation_idx}] |\n"
-                                f"| Operational Scope | Focuses on {e1} properties [E{s1.citation_idx}] | Focuses on {e2} properties [E{s2.citation_idx}] |"
-                            )
+                        sec3 = (
+                            "### Comparative Summary Matrix\n\n"
+                            f"| Architectural Dimension | {e1.upper()} | {e2.upper()} |\n"
+                            f"|---|---|---|\n"
+                            f"| Primary Role | {s1_text} [E{s1.citation_idx}] | {s2_text} [E{s2.citation_idx}] |\n"
+                            f"| Operational Scope | Focuses on {e1} properties [E{s1.citation_idx}] | Focuses on {e2} properties [E{s2.citation_idx}] |"
+                        )
                         res = f"{p1}\n\n{sec2}\n\n{sec3}"
                     else:
                         res = (
@@ -1045,27 +1034,6 @@ class GenerativeRAGSynthesizer:
                 s1 = f"{clean_s} [E{best_s.citation_idx}]."
                 lead_sentences.append((s1, best_s.citation_idx, best_s))
                 covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
-            elif is_sec_domain and any(w in (target_lower or "") for w in ["security", "cyber", "cybersecurity"]):
-                # Operational definition synthesis for cybersecurity domain when documents lack a standalone definition
-                m_cand = next(
-                    (s for s in scored_sentences if any(w in s.text.lower() for w in ["threat detection", "incident response", "forensic investigation"])),
-                    scored_sentences[0]
-                )
-                m_cite = m_cand.citation_idx
-                s1 = (
-                    f"Within the provided documentation, {target or 'cybersecurity'} is defined and addressed through its "
-                    f"operational practices -- specifically security logs supporting threat detection, incident response, and "
-                    f"forensic investigation to investigate security incidents and potential breaches [E{m_cite}]."
-                )
-                lead_sentences.append((s1, m_cite, m_cand))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
-
-                s2 = (
-                    f"While the documentation does not offer a standalone general textbook definition, it establishes that "
-                    f"security systems rely on incident logs to record system events, detect threats, and support forensic investigation [E{m_cite}]."
-                )
-                lead_sentences.append((s2, m_cite, m_cand))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s2) if w.lower() not in STOP_WORDS])
             else:
                 target_cand = [
                     s for s in scored_sentences
@@ -1081,152 +1049,84 @@ class GenerativeRAGSynthesizer:
                 else:
                     best_s = scored_sentences[0]
                     clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
-                    s1 = f"{clean_s} [E{best_s.citation_idx}]."
+                    if target and target_lower not in clean_s.lower():
+                        s1 = f"Within the provided documentation, {target} is defined through operational practices where {clean_s[0].lower() + clean_s[1:]} [E{best_s.citation_idx}]."
+                    else:
+                        s1 = f"{clean_s} [E{best_s.citation_idx}]."
                     lead_sentences.append((s1, best_s.citation_idx, best_s))
                     covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
 
         elif intent == "WHERE":
-            if is_yarn_domain:
-                workload_chunk = None
-                for s in scored_sentences:
-                    if any(w in s.text.lower() for w in ["multi-tenant", "workload", "mapreduce", "spark", "flink"]):
-                        workload_chunk = s
-                        break
-                if not workload_chunk:
-                    workload_chunk = scored_sentences[0]
-
-                cite_idx = workload_chunk.citation_idx
-                wt = workload_chunk.text.lower()
-
-                if "hadoop" in wt:
-                    env_desc = "Hadoop-based distributed computing environments"
-                elif "multi-tenant" in wt and "cluster" in wt:
-                    env_desc = "multi-tenant cluster environments"
-                elif "multi-tenant" in wt:
-                    env_desc = "multi-tenant computing environments"
-                elif "cluster" in wt:
-                    env_desc = "distributed cluster environments"
+            where_cand = next(
+                (s for s in scored_sentences if any(w in s.text.lower() for w in ["multi-tenant", "workload", "environment", "cluster", "platform", "deployed", "system", "production"])),
+                scored_sentences[0]
+            )
+            clean_s = clean_narrative_preamble(where_cand.text).rstrip('.')
+            if "used" in query.lower():
+                if clean_s.lower().startswith("in a "):
+                    s1 = f"{t_name} is used in a {clean_s[5:]} [E{where_cand.citation_idx}]."
+                elif clean_s.lower().startswith("in "):
+                    s1 = f"{t_name} is used in {clean_s[3:]} [E{where_cand.citation_idx}]."
                 else:
-                    env_desc = "distributed computing environments"
-
-                if "arbitrate resources" in wt or "arbitrates resources" in wt:
-                    purpose_desc = "arbitrate resources across diverse data workloads"
-                elif "resource management and job scheduling" in wt:
-                    purpose_desc = "manage cluster resources and schedule processing workloads"
-                elif "decoupling resource management" in wt:
-                    purpose_desc = "decouple resource management from data processing engines"
-                elif "coexist efficiently" in wt:
-                    purpose_desc = "enable heterogeneous workloads to coexist efficiently"
-                else:
-                    purpose_desc = "manage cluster resources and coordinate workloads"
-
-                wl_match = re.search(r'ranging from ([^.]+)', workload_chunk.text, re.I)
-                workloads_str = None
-                if wl_match:
-                    raw_wl = wl_match.group(1).strip()
-                    raw_wl = re.sub(r'\bmassive,\s*resource-intensive\b', '', raw_wl, flags=re.I)
-                    raw_wl = re.sub(r'\bwildly varying\b', '', raw_wl, flags=re.I)
-                    raw_wl = re.sub(r'\s+', ' ', raw_wl).strip()
-                    workloads_str = raw_wl
-
-                s1 = f"{t_name} is used in {env_desc} to {purpose_desc} [E{cite_idx}]."
-                lead_sentences.append((s1, cite_idx, workload_chunk))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
-
-                if workloads_str:
-                    s2 = f"Supported workloads include {workloads_str} [E{cite_idx}]."
-                    lead_sentences.append((s2, cite_idx, workload_chunk))
-                    covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s2) if w.lower() not in STOP_WORDS])
+                    s1 = f"{t_name} is used in {clean_s[0].lower() + clean_s[1:]} [E{where_cand.citation_idx}]."
             else:
-                best_s = scored_sentences[0]
-                clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
-                s1 = f"{clean_s} [E{best_s.citation_idx}]."
-                lead_sentences.append((s1, best_s.citation_idx, best_s))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+                s1 = f"{clean_s} [E{where_cand.citation_idx}]."
+            lead_sentences.append((s1, where_cand.citation_idx, where_cand))
+            covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+
+            extra_cand = next(
+                (s for s in scored_sentences if s.text != where_cand.text and any(w in s.text.lower() for w in ["workload", "support", "batch", "streaming", "analytics", "coexist", "scale"])),
+                None
+            )
+            if extra_cand:
+                clean_s2 = clean_narrative_preamble(extra_cand.text).rstrip('.')
+                s2 = f"{clean_s2} [E{extra_cand.citation_idx}]."
+                lead_sentences.append((s2, extra_cand.citation_idx, extra_cand))
+                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s2) if w.lower() not in STOP_WORDS])
 
         elif intent == "COMPONENTS":
-            if is_yarn_domain:
-                arch_chunk = next(
-                    (s for s in scored_sentences if any(w in s.text.lower() for w in ["resourcemanager", "nodemanager", "applicationmaster"])),
-                    scored_sentences[0]
-                )
-                cite_idx = arch_chunk.citation_idx
-                s1 = (
-                    f"{t_name}'s architecture is composed of three primary components: the centralized ResourceManager, "
-                    f"per-node NodeManagers, and per-application ApplicationMasters [E{cite_idx}]."
-                )
-                lead_sentences.append((s1, cite_idx, arch_chunk))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
-            else:
-                best_s = scored_sentences[0]
-                clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
-                s1 = f"{clean_s} [E{best_s.citation_idx}]."
-                lead_sentences.append((s1, best_s.citation_idx, best_s))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+            arch_chunk = next(
+                (s for s in scored_sentences if any(w in s.text.lower() for w in ["component", "components", "daemons", "structure", "parts", "elements", "resourcemanager", "nodemanager"])),
+                scored_sentences[0]
+            )
+            clean_s = clean_narrative_preamble(arch_chunk.text).rstrip('.')
+            s1 = f"{clean_s} [E{arch_chunk.citation_idx}]."
+            lead_sentences.append((s1, arch_chunk.citation_idx, arch_chunk))
+            covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
 
         elif intent == "ARCHITECTURE":
-            if is_yarn_domain:
-                arch_chunk = next(
-                    (s for s in scored_sentences if "decoupling" in s.text.lower() or "cluster operating system" in s.text.lower()),
-                    scored_sentences[0]
-                )
-                cite_idx = arch_chunk.citation_idx
-                s1 = (
-                    f"{t_name}'s architecture fundamentally decouples resource management and job scheduling from "
-                    f"the underlying data processing engines [E{cite_idx}]."
-                )
-                lead_sentences.append((s1, cite_idx, arch_chunk))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
-            else:
-                best_s = scored_sentences[0]
-                clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
-                s1 = f"{clean_s} [E{best_s.citation_idx}]."
-                lead_sentences.append((s1, best_s.citation_idx, best_s))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+            arch_chunk = next(
+                (s for s in scored_sentences if any(w in s.text.lower() for w in ["architecture", "architectural", "decoupl", "operating system", "design", "coordination"])),
+                scored_sentences[0]
+            )
+            clean_s = clean_narrative_preamble(arch_chunk.text).rstrip('.')
+            s1 = f"{clean_s} [E{arch_chunk.citation_idx}]."
+            lead_sentences.append((s1, arch_chunk.citation_idx, arch_chunk))
+            covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
 
         elif intent == "MULTI_PART":
-            if is_yarn_domain:
-                # Part 1: Where used
-                where_cand = next(
-                    (s for s in scored_sentences if any(w in s.text.lower() for w in ["multi-tenant", "workload", "uber", "hadoop"])),
-                    scored_sentences[0]
-                )
-                s1 = (
-                    f"{t_name} is used in distributed computing and multi-tenant cluster environments to arbitrate "
-                    f"resources across diverse data processing workloads [E{where_cand.citation_idx}]."
-                )
-                lead_sentences.append((s1, where_cand.citation_idx, where_cand))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
-
-                # Part 2: Architecture
-                arch_cand = next(
-                    (s for s in scored_sentences if any(w in s.text.lower() for w in ["resourcemanager", "nodemanager", "decoupling"])),
-                    scored_sentences[0]
-                )
-                if "decoupling" in arch_cand.text.lower():
-                    s2 = (
-                        f"Architecturally, {t_name} fundamentally decouples resource management and job scheduling "
-                        f"from the underlying data processing engines [E{arch_cand.citation_idx}]."
-                    )
-                else:
-                    s2 = (
-                        f"Architecturally, {t_name} achieves distributed resource management through the coordination "
-                        f"of three primary components: the ResourceManager, NodeManagers, and ApplicationMasters [E{arch_cand.citation_idx}]."
-                    )
-                lead_sentences.append((s2, arch_cand.citation_idx, arch_cand))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s2) if w.lower() not in STOP_WORDS])
+            # Part 1: Where used / deployment
+            where_cand = next(
+                (s for s in scored_sentences if any(w in s.text.lower() for w in ["used", "environment", "cluster", "workload", "platform", "system", "production", "multi-tenant"])),
+                scored_sentences[0]
+            )
+            clean_s1 = clean_narrative_preamble(where_cand.text).rstrip('.')
+            if "where" in query.lower() and "used" not in clean_s1.lower():
+                s1 = f"Regarding where {target or 'the system'} is used, {clean_s1[0].lower() + clean_s1[1:]} [E{where_cand.citation_idx}]."
             else:
-                best_s = scored_sentences[0]
-                clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
-                s1 = f"{clean_s} [E{best_s.citation_idx}]."
-                lead_sentences.append((s1, best_s.citation_idx, best_s))
-                covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
-                if len(scored_sentences) > 1:
-                    s2_cand = scored_sentences[1]
-                    clean_s2 = clean_narrative_preamble(s2_cand.text).rstrip('.')
-                    s2 = f"{clean_s2} [E{s2_cand.citation_idx}]."
-                    lead_sentences.append((s2, s2_cand.citation_idx, s2_cand))
-                    covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s2) if w.lower() not in STOP_WORDS])
+                s1 = f"{clean_s1} [E{where_cand.citation_idx}]."
+            lead_sentences.append((s1, where_cand.citation_idx, where_cand))
+            covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+
+            # Part 2: Architecture / components
+            arch_cand = next(
+                (s for s in scored_sentences if s.text != where_cand.text and any(w in s.text.lower() for w in ["architecture", "component", "daemons", "decoupl", "coordination", "process", "workflow"])),
+                scored_sentences[1] if len(scored_sentences) > 1 else scored_sentences[0]
+            )
+            clean_s2 = clean_narrative_preamble(arch_cand.text).rstrip('.')
+            s2 = f"In terms of architecture and operation, {clean_s2[0].lower() + clean_s2[1:]} [E{arch_cand.citation_idx}]."
+            lead_sentences.append((s2, arch_cand.citation_idx, arch_cand))
+            covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s2) if w.lower() not in STOP_WORDS])
 
         elif intent == "HOW_MECHANISM":
             best_s = scored_sentences[0]
@@ -1568,16 +1468,16 @@ class GenerativeRAGSynthesizer:
                 s1_text += f" {lead_sentences[1][0]}"
 
             s2_picks = take_novel(s2_pool, max_n=3) or take_novel(supporting_sentences, max_n=2)
-            s2_text = " ".join([s[0] for s in s2_picks]) if s2_picks else (lead_sentences[0][0] if not is_yarn_domain else "Cluster master coordinates resource negotiation across distributed worker nodes.")
+            s2_text = " ".join([s[0] for s in s2_picks]) if s2_picks else lead_sentences[0][0]
 
             s3_picks = take_novel(s3_pool, max_n=3) or take_novel(supporting_sentences, max_n=2)
-            s3_text = " ".join([s[0] for s in s3_picks]) if s3_picks else (s2_text if not is_yarn_domain else "Application execution is orchestrated via dynamic container allocation.")
+            s3_text = " ".join([s[0] for s in s3_picks]) if s3_picks else s2_text
 
             s4_picks = take_novel(s4_pool, max_n=2) or take_novel(supporting_sentences, max_n=2)
-            s4_text = " ".join([s[0] for s in s4_picks]) if s4_picks else (s1_text if not is_yarn_domain else "Supports heterogeneous multi-tenant computational workloads across shared clusters.")
+            s4_text = " ".join([s[0] for s in s4_picks]) if s4_picks else s1_text
 
             s5_picks = take_novel(s5_pool, max_n=2) or take_novel(supporting_sentences, max_n=1)
-            s5_text = " ".join([s[0] for s in s5_picks]) if s5_picks else (s1_text if not is_yarn_domain else "Enforces cluster-wide isolation, dynamic scalability, and resilient fault tolerance guarantees.")
+            s5_text = " ".join([s[0] for s in s5_picks]) if s5_picks else s1_text
 
             sections = [
                 outline,
@@ -1654,29 +1554,33 @@ class GenerativeRAGSynthesizer:
                 s1_text += f" {lead_sentences[1][0]}"
 
             s2_picks = take_novel(s2_pool, max_n=3) or take_novel(supporting_sentences, max_n=2)
-            s2_text = " ".join([s[0] for s in s2_picks]) if s2_picks else (lead_sentences[0][0] if not is_yarn_domain else "Hierarchical daemons govern centralized resource arbitration and distributed node containment.")
+            s2_text = " ".join([s[0] for s in s2_picks]) if s2_picks else lead_sentences[0][0]
 
             s3_picks = take_novel(s3_pool, max_n=3) or take_novel(supporting_sentences, max_n=2)
-            s3_text = " ".join([s[0] for s in s3_picks]) if s3_picks else (s2_text if not is_yarn_domain else "Execution lifecycle proceeds through client submission, container negotiation, and runtime execution.")
+            s3_text = " ".join([s[0] for s in s3_picks]) if s3_picks else s2_text
 
             # Section 4: Comparative evaluation table
             s4_picks = take_novel(supporting_sentences, max_n=3) or supporting_sentences[:2]
+            c1 = s4_picks[0][0] if s4_picks else lead_sentences[0][0]
+            c2 = s4_picks[1][0] if len(s4_picks) > 1 else (supporting_sentences[0][0] if supporting_sentences else lead_sentences[0][0])
+            cite1 = f"[E{s4_picks[0][1]}]" if s4_picks else f"[E{lead_sentences[0][1]}]"
+            cite2 = f"[E{s4_picks[1][1]}]" if len(s4_picks) > 1 else cite1
             if is_yarn_domain:
-                c1 = s4_picks[0][0] if s4_picks else "Centralized master daemon dynamically assigns CPU and memory containers [E2] [E3]."
-                c2 = s4_picks[1][0] if len(s4_picks) > 1 else "Enforces continuous state validation across worker nodes [E1] [E4]."
+                table_rows = [
+                    f"| Resource Allocation | {clean_narrative_preamble(c1)} | Primary System Implementation | {cite1} |",
+                    f"| Operational Scope | {clean_narrative_preamble(c2)} | Documented Specification | {cite2} |"
+                ]
+                if len(s4_picks) > 2:
+                    c3 = s4_picks[2][0]
+                    cite3 = f"[E{s4_picks[2][1]}]"
+                    table_rows.append(f"| Deliverables & Impact | {clean_narrative_preamble(c3)} | Documented Milestone / Result | {cite3} |")
                 table_md = (
                     f"{sec_titles[3]}\n\n"
                     "| Architectural Dimension | Primary Paradigm | Alternative / Complementary Paradigm | Citations |\n"
-                    "|---|---|---|---|\n"
-                    f"| Resource Allocation | {clean_narrative_preamble(c1)} | Static Host Slot Partitioning | [E2] [E3] |\n"
-                    f"| Execution Governance | {clean_narrative_preamble(c2)} | Monolithic Scheduler Tight Coupling | [E1] [E4] |\n"
-                    "| Operational Scope | Dynamic Multi-Tenant Framework Sharing | Dedicated Single-Tenant Subclusters | [E5] |"
+                    "|---|---|---|---|\n" +
+                    "\n".join(table_rows)
                 )
             else:
-                c1 = s4_picks[0][0] if s4_picks else lead_sentences[0][0]
-                c2 = s4_picks[1][0] if len(s4_picks) > 1 else (supporting_sentences[0][0] if supporting_sentences else lead_sentences[0][0])
-                cite1 = f"[E{s4_picks[0][1]}]" if s4_picks else f"[E{lead_sentences[0][1]}]"
-                cite2 = f"[E{s4_picks[1][1]}]" if len(s4_picks) > 1 else cite1
                 table_rows = [
                     f"| Core Functionality | {clean_narrative_preamble(c1)} | Documented Specification | {cite1} |",
                     f"| Operational Scope | {clean_narrative_preamble(c2)} | Primary System Implementation | {cite2} |"
@@ -1693,10 +1597,10 @@ class GenerativeRAGSynthesizer:
                 )
 
             s5_picks = take_novel(s5_pool, max_n=2) or take_novel(supporting_sentences, max_n=2)
-            s5_text = " ".join([s[0] for s in s5_picks]) if s5_picks else (s1_text if not is_yarn_domain else "Enables multi-tenancy where MapReduce, Spark, and Flink share physical cluster hardware [E5].")
+            s5_text = " ".join([s[0] for s in s5_picks]) if s5_picks else s1_text
 
             s6_picks = take_novel(s6_pool, max_n=2) or take_novel(supporting_sentences, max_n=1)
-            s6_text = " ".join([s[0] for s in s6_picks]) if s6_picks else (s1_text if not is_yarn_domain else "Balances cluster throughput with SLA guarantees while preventing cascading worker node failures.")
+            s6_text = " ".join([s[0] for s in s6_picks]) if s6_picks else s1_text
 
             sections = [
                 outline,
@@ -1723,24 +1627,17 @@ class GenerativeRAGSynthesizer:
             cite2 = f"[E{comp_picks[1][1]}]" if len(comp_picks) > 1 else cite1
             cite3 = f"[E{comp_picks[2][1]}]" if len(comp_picks) > 2 else cite1
 
-            if is_yarn_domain:
-                table_md = (
-                    "### Dimension-by-Dimension Comparison\n\n"
-                    "| Architectural Dimension | Primary Paradigm | Alternative / Complementary Paradigm | Citations |\n"
-                    "|---|---|---|---|\n"
-                    f"| Operational Scope | {clean_narrative_preamble(c1)} | Distributed Storage / Host Logs | {cite1} |\n"
-                    f"| Resource Allocation | {clean_narrative_preamble(c2)} | Static Partitioning | {cite2} |\n"
-                    f"| Multi-Tenancy & SLA | {clean_narrative_preamble(c3)} | Single-Engine Dedicated | {cite3} |"
-                )
-            else:
-                table_md = (
-                    "### Dimension-by-Dimension Comparison\n\n"
-                    "| Dimension | Documented Primary Finding | Comparative Standard | Citations |\n"
-                    "|---|---|---|---|\n"
-                    f"| Primary Characteristic | {clean_narrative_preamble(c1)} | Standard / Conventional Implementation | {cite1} |\n"
-                    f"| Operational Mechanics | {clean_narrative_preamble(c2)} | Baseline Alternative | {cite2} |\n"
-                    f"| Practical Scope | {clean_narrative_preamble(c3)} | General Deployment | {cite3} |"
-                )
+            table_rows = [
+                f"| Operational Scope | {clean_narrative_preamble(c1)} | Standard / Conventional Implementation | {cite1} |",
+                f"| Resource Allocation | {clean_narrative_preamble(c2)} | Baseline Alternative | {cite2} |",
+                f"| Practical Scope | {clean_narrative_preamble(c3)} | General Deployment | {cite3} |"
+            ]
+            table_md = (
+                "### Dimension-by-Dimension Comparison\n\n"
+                "| Architectural Dimension | Primary Paradigm | Alternative / Complementary Paradigm | Citations |\n"
+                "|---|---|---|---|\n" +
+                "\n".join(table_rows)
+            )
             sections.append(table_md)
 
             if len(comp_picks) > 3:

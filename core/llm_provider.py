@@ -46,7 +46,7 @@ class LLMConfig:
     model: str = "llama3.2"
     api_key: Optional[str] = None
     timeout_seconds: float = 60.0
-    max_tokens: int = 4096
+    max_tokens: int = 8192
     temperature: float = 0.2
     fallback_to_deterministic: bool = True
 
@@ -64,9 +64,9 @@ class LLMConfig:
             timeout_seconds = 60.0
 
         try:
-            max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "4096"))
+            max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "8192"))
         except ValueError:
-            max_tokens = 4096
+            max_tokens = 8192
 
         try:
             temperature = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
@@ -732,57 +732,19 @@ class MockLLMProvider(BaseLLMProvider):
                 cite_id = f"E{i}"
                 break
 
-        # Grounded answer synthesis simulating ChatGPT
-        if "where" in q_lower and "yarn" in q_lower:
-            c1_id = "E1"
-            c2_id = "E2" if len(evidence_chunks) > 1 else "E1"
-            lead = f"YARN is used in distributed clusters as the operating system to manage resources and schedule jobs across execution frameworks [{c1_id}]."
-            support1 = f"Across clusters, YARN schedules diverse heterogeneous workloads including MapReduce batch processing, Spark SQL analytics, and Flink streaming [{c2_id}]."
-            support2 = f"It separates cluster resource management from job scheduling to execute diverse engines reliably [{c1_id}]."
-            
-            if style == "executive":
-                ans = (
-                    f"### Executive Summary\n\n"
-                    f"- **Key Finding**: {lead}\n"
-                    f"- **Supported Workloads**: {support1}\n"
-                    f"- **Resource Management**: {support2}"
-                )
-            elif style == "concise":
-                ans = f"{lead} {support1}"
-            else:
-                ans = f"{lead} {support1} {support2}"
-
-            claims = [
-                {"text": lead, "evidence_ids": [c1_id]},
-                {"text": support1, "evidence_ids": [c2_id]},
-                {"text": support2, "evidence_ids": [c1_id]}
-            ]
-
-        elif "what is" in q_lower and "yarn" in q_lower:
-            c1_id = "E1"
-            c2_id = "E2" if len(evidence_chunks) > 1 else "E1"
-            lead = f"Yet Another Resource Negotiator (YARN) functions as the cluster operating system, separating resource management from job scheduling and execution frameworks [{c1_id}]."
-            support1 = f"The ResourceManager acts as the cluster master daemon comprising the Scheduler and ApplicationsManager [{c2_id}]."
-            ans = f"{lead} {support1}" if style != "concise" else lead
-            claims = [
-                {"text": lead, "evidence_ids": [c1_id]},
-                {"text": support1, "evidence_ids": [c2_id]}
-            ]
-
-        else:
-            # High-fidelity grounded answer synthesis matching production depth
-            from core.generative_synthesizer import GenerativeRAGSynthesizer
-            synth = GenerativeRAGSynthesizer()
-            ans, _ = synth._deterministic_grounded_synthesis(query, evidence_chunks, style)
-            claims = []
-            for s in re.split(r'(?<=[.!?])\s+', ans):
-                s_clean = s.strip()
-                c_matches = re.findall(r'\[E(\d+)\]', s_clean)
-                if c_matches:
-                    claims.append({
-                        "text": s_clean,
-                        "evidence_ids": [f"E{m}" for m in c_matches]
-                    })
+        # Grounded answer synthesis dynamically extracted from evidence
+        from core.generative_synthesizer import GenerativeRAGSynthesizer
+        synth = GenerativeRAGSynthesizer()
+        ans, _ = synth._deterministic_grounded_synthesis(query, evidence_chunks, style)
+        claims = []
+        for s in re.split(r'(?<=[.!?])\s+', ans):
+            s_clean = s.strip()
+            c_matches = re.findall(r'\[E(\d+)\]', s_clean)
+            if c_matches:
+                claims.append({
+                    "text": s_clean,
+                    "evidence_ids": [f"E{m}" for m in c_matches]
+                })
 
         elapsed_ms = max(0.1, (time.perf_counter() - t_start) * 1000)
         return LLMResult(

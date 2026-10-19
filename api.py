@@ -33,7 +33,7 @@ class SearchRequest(BaseModel):
     llm_model: Optional[str] = None
     llm_base_url: Optional[str] = None
     llm_api_key: Optional[str] = None
-    max_tokens: Optional[int] = 4096
+    max_tokens: Optional[int] = 8192
     chat_id: Optional[str] = None
     conversation_history: Optional[List[Dict[str, Any]]] = None
     web_search_enabled: Optional[bool] = None
