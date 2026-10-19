@@ -106,6 +106,7 @@ class HopfieldAssociativeEngine:
         raw_query: str,
         top_k: int = 5,
         use_projection: bool = False,
+        doc_filter: Optional[str] = None,
     ) -> AssociativeMemoryResult:
         """
         Performs continuous Hopfield memory retrieval via attractor dynamics.
@@ -128,6 +129,18 @@ class HopfieldAssociativeEngine:
         device = self.memory.device
         patterns = self.memory._patterns.to(device) # (N, d)
         metadata = self.memory._metadata
+
+        # Filter by document if doc_filter is provided
+        if doc_filter:
+            doc_filter_clean = doc_filter.strip().lower()
+            matching_indices = [
+                i for i, m in enumerate(metadata)
+                if doc_filter_clean in m.get("source", "").lower() or doc_filter_clean in m.get("doc_id", "").lower()
+            ]
+            if matching_indices:
+                patterns = patterns[matching_indices]
+                metadata = [metadata[i] for i in matching_indices]
+
         N, d = patterns.shape
 
         # 1. Initialize query state vector z^{(0)}
@@ -267,7 +280,12 @@ class HopfieldAssociativeEngine:
                     entity_scores[idx] = hits / len(raw_entities)
 
                 if entity_scores.max() > 0:
-                    penalty_mask = torch.where(entity_scores > 0, 1.0 + 3.0 * entity_scores, 0.05)
+                    target_sources = {metadata[idx].get("source") for idx in range(N) if entity_scores[idx] > 0}
+                    source_weights = torch.tensor(
+                        [1.0 if metadata[idx].get("source") in target_sources else 0.005 for idx in range(N)],
+                        device=device
+                    )
+                    penalty_mask = torch.where(entity_scores > 0, 1.0 + 3.0 * entity_scores, 0.3 * source_weights)
                     effective_attn = final_attn * penalty_mask
 
         core_vals, core_idxs = torch.topk(effective_attn, k=min(top_k, N))
@@ -287,9 +305,22 @@ class HopfieldAssociativeEngine:
 
         # Avoid picking off-topic drift chunks that have 0 entity hits when entity hits exist
         if entity_scores is not None and entity_scores.max() > 0:
+            target_sources = {metadata[idx].get("source") for idx in range(N) if entity_scores[idx] > 0}
             entity_matching_bridges = [idx for idx in candidate_bridges if entity_scores[idx] > 0]
             if entity_matching_bridges:
                 candidate_bridges = entity_matching_bridges
+            else:
+                same_source_bridges = [idx for idx in candidate_bridges if metadata[idx].get("source") in target_sources]
+                if not same_source_bridges:
+                    same_source_bridges = [idx for idx in range(N) if idx not in core_idxs_set and metadata[idx].get("source") in target_sources]
+                candidate_bridges = same_source_bridges
+        else:
+            # Anchor bridges to sources of top core attractors to prevent drifting into foreign documents
+            top_core_sources = {metadata[idx].get("source") for idx in list(core_idxs_set)[:3] if metadata[idx].get("source")}
+            if top_core_sources:
+                coherent_bridges = [idx for idx in candidate_bridges if metadata[idx].get("source") in top_core_sources]
+                if coherent_bridges:
+                    candidate_bridges = coherent_bridges
 
         # Rank bridge chunks by their effective attention
         candidate_bridges.sort(key=lambda idx: float(effective_attn[idx].item()), reverse=True)

@@ -309,24 +309,7 @@
             <!-- Floating Prompt Input Bar (ChatGPT Style) -->
             <div class="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-white via-white/95 to-transparent z-10 pointer-events-none">
                 <div class="max-w-3xl mx-auto pointer-events-auto">
-                    <!-- Quick Format & Depth Selector Pills -->
-                    <div class="flex items-center gap-1.5 mb-2 px-1 pointer-events-auto overflow-x-auto pb-1 text-[11px]">
-                        <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mr-1">Format:</span>
-                        <button type="button" onclick="setQuickFormat('auto')" id="pill-fmt-auto" class="px-2 py-0.5 rounded-full font-semibold transition bg-blue-600 text-white shadow-2xs">⚡ Auto</button>
-                        <button type="button" onclick="setQuickFormat('2_mark')" id="pill-fmt-2_mark" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">2-Mark</button>
-                        <button type="button" onclick="setQuickFormat('5_mark')" id="pill-fmt-5_mark" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">5-Mark</button>
-                        <button type="button" onclick="setQuickFormat('8_mark')" id="pill-fmt-8_mark" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">8-Mark</button>
-                        <button type="button" onclick="setQuickFormat('10_mark')" id="pill-fmt-10_mark" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">10-Mark</button>
-                        <button type="button" onclick="setQuickFormat('comparison')" id="pill-fmt-comparison" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">📊 Table</button>
-                        <button type="button" onclick="setQuickFormat('worked_example')" id="pill-fmt-worked_example" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">🛠️ Example</button>
-                        <button type="button" onclick="setQuickFormat('structured_notes')" id="pill-fmt-structured_notes" class="px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600">📝 Notes</button>
 
-                        <!-- Web Augmentation Toggle -->
-                        <button type="button" onclick="toggleWebSearch()" id="web-search-toggle-btn" class="ml-auto text-[11px] px-2.5 py-0.5 rounded-full font-semibold transition flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 cursor-pointer flex-shrink-0" title="Toggle web augmentation when document evidence is missing or insufficient">
-                            <span>🌐 Web Augment</span>
-                            <span id="web-search-dot" class="w-2 h-2 rounded-full bg-slate-400"></span>
-                        </button>
-                    </div>
 
                     <div class="relative shadow-lg rounded-2xl border border-slate-200 bg-white flex items-end p-2 transition focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
                         <!-- Attachment Upload Shortcut Button -->
@@ -1482,7 +1465,9 @@
 
         function isWebSearchActive() {
             const chk = document.getElementById('web-search-enabled-chk');
-            return isWebSearchToggleActive || (chk && chk.checked);
+            if (chk && chk.checked) return true;
+            if (isWebSearchToggleActive) return true;
+            return undefined; // Automatic backend sufficiency decision
         }
 
         function toggleWebSearch() {

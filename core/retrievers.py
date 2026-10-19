@@ -31,7 +31,8 @@ class BaseRetriever(ABC):
         query: str,
         query_embedding: np.ndarray,
         top_k: int = 5,
-        min_similarity_threshold: float = 0.05
+        min_similarity_threshold: float = 0.05,
+        doc_filter: Optional[str] = None,
     ) -> EvidenceCollection:
         """Execute query and return standardized EvidenceCollection."""
         pass
@@ -48,14 +49,16 @@ class HopfieldRetrieverAdapter(BaseRetriever):
         query: str,
         query_embedding: np.ndarray,
         top_k: int = 5,
-        min_similarity_threshold: float = 0.05
+        min_similarity_threshold: float = 0.05,
+        doc_filter: Optional[str] = None,
     ) -> EvidenceCollection:
         t0 = time.time()
         res = self.engine.retrieve_associative(
             query_embedding=query_embedding,
             raw_query=query,
             top_k=top_k,
-            use_projection=getattr(self.engine.memory.retriever, 'use_projection', False)
+            use_projection=getattr(self.engine.memory.retriever, 'use_projection', False),
+            doc_filter=doc_filter,
         )
         self.last_result = res
         elapsed = (time.time() - t0) * 1000
@@ -113,7 +116,8 @@ class DenseRetrieverAdapter(BaseRetriever):
         query: str,
         query_embedding: np.ndarray,
         top_k: int = 5,
-        min_similarity_threshold: float = 0.05
+        min_similarity_threshold: float = 0.05,
+        doc_filter: Optional[str] = None,
     ) -> EvidenceCollection:
         t0 = time.time()
         if self.memory._patterns is None or self.memory.n_patterns == 0:
@@ -134,8 +138,18 @@ class DenseRetrieverAdapter(BaseRetriever):
             q = q / q_norm
             
         sims = patterns @ q # Cosine similarity
-        top_k_actual = min(top_k, len(metadata))
-        top_indices = np.argsort(sims)[::-1][:top_k_actual]
+        valid_indices = list(range(len(metadata)))
+        if doc_filter:
+            df_lower = doc_filter.strip().lower()
+            valid_indices = [
+                i for i in valid_indices
+                if df_lower in metadata[i].get("source", "").lower() or df_lower in metadata[i].get("doc_id", "").lower()
+            ]
+            if not valid_indices:
+                valid_indices = list(range(len(metadata)))
+
+        sorted_indices = sorted(valid_indices, key=lambda i: sims[i], reverse=True)
+        top_indices = sorted_indices[:min(top_k, len(sorted_indices))]
         elapsed = (time.time() - t0) * 1000
 
         chunks: List[EvidenceChunk] = []
@@ -192,7 +206,8 @@ class HybridRetrieverAdapter(BaseRetriever):
         query: str,
         query_embedding: np.ndarray,
         top_k: int = 5,
-        min_similarity_threshold: float = 0.05
+        min_similarity_threshold: float = 0.05,
+        doc_filter: Optional[str] = None,
     ) -> EvidenceCollection:
         t0 = time.time()
         self._sync_bm25()
@@ -202,7 +217,8 @@ class HybridRetrieverAdapter(BaseRetriever):
             query=query,
             query_embedding=query_embedding,
             top_k=top_k * 2,
-            min_similarity_threshold=min_similarity_threshold
+            min_similarity_threshold=min_similarity_threshold,
+            doc_filter=doc_filter,
         )
 
         # 2. Retrieve BM25 candidates

@@ -229,6 +229,8 @@ class HopfieldQAPipeline:
     def _recover_persisted_index(self):
         """Recover indexed documents from disk if available."""
         pers_path = Path(self.config.persistence_dir) / "memory_store.json"
+        if not pers_path.exists():
+            pers_path = Path(__file__).resolve().parent.parent / "data" / "memory_store.json"
         if pers_path.exists():
             try:
                 with open(pers_path, "r", encoding="utf-8") as f:
@@ -236,10 +238,12 @@ class HopfieldQAPipeline:
                     docs = data.get("documents", {})
                     if docs:
                         logger.info(f"Recovering {len(docs)} persisted documents from {pers_path}...")
+                        print(f"Recovering {len(docs)} persisted documents from {pers_path}...")
                         for source, text in docs.items():
                             self.add_document(text, source=source, persist=False)
             except Exception as e:
                 logger.warning(f"Could not recover persisted document index: {e}")
+                print(f"Could not recover persisted document index: {e}")
 
     @property
     def is_ready(self) -> bool:
@@ -402,6 +406,8 @@ class HopfieldQAPipeline:
         web_search_enabled: Optional[bool] = None,
         force_web_search: bool = False,
         answer_format: Optional[str] = None,
+        active_doc_id: Optional[str] = None,
+        doc_filter: Optional[str] = None,
     ) -> QueryResult:
         """
         Execute a complete query through the pipeline with multi-source retrieval coordinator.
@@ -418,10 +424,13 @@ class HopfieldQAPipeline:
             web_search_enabled: Whether web search augmentation is active.
             force_web_search: Whether to force web research even if documents are present.
             answer_format: Examination mark tier or genre (2_mark, 5_mark, 8_mark, 10_mark, comparison, etc.).
+            active_doc_id: Optional document ID or source name to restrict/filter retrieval.
+            doc_filter: Alias for active_doc_id.
 
         Returns:
             QueryResult with answer, evidence, and performance stats.
         """
+        effective_doc_filter = active_doc_id or doc_filter
         effective_web_search = self.config.web_search_enabled if web_search_enabled is None else web_search_enabled
         if not self.is_ready and not (effective_web_search or force_web_search):
             raise RuntimeError("Pipeline not ready. Please add documents first.")
@@ -443,7 +452,7 @@ class HopfieldQAPipeline:
         else:
             mode = retriever_mode.lower()
 
-        logger.info(f"Processing query: '{raw_query}' (mode={mode}, top_k={k}, style={active_style}, web_search={effective_web_search})")
+        logger.info(f"Processing query: '{raw_query}' (mode={mode}, top_k={k}, style={active_style}, doc_filter={effective_doc_filter}, web_search={effective_web_search})")
 
         # 1. Process query (with multi-turn coreference contextualization)
         processed = self.query_processor.process(raw_query, conversation_history=conversation_history)
@@ -472,7 +481,8 @@ class HopfieldQAPipeline:
             top_k=k,
             format_id=active_style,
             web_search_enabled=effective_web_search,
-            force_web_search=force_web_search
+            force_web_search=force_web_search,
+            doc_filter=effective_doc_filter,
         )
         retrieval_time_ms = max(0.1, (time.perf_counter() - t_ret_start) * 1000)
 

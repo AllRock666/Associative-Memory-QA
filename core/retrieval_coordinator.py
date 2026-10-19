@@ -193,7 +193,8 @@ class RetrievalCoordinator:
         top_k: int = 5,
         format_id: Optional[str] = None,
         web_search_enabled: Optional[bool] = None,
-        force_web_search: bool = False
+        force_web_search: bool = False,
+        doc_filter: Optional[str] = None,
     ) -> CoordinatorRetrievalResult:
         """
         Executes unified retrieval:
@@ -209,7 +210,8 @@ class RetrievalCoordinator:
         doc_collection = self.doc_retriever.retrieve(
             query=query,
             query_embedding=query_embedding,
-            top_k=top_k
+            top_k=top_k,
+            doc_filter=doc_filter,
         )
         doc_chunks = list(doc_collection.chunks)
         for c in doc_chunks:

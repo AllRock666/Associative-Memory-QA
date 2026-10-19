@@ -39,6 +39,7 @@ class SearchRequest(BaseModel):
     web_search_enabled: Optional[bool] = None
     force_web_search: Optional[bool] = False
     answer_format: Optional[str] = None
+    active_doc_id: Optional[str] = None
 
 class CreateChatRequest(BaseModel):
     title: Optional[str] = None
@@ -170,7 +171,8 @@ def search(req: SearchRequest):
             conversation_history=history,
             web_search_enabled=req.web_search_enabled,
             force_web_search=bool(req.force_web_search),
-            answer_format=req.answer_format
+            answer_format=req.answer_format,
+            active_doc_id=req.active_doc_id,
         )
     except Exception as e:
         traceback.print_exc()

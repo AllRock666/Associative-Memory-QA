@@ -118,9 +118,17 @@ def is_boilerplate(text: str) -> bool:
 
 
 def clean_sentence_prefix(s: str) -> str:
-    """Strips embedded outline headings, chapter numbers, and titles from sentence starts."""
+    """Strips embedded outline headings, chapter numbers, figure captions, and titles from sentence starts."""
     s = s.strip()
+    # Strip standalone figure captions e.g. "Fig 19. Listening Comprehension Fig 20. Reading Passage 20 "
+    s = re.sub(r'(?:Fig\s*\d+\.?\s*[A-Za-z0-9\s/&,\-]+\s*)+', ' ', s, flags=re.I).strip()
     s = re.sub(r'^(?:unit|chapter)\s+\d+\s*[:\-\.]?\s*', '', s, flags=re.I).strip()
+    s = re.sub(r'^(?:INDEX|EVENT REPORT)\s+[A-Za-z0-9_\-\s]+?(?=\d|\bIntroduction\b|\bOverview\b|\bSection\b)', '', s, flags=re.I).strip()
+    s = re.sub(r'^(?:Sr\.\s*No\.\s*Topic\s*Page\s*No\.?\s*)+', '', s, flags=re.I).strip()
+
+    # Strip inline numbered section titles or page-number + section-number prefixes (including preceding TOC entries)
+    # e.g. "3 1. Introduction: VERBAFEST 2026 was..." or "20 Final Overview: The main objective..."
+    s = re.sub(r'^(?:(?:\d+(?:\.\d+)*\.?\s+)?[A-Za-z\s/&,\-]+\s+\d+\s+)*(?:\d+\s+)*(?:\d+(?:\.\d+)*\.?\s*)?(?:Introduction|Overview|Final Overview|Special Features|Summary|Background|Executive Summary)\s*:\s*', '', s, flags=re.I).strip()
 
     # Strip inline numbered section titles preceding body sentences
     # e.g. "12. Security Metrics and Their Importance in Evaluating... Security metrics are measurable values..."
@@ -154,16 +162,17 @@ def clean_sentence_prefix(s: str) -> str:
         res,
         flags=re.I
     ).strip()
-    res = re.sub(r'^\s*\d+(?:\.\d+)*\.?\s*', '', res).strip()
+    res = re.sub(r'^\s*(?:\d+(?:\.\d+)*\.?\s*)+', '', res).strip()
 
     return res if len(res) > 20 else s.strip()
 
 
 def extract_sentence_subject(sent: str) -> Optional[str]:
     """Extracts the leading noun phrase/subject before the main copula/action verb."""
+    s_cleaned = clean_sentence_prefix(sent)
     m = re.match(
-        r'^\s*([A-Za-z0-9_\-\s\(\)]+?)\s+(?:is\s+an?|is\s+the|is|are|refers\s+to|functions\s+as|serves\s+as|provides|represents|operates\s+as|achieves)\b',
-        sent,
+        r'^\s*([A-Za-z0-9_\-\s\(\)]+?)\s+(?:is\s+an?|is\s+the|is|are\s+an?|are\s+the|are|was\s+an?|was\s+the|was|were\s+an?|were\s+the|were|refers\s+to|functions\s+as|serves\s+as|provides|represents|operates\s+as|achieves|stands\s+for|aims\s+to|focuses\s+on)\b',
+        s_cleaned,
         re.I
     )
     if m:
@@ -265,7 +274,7 @@ def classify_intent(query: str) -> str:
         return "MULTI_PART"
     if any(w in q for w in ["differ", "difference", "compare", "comparison", "vs", "versus", "distinction", "contrast"]):
         return "COMPARISON"
-    if any(w in q for w in ["component", "components", "responsibilities", "daemons", "parts of", "elements of"]):
+    if any(w in q for w in ["component", "components", "competition", "competitions", "responsibilities", "daemons", "parts of", "elements of"]):
         return "COMPONENTS"
     if any(w in q for w in ["architecture", "architectural", "how is it designed"]):
         return "ARCHITECTURE"
@@ -299,7 +308,8 @@ INTENT_KEYWORDS: Dict[str, Set[str]] = {
     "COMPONENTS": {
         "resourcemanager", "nodemanager", "applicationmaster", "components",
         "daemons", "containers", "scheduler", "responsibilities", "arbitrates",
-        "monitors", "allocates", "coordination"
+        "monitors", "allocates", "coordination", "competition", "competitions",
+        "rounds", "mind saga", "group discussion", "debate"
     },
     "ARCHITECTURE": {
         "architecture", "architectural", "decoupling", "layer", "resourcemanager",
@@ -474,6 +484,62 @@ class CitationValidator:
                     is_unique=is_unique,
                     verification_rationale=verification_rationale
                 ))
+            else:
+                # Sentence without explicit [E#] citation
+                # Check if this is a structural element (heading, outline, table, or brief discourse phrase)
+                clean_claim = re.sub(r'^\s*[-*•]\s*(\*\*[^*]+\*\*:\s*)?', '', sent)
+                clean_claim = re.sub(r'[*_`#>]', '', clean_claim).lower().strip()
+                words = [
+                    w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', clean_claim)
+                    if w not in STOP_WORDS and w not in DISCOURSE_WORDS
+                ]
+                is_outline_or_header = (
+                    sent.strip().startswith('>') or
+                    sent.strip().startswith('#') or
+                    sent.strip().startswith('|') or
+                    sent.strip().startswith('---') or
+                    any(kw in clean_claim for kw in ["answer outline", "table of contents", "dimension-by-dimension"])
+                )
+                if len(words) >= 4 and not is_outline_or_header:
+                    claim_stems = {get_stem(w) for w in words}
+                    best_match_cid = None
+                    best_overlap = 0.0
+
+                    for v_chunk in valid_chunks:
+                        chunk_words = [
+                            w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', v_chunk.text.lower())
+                            if w not in STOP_WORDS
+                        ]
+                        c_stems = {get_stem(w) for w in chunk_words}
+                        if claim_stems and c_stems:
+                            overlap = len(claim_stems & c_stems) / len(claim_stems)
+                            if overlap > best_overlap:
+                                best_overlap = overlap
+                                best_match_cid = v_chunk.chunk_id
+
+                    if best_overlap >= 0.45 and best_match_cid:
+                        all_cited_chunk_set.add(best_match_cid)
+                        claims.append(ClaimCitation(
+                            claim_text=sent,
+                            evidence_ids=[best_match_cid],
+                            is_verified=True,
+                            unresolved_ids=[],
+                            is_supported=True,
+                            is_relevant=True,
+                            is_unique=True,
+                            verification_rationale=f"Inferred grounded support from chunk (overlap: {best_overlap:.2f})"
+                        ))
+                    else:
+                        claims.append(ClaimCitation(
+                            claim_text=sent,
+                            evidence_ids=[],
+                            is_verified=False,
+                            unresolved_ids=[],
+                            is_supported=False,
+                            is_relevant=False,
+                            is_unique=True,
+                            verification_rationale=f"Substantive claim without citation or evidence grounding (best overlap: {best_overlap:.2f})"
+                        ))
 
         cited_chunks = [chunk_id_map[cid] for cid in all_cited_chunk_set if cid in chunk_id_map]
         return claims, cited_chunks, list(set(unresolved_all))
@@ -502,6 +568,67 @@ class CitationValidator:
         repaired = re.sub(r'[ \t]{2,}', ' ', repaired)
         repaired = re.sub(r'\s+\.', '.', repaired)
         return repaired.strip()
+
+    @classmethod
+    def prune_unverified_sentences(
+        cls,
+        text: str,
+        unverified_claims: List[ClaimCitation]
+    ) -> str:
+        """
+        Removes sentences or lines corresponding to unverified claims from generated_text,
+        preserving valid sentences and markdown structure.
+        """
+        if not unverified_claims:
+            return text
+
+        unverified_texts = {c.claim_text.strip() for c in unverified_claims if c.claim_text.strip()}
+        if not unverified_texts:
+            return text
+
+        def clean_for_match(s: str) -> str:
+            s_clean = cls.CITATION_PATTERN.sub('', s)
+            s_clean = re.sub(r'^\s*[-*•]\s*(\*\*[^*]+\*\*:\s*)?', '', s_clean)
+            s_clean = re.sub(r'^\s*[-*•]\s*', '', s_clean)
+            return s_clean.strip().rstrip('.')
+
+        unverified_cleaned = {clean_for_match(u) for u in unverified_texts if clean_for_match(u)}
+
+        lines = text.split('\n')
+        new_lines: List[str] = []
+        for line in lines:
+            line_str = line.strip()
+            if not line_str or line_str.startswith('#') or line_str.startswith('|') or line_str.startswith('---'):
+                new_lines.append(line)
+                continue
+
+            line_clean = clean_for_match(line_str)
+            if line_clean in unverified_cleaned:
+                continue
+
+            sent_parts = re.split(r'(?<=[.!?])\s+', line_str)
+            kept_parts: List[str] = []
+            for sp in sent_parts:
+                sp_clean = clean_for_match(sp)
+                if sp_clean in unverified_cleaned:
+                    continue
+                if any(len(u) >= 15 and (u in sp_clean or sp_clean in u) for u in unverified_cleaned):
+                    continue
+                kept_parts.append(sp)
+
+            if kept_parts:
+                bullet_match = re.match(r'^(\s*[-*•]\s*(?:\*\*[^*]+\*\*:\s*)?)', line)
+                prefix = bullet_match.group(1) if bullet_match else ""
+                joined_sents = " ".join(kept_parts)
+                if prefix and not joined_sents.startswith(prefix.strip()):
+                    new_lines.append(prefix + joined_sents)
+                else:
+                    new_lines.append(joined_sents)
+
+        cleaned_text = "\n".join(new_lines)
+        cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+        cleaned_text = re.sub(r'(^|\n)(#{1,6}\s+[^\n]+)\n+(?=\n#{1,6}\s+|\Z)', '', cleaned_text)
+        return cleaned_text.strip()
 
 
 class AbstentionEngine:
@@ -555,6 +682,74 @@ class AbstentionEngine:
             return True, "Retrieved passages do not contain key terms from the question."
 
         return False, None
+
+
+class AnswerRelevanceValidator:
+    """
+    Validates whether the generated answer is semantically and substantively relevant to the query.
+    Detects topic drift, domain hallucinations, or irrelevant boilerplate.
+    """
+    @staticmethod
+    def validate(
+        query: str,
+        answer_text: str,
+        evidence_chunks: List[EvidenceChunk]
+    ) -> Tuple[bool, float, str]:
+        """
+        Returns:
+            is_relevant: bool
+            relevance_score: float (0.0 to 1.0)
+            diagnostic: str
+        """
+        if not answer_text or not answer_text.strip():
+            return False, 0.0, "Empty answer text."
+
+        q_lower = query.lower()
+        ans_lower = answer_text.lower()
+
+        # 1. Extract substantive query tokens (excluding stop words)
+        q_tokens = [
+            w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', q_lower)
+            if w not in STOP_WORDS and w not in {
+                "what", "where", "when", "which", "explain", "describe", "detail", "overview",
+                "answer", "question", "does", "done", "about", "format", "mark", "marks"
+            }
+        ]
+
+        if not q_tokens:
+            return True, 0.8, "Query has no specific entity constraint."
+
+        # 2. Check for presence of primary query terms in answer
+        matched_tokens = [t for t in q_tokens if t in ans_lower]
+        query_token_coverage = len(matched_tokens) / len(q_tokens)
+
+        # 3. Detect cross-domain contamination
+        is_security_query = any(w in q_lower for w in ["security", "threat", "log", "incident", "forensic", "breach", "audit"])
+        has_security_hallucination = (
+            not is_security_query and
+            any(w in ans_lower for w in ["threat detection", "incident response", "forensic investigation", "security logs supporting"])
+        )
+
+        is_nlp_query = any(w in q_lower for w in ["nlp", "prompt", "chain of thought", "language model", "transformer", "agentic"])
+        has_nlp_hallucination = (
+            not is_nlp_query and
+            any(w in ans_lower for w in ["prompt engineering", "chain-of-thought", "chain of thought", "autonomous workflows", "agentic systems"])
+        )
+
+        if has_security_hallucination or has_nlp_hallucination:
+            reason = "Answer contains cross-domain hallucinated text ("
+            if has_security_hallucination:
+                reason += "cybersecurity incident logs in non-security query"
+            if has_nlp_hallucination:
+                reason += "prompt engineering in non-nlp query"
+            reason += ")"
+            return False, 0.1, reason
+
+        if query_token_coverage < 0.3:
+            return False, float(query_token_coverage), f"Answer fails to mention key query concepts ({', '.join(q_tokens)})."
+
+        relevance_score = min(1.0, 0.5 + 0.5 * query_token_coverage)
+        return True, relevance_score, "Answer is relevant to query entities."
 
 
 class GenerativeRAGSynthesizer:
@@ -684,22 +879,24 @@ class GenerativeRAGSynthesizer:
                         if cand_subj and target_lower in cand_subj:
                             # Genuine definition of the requested subject!
                             score += 6.0
-                        elif any(w in s_lower for w in [
+                        elif cand_subj and any(w in s_clean.lower() for w in ["are measurable values", "is a record of", "is a file format"]):
+                            # Defines an auxiliary sub-concept (e.g. "Security metrics are measurable values...")
+                            score -= 3.0
+                        elif any(w in q_lower for w in ["security", "log", "threat", "forensic"]) and any(w in s_lower for w in [
                             "threat detection", "incident response", "forensic investigation", "monitoring",
-                            "suspicious activities", "unauthorized access", "security incidents", "security logs",
-                            "security metrics", "measurable values"
+                            "suspicious activities", "unauthorized access", "security incidents", "security logs"
                         ]):
-                            # Core operational practices of the requested domain
+                            # Core operational practices of the security domain
                             score += 4.5
                         else:
                             if target_lower in s_lower:
-                                score += 2.0
+                                score += 3.0
                     else:
-                        if any(w in s_lower for w in ["functions as", "is a", "is the", "operating system", "decoupling", "defined as"]):
+                        if any(w in s_lower for w in ["functions as", "is a", "is the", "was a", "was the", "operating system", "decoupling", "defined as"]):
                             score += 2.0
 
                 elif intent in ("COMPONENTS", "HOW_MECHANISM", "ARCHITECTURE"):
-                    if any(w in s_lower for w in ["resourcemanager", "nodemanager", "applicationmaster", "components", "daemons", "containers"]):
+                    if any(w in s_lower for w in ["resourcemanager", "nodemanager", "applicationmaster", "components", "daemons", "containers", "competition", "competitions", "mind saga", "group discussion", "debate"]):
                         score += 3.0
                     if target_lower and target_lower in s_lower:
                         score += 2.0
@@ -752,14 +949,18 @@ class GenerativeRAGSynthesizer:
         target = extract_query_target(query, intent)
         scored_sentences = self._score_and_rank_sentences(query, chunks, intent)
 
-        is_yarn_domain = any(w in query.lower() for w in [
+        combined_evidence_lower = " ".join([c.text.lower() for c in chunks])
+        evidence_has_yarn_tech = any(w in combined_evidence_lower for w in ["hadoop", "resourcemanager", "nodemanager", "mapreduce", "cluster operating system", "applicationmaster"])
+        evidence_has_sec_telemetry = any(w in combined_evidence_lower for w in ["threat detection", "incident response", "security telemetry", "forensic investigation", "mttd", "mttr"])
+
+        is_yarn_domain = (any(w in query.lower() for w in [
             "yarn", "hadoop", "resourcemanager", "nodemanager", "applicationmaster",
             "mapreduce", "spark", "hdfs", "tez", "flink"
-        ]) or (target and any(w in target.lower() for w in ["yarn", "hadoop", "mapreduce"]))
+        ]) or (target and any(w in target.lower() for w in ["yarn", "hadoop", "mapreduce"]))) and evidence_has_yarn_tech
 
-        is_sec_domain = any(w in query.lower() for w in [
+        is_sec_domain = (any(w in query.lower() for w in [
             "security", "log", "threat", "incident", "forensic", "breach", "mttd", "mttr", "cyber"
-        ]) or (target and any(w in target.lower() for w in ["security", "log", "threat", "cyber"]))
+        ]) or (target and any(w in target.lower() for w in ["security", "log", "threat", "cyber"]))) and evidence_has_sec_telemetry
 
         if not scored_sentences:
             top_c = chunks[0] if chunks else None
@@ -801,14 +1002,23 @@ class GenerativeRAGSynthesizer:
                     elif style in ("detailed", "comprehensive"):
                         p1 = f"The primary difference is that {s1_text} [E{s1.citation_idx}], whereas {s2_text} [E{s2.citation_idx}]."
                         sec2 = f"### Architectural & Functional Separation\n{s1_text} [E{s1.citation_idx}]. In contrast, {s2_text} [E{s2.citation_idx}]."
-                        sec3 = (
-                            "### Comparative Summary Matrix\n\n"
-                            f"| Architectural Dimension | {e1.upper()} | {e2.upper()} |\n"
-                            f"|---|---|---|\n"
-                            f"| Primary Role | Distributed resource arbitration & cluster operating system [E{s1.citation_idx}] | Scalable distributed storage & block replication [E{s2.citation_idx}] |\n"
-                            f"| Core Abstraction | Execution Containers & Daemons (RM, NM, AM) [E{s1.citation_idx}] | 128MB Fixed-size Blocks & Daemons (NameNode, DataNode) [E{s2.citation_idx}] |\n"
-                            f"| Cluster Layer | Compute & Scheduling Layer [E{s1.citation_idx}] | Storage & Persistence Layer [E{s2.citation_idx}] |"
-                        )
+                        if is_yarn_domain and any(w in query.lower() for w in ["hdfs", "storage", "compute", "namenode"]):
+                            sec3 = (
+                                "### Comparative Summary Matrix\n\n"
+                                f"| Architectural Dimension | {e1.upper()} | {e2.upper()} |\n"
+                                f"|---|---|---|\n"
+                                f"| Primary Role | Distributed resource arbitration & cluster operating system [E{s1.citation_idx}] | Scalable distributed storage & block replication [E{s2.citation_idx}] |\n"
+                                f"| Core Abstraction | Execution Containers & Daemons (RM, NM, AM) [E{s1.citation_idx}] | 128MB Fixed-size Blocks & Daemons (NameNode, DataNode) [E{s2.citation_idx}] |\n"
+                                f"| Cluster Layer | Compute & Scheduling Layer [E{s1.citation_idx}] | Storage & Persistence Layer [E{s2.citation_idx}] |"
+                            )
+                        else:
+                            sec3 = (
+                                "### Comparative Summary Matrix\n\n"
+                                f"| Dimension | {e1.upper()} | {e2.upper()} |\n"
+                                f"|---|---|---|\n"
+                                f"| Core Characteristic | {s1_text} [E{s1.citation_idx}] | {s2_text} [E{s2.citation_idx}] |\n"
+                                f"| Operational Scope | Focuses on {e1} properties [E{s1.citation_idx}] | Focuses on {e2} properties [E{s2.citation_idx}] |"
+                            )
                         res = f"{p1}\n\n{sec2}\n\n{sec3}"
                     else:
                         res = (
@@ -835,8 +1045,8 @@ class GenerativeRAGSynthesizer:
                 s1 = f"{clean_s} [E{best_s.citation_idx}]."
                 lead_sentences.append((s1, best_s.citation_idx, best_s))
                 covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
-            else:
-                # Operational definition synthesis when documents lack a standalone textbook definition
+            elif is_sec_domain and any(w in (target_lower or "") for w in ["security", "cyber", "cybersecurity"]):
+                # Operational definition synthesis for cybersecurity domain when documents lack a standalone definition
                 m_cand = next(
                     (s for s in scored_sentences if any(w in s.text.lower() for w in ["threat detection", "incident response", "forensic investigation"])),
                     scored_sentences[0]
@@ -856,6 +1066,24 @@ class GenerativeRAGSynthesizer:
                 )
                 lead_sentences.append((s2, m_cite, m_cand))
                 covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s2) if w.lower() not in STOP_WORDS])
+            else:
+                target_cand = [
+                    s for s in scored_sentences
+                    if target_lower and target_lower in s.text.lower()
+                    and not any(w in s.text.lower() for w in ["are measurable values", "is a record of", "is a file format"])
+                ]
+                if target_cand:
+                    best_s = target_cand[0]
+                    clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
+                    s1 = f"{clean_s} [E{best_s.citation_idx}]."
+                    lead_sentences.append((s1, best_s.citation_idx, best_s))
+                    covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
+                else:
+                    best_s = scored_sentences[0]
+                    clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
+                    s1 = f"{clean_s} [E{best_s.citation_idx}]."
+                    lead_sentences.append((s1, best_s.citation_idx, best_s))
+                    covered_stems.update([get_stem(w) for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s1) if w.lower() not in STOP_WORDS])
 
         elif intent == "WHERE":
             if is_yarn_domain:
@@ -1136,14 +1364,17 @@ class GenerativeRAGSynthesizer:
             if any(w in s[0].lower() for w in ["security metrics", "detection rate", "mttd", "mttr", "false positive", "measurable values"])
         ]
 
-        is_yarn_domain = any(w in query.lower() for w in [
+        is_yarn_domain = (any(w in query.lower() for w in [
             "yarn", "hadoop", "resourcemanager", "nodemanager", "applicationmaster",
             "mapreduce", "spark", "hdfs", "tez", "flink"
-        ]) or (target and any(w in target.lower() for w in ["yarn", "hadoop", "mapreduce"]))
+        ]) or (target and any(w in target.lower() for w in ["yarn", "hadoop", "mapreduce"]))) and evidence_has_yarn_tech
 
-        is_sec_domain = any(w in query.lower() for w in [
+        is_sec_domain = (any(w in query.lower() for w in [
             "security", "log", "threat", "incident", "forensic", "breach", "mttd", "mttr", "cyber"
-        ]) or (target and any(w in target.lower() for w in ["security", "log", "threat", "cyber"]))
+        ]) or (target and any(w in target.lower() for w in ["security", "log", "threat", "cyber"]))) and evidence_has_sec_telemetry
+
+        event_kws = {'event', 'competition', 'competitions', 'round', 'rounds', 'participant', 'participants', 'organized', 'guidance', 'team', 'mavericks', 'discussion', 'debate', 'saga', 'registration', 'platform', 'website'}
+        is_event_domain = bool(any(set(re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s[0].lower())) & event_kws for s in supporting_sentences)) or any(w in query.lower() for w in ["event", "festival", "verbafest", "competition", "hackathon"])
 
         if style == "executive":
             lines = ["### Executive Summary\n"]
@@ -1239,113 +1470,243 @@ class GenerativeRAGSynthesizer:
             return "\n\n".join(lines), final_used
 
         elif style == "5_mark":
-            # 5-Mark Answer: Core Architectural Definition + Key Daemons & Operational Responsibilities
-            lines = [
-                "### Core Architectural Definition\n" + lead_sentences[0][0]
-            ]
+            # 5-Mark Answer: Core Definition + Structural Breakdown + Context
+            if is_yarn_domain:
+                h1 = "### Core Architectural Definition"
+                h2 = "### Key Daemons & Operational Responsibilities"
+                h3 = "### Practical Application & Multi-Tenant Deployment"
+            elif is_sec_domain:
+                h1 = "### Threat Context & Core Definition"
+                h2 = "### Key Detection & Response Mechanics"
+                h3 = "### Forensic Investigation & Metric Controls"
+            elif is_event_domain:
+                h1 = "### Event Overview & Core Purpose"
+                h2 = "### Key Competitions & Structural Breakdown"
+                h3 = "### Participation, Objectives & Final Outcomes"
+            else:
+                h1 = "### Core Subject Definition"
+                h2 = "### Key Components & Functional Breakdown"
+                h3 = "### Practical Implementation & Context"
+
+            lines = [f"{h1}\n{lead_sentences[0][0]}"]
             points = take_novel(supporting_sentences, max_n=4)
             if not points:
-                points = supporting_sentences[:3]
-            pt_lines = ["### Key Daemons & Operational Responsibilities"]
+                points = supporting_sentences[:3] if supporting_sentences else []
+            pt_lines = [h2]
             for idx, p in enumerate(points, 1):
                 clean_p = p[0].rstrip('.')
                 pt_lines.append(f"- **Key Component {idx}**: {clean_p}.")
             lines.append("\n".join(pt_lines))
 
-            # Additional architectural context to ensure depth and full exam credit
             extra_picks = take_novel(supporting_sentences, max_n=2)
             if not extra_picks and len(supporting_sentences) > 0:
                 extra_picks = [supporting_sentences[-1]]
             if extra_picks:
                 extra_text = " ".join([ep[0] for ep in extra_picks])
-                lines.append(f"### Practical Application & Multi-Tenant Deployment\n{extra_text}")
+                lines.append(f"{h3}\n{extra_text}")
 
             final_used = [ls[2] for ls in lead_sentences] + [s[2] for s in points] + [s[2] for s in extra_picks]
             return "\n\n".join(lines), final_used
 
         elif style == "8_mark":
             # 8-Mark Answer: Outline + 5 structured technical sections
-            sections = [
-                "> **Answer Outline**: 1. Architectural Foundation & Decoupling Principle | 2. Core Daemons & Component Responsibilities | 3. Application Lifecycle & Container Negotiation Workflow | 4. Multi-Tenancy & Workload Execution Capabilities | 5. Architectural Trade-offs & Operational Guarantees\n",
-                f"### 1. Architectural Foundation & Decoupling Principle\n{lead_sentences[0][0]}"
-            ]
+            if is_yarn_domain:
+                outline = "> **Answer Outline**: 1. Architectural Foundation & Decoupling Principle | 2. Core Daemons & Component Responsibilities | 3. Application Lifecycle & Container Negotiation Workflow | 4. Multi-Tenancy & Workload Execution Capabilities | 5. Architectural Trade-offs & Operational Guarantees\n"
+                sec_titles = [
+                    "### 1. Architectural Foundation & Decoupling Principle",
+                    "### 2. Core Daemons & Component Responsibilities",
+                    "### 3. Application Lifecycle & Container Negotiation Workflow",
+                    "### 4. Multi-Tenancy & Workload Execution Capabilities",
+                    "### 5. Architectural Trade-offs & Operational Guarantees"
+                ]
+                s2_pool = rm_sents + nm_sents + am_sents + arch_foundation_sents + log_sents
+                s3_pool = am_sents + container_sents + workload_sents + threat_sents
+                s4_pool = workload_sents + forensic_sents
+                s5_pool = guarantee_sents + metric_sents
+            elif is_sec_domain:
+                outline = "> **Answer Outline**: 1. Security Architecture & Threat Scope | 2. Telemetry, Audit Logs & Monitoring | 3. Threat Detection & Incident Response Mechanics | 4. Forensic Investigation & Remediation | 5. Security Metrics & Risk Controls\n"
+                sec_titles = [
+                    "### 1. Security Architecture & Threat Scope",
+                    "### 2. Telemetry, Audit Logs & Monitoring",
+                    "### 3. Threat Detection & Incident Response Mechanics",
+                    "### 4. Forensic Investigation & Remediation",
+                    "### 5. Security Metrics & Risk Controls"
+                ]
+                s2_pool = log_sents
+                s3_pool = threat_sents
+                s4_pool = forensic_sents
+                s5_pool = metric_sents
+            elif is_event_domain:
+                outline = "> **Answer Outline**: 1. Event Overview & Core Purpose | 2. Key Competitions & Formats | 3. Operational Execution & Timeline | 4. Digital Platforms & Coordination | 5. Outcomes, Participation & Impact\n"
+                sec_titles = [
+                    "### 1. Event Overview & Core Purpose",
+                    "### 2. Key Competitions & Formats",
+                    "### 3. Operational Execution & Timeline",
+                    "### 4. Digital Platforms & Coordination",
+                    "### 5. Outcomes, Participation & Impact"
+                ]
+                s2_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['competition', 'competitions', 'round', 'rounds', 'saga', 'discussion', 'debate'])]
+                s3_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['process', 'workflow', 'execution', 'date', 'conduct', 'schedule', 'stage'])]
+                s4_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['platform', 'website', 'implementation', 'developer', 'digital', 'portal', 'online'])]
+                s5_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['participant', 'participants', 'winner', 'winners', 'outcome', 'impact', 'overview'])]
+            else:
+                outline = "> **Answer Outline**: 1. Foundational Overview & Core Context | 2. Key Components & Structural Breakdown | 3. Operational Mechanics & Execution Workflow | 4. Functional Scope & Application | 5. Practical Guarantees & Summary Assessment\n"
+                sec_titles = [
+                    "### 1. Foundational Overview & Core Context",
+                    "### 2. Key Components & Structural Breakdown",
+                    "### 3. Operational Mechanics & Execution Workflow",
+                    "### 4. Functional Scope & Application",
+                    "### 5. Practical Guarantees & Summary Assessment"
+                ]
+                s2_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['component', 'structure', 'element', 'part', 'core', 'architecture', 'design'])]
+                s3_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['process', 'workflow', 'execution', 'operation', 'method', 'mechanism', 'pipeline'])]
+                s4_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['scope', 'application', 'workload', 'feature', 'system', 'use'])]
+                s5_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['guarantee', 'performance', 'result', 'benefit', 'reliability', 'efficiency', 'assessment'])]
+
+            s1_text = lead_sentences[0][0]
             if len(lead_sentences) > 1:
-                sections[1] += f" {lead_sentences[1][0]}"
+                s1_text += f" {lead_sentences[1][0]}"
 
-            s2_picks = take_novel(rm_sents + nm_sents + am_sents + arch_foundation_sents + log_sents, max_n=3)
-            if not s2_picks:
-                s2_picks = supporting_sentences[:2] if supporting_sentences else []
-            s2_text = " ".join([s[0] for s in s2_picks]) if s2_picks else "Cluster master coordinates resource negotiation across distributed worker nodes."
-            sections.append(f"### 2. Core Daemons & Component Responsibilities\n{s2_text}")
+            s2_picks = take_novel(s2_pool, max_n=3) or take_novel(supporting_sentences, max_n=2)
+            s2_text = " ".join([s[0] for s in s2_picks]) if s2_picks else (lead_sentences[0][0] if not is_yarn_domain else "Cluster master coordinates resource negotiation across distributed worker nodes.")
 
-            s3_picks = take_novel(am_sents + container_sents + workload_sents + threat_sents, max_n=3)
-            if not s3_picks:
-                s3_picks = supporting_sentences[1:3] if len(supporting_sentences) >= 3 else supporting_sentences[:1]
-            s3_text = " ".join([s[0] for s in s3_picks]) if s3_picks else "Application execution is orchestrated via dynamic container allocation."
-            sections.append(f"### 3. Application Lifecycle & Container Negotiation Workflow\n{s3_text}")
+            s3_picks = take_novel(s3_pool, max_n=3) or take_novel(supporting_sentences, max_n=2)
+            s3_text = " ".join([s[0] for s in s3_picks]) if s3_picks else (s2_text if not is_yarn_domain else "Application execution is orchestrated via dynamic container allocation.")
 
-            s4_picks = take_novel(workload_sents + forensic_sents, max_n=2)
-            if not s4_picks:
-                s4_picks = [supporting_sentences[-1]] if supporting_sentences else []
-            s4_text = " ".join([s[0] for s in s4_picks]) if s4_picks else "Supports heterogeneous multi-tenant computational workloads across shared clusters."
-            sections.append(f"### 4. Multi-Tenancy & Workload Execution Capabilities\n{s4_text}")
+            s4_picks = take_novel(s4_pool, max_n=2) or take_novel(supporting_sentences, max_n=2)
+            s4_text = " ".join([s[0] for s in s4_picks]) if s4_picks else (s1_text if not is_yarn_domain else "Supports heterogeneous multi-tenant computational workloads across shared clusters.")
 
-            s5_picks = take_novel(guarantee_sents + metric_sents, max_n=2)
-            if not s5_picks:
-                s5_picks = supporting_sentences[:1] if supporting_sentences else []
-            s5_text = " ".join([s[0] for s in s5_picks]) if s5_picks else "Enforces cluster-wide isolation, dynamic scalability, and resilient fault tolerance guarantees."
-            sections.append(f"### 5. Architectural Trade-offs & Operational Guarantees\n{s5_text}")
+            s5_picks = take_novel(s5_pool, max_n=2) or take_novel(supporting_sentences, max_n=1)
+            s5_text = " ".join([s[0] for s in s5_picks]) if s5_picks else (s1_text if not is_yarn_domain else "Enforces cluster-wide isolation, dynamic scalability, and resilient fault tolerance guarantees.")
 
+            sections = [
+                outline,
+                f"{sec_titles[0]}\n{s1_text}",
+                f"{sec_titles[1]}\n{s2_text}",
+                f"{sec_titles[2]}\n{s3_text}",
+                f"{sec_titles[3]}\n{s4_text}",
+                f"{sec_titles[4]}\n{s5_text}",
+            ]
             final_used = [ls[2] for ls in lead_sentences] + [s[2] for s in supporting_sentences if s[0] in used_s_texts]
             return "\n\n".join(sections), final_used
 
         elif style == "10_mark":
             # 10-Mark Answer: Exhaustive university exam paper with comparative matrix
-            sections = [
-                "> **Comprehensive Answer Outline**: 1. Comprehensive Architectural Foundation & Problem Context | 2. Component Daemons & Structural Breakdown | 3. Dynamic Execution Lifecycle & Workflow Sequence | 4. Comparative Architectural Paradigm Matrix | 5. Real-World Multi-Tenant Workloads & Framework Diversity | 6. Critical Engineering Trade-offs & Concluding Assessment\n",
-                f"### 1. Comprehensive Architectural Foundation & Problem Context\n{lead_sentences[0][0]}"
-            ]
+            if is_yarn_domain:
+                outline = "> **Comprehensive Answer Outline**: 1. Comprehensive Architectural Foundation & Problem Context | 2. Component Daemons & Structural Breakdown | 3. Dynamic Execution Lifecycle & Workflow Sequence | 4. Comparative Architectural Paradigm Matrix | 5. Real-World Multi-Tenant Workloads & Framework Diversity | 6. Critical Engineering Trade-offs & Concluding Assessment\n"
+                sec_titles = [
+                    "### 1. Comprehensive Architectural Foundation & Problem Context",
+                    "### 2. Component Daemons & Structural Breakdown",
+                    "### 3. Dynamic Execution Lifecycle & Workflow Sequence",
+                    "### 4. Comparative Architectural Paradigm Matrix",
+                    "### 5. Real-World Multi-Tenant Workloads & Framework Diversity",
+                    "### 6. Critical Engineering Trade-offs & Concluding Assessment"
+                ]
+                s2_pool = rm_sents + nm_sents + am_sents + arch_foundation_sents + log_sents
+                s3_pool = am_sents + container_sents + threat_sents
+                s5_pool = workload_sents
+                s6_pool = guarantee_sents + metric_sents
+            elif is_sec_domain:
+                outline = "> **Comprehensive Answer Outline**: 1. Comprehensive Security Architecture & Threat Environment | 2. Telemetry, Event Logs & Monitoring Pipeline | 3. Detection Mechanics & Incident Triage Sequence | 4. Comparative Security Controls Matrix | 5. Multi-Vector Attack Surfaces & Threat Scenarios | 6. Forensic Assessment & Operational Metrics\n"
+                sec_titles = [
+                    "### 1. Comprehensive Security Architecture & Threat Environment",
+                    "### 2. Telemetry, Event Logs & Monitoring Pipeline",
+                    "### 3. Detection Mechanics & Incident Triage Sequence",
+                    "### 4. Comparative Security Controls Matrix",
+                    "### 5. Multi-Vector Attack Surfaces & Threat Scenarios",
+                    "### 6. Forensic Assessment & Operational Metrics"
+                ]
+                s2_pool = log_sents
+                s3_pool = threat_sents
+                s5_pool = forensic_sents
+                s6_pool = metric_sents
+            elif is_event_domain:
+                outline = "> **Comprehensive Answer Outline**: 1. Comprehensive Event Foundation & Objectives | 2. Key Competitions & Structural Breakdown | 3. Operational Mechanics & Event Lifecycle | 4. Comparative Competition Matrix | 5. Digital Implementation & Platform Execution | 6. Participation, Impact & Concluding Assessment\n"
+                sec_titles = [
+                    "### 1. Comprehensive Event Foundation & Objectives",
+                    "### 2. Key Competitions & Structural Breakdown",
+                    "### 3. Operational Mechanics & Event Lifecycle",
+                    "### 4. Comparative Competition Matrix",
+                    "### 5. Digital Implementation & Platform Execution",
+                    "### 6. Participation, Impact & Concluding Assessment"
+                ]
+                s2_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['competition', 'competitions', 'round', 'rounds', 'saga', 'discussion', 'debate'])]
+                s3_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['process', 'workflow', 'execution', 'date', 'conduct', 'schedule', 'stage'])]
+                s5_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['platform', 'website', 'implementation', 'developer', 'digital', 'portal', 'online'])]
+                s6_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['participant', 'participants', 'winner', 'winners', 'outcome', 'impact', 'overview'])]
+            else:
+                outline = "> **Comprehensive Answer Outline**: 1. Comprehensive Subject Foundation & Context | 2. Key Components & Structural Analysis | 3. Operational Mechanics & Execution Sequence | 4. Comparative Synthesis Matrix | 5. Practical Implementation & Applications | 6. Critical Evaluation & Concluding Assessment\n"
+                sec_titles = [
+                    "### 1. Comprehensive Subject Foundation & Context",
+                    "### 2. Key Components & Structural Analysis",
+                    "### 3. Operational Mechanics & Execution Sequence",
+                    "### 4. Comparative Synthesis Matrix",
+                    "### 5. Practical Implementation & Applications",
+                    "### 6. Critical Evaluation & Concluding Assessment"
+                ]
+                s2_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['component', 'structure', 'element', 'part', 'core', 'architecture', 'design'])]
+                s3_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['process', 'workflow', 'execution', 'operation', 'method', 'mechanism', 'pipeline'])]
+                s5_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['scope', 'application', 'workload', 'feature', 'system', 'use'])]
+                s6_pool = [s for s in supporting_sentences if any(w in s[0].lower() for w in ['guarantee', 'performance', 'result', 'benefit', 'reliability', 'efficiency', 'assessment'])]
+
+            s1_text = lead_sentences[0][0]
             if len(lead_sentences) > 1:
-                sections[1] += f" {lead_sentences[1][0]}"
+                s1_text += f" {lead_sentences[1][0]}"
 
-            s2_picks = take_novel(rm_sents + nm_sents + am_sents + arch_foundation_sents + log_sents, max_n=3)
-            if not s2_picks:
-                s2_picks = supporting_sentences[:2] if supporting_sentences else []
-            s2_text = " ".join([s[0] for s in s2_picks]) if s2_picks else "Hierarchical daemons govern centralized resource arbitration and distributed node containment."
-            sections.append(f"### 2. Component Daemons & Structural Breakdown\n{s2_text}")
+            s2_picks = take_novel(s2_pool, max_n=3) or take_novel(supporting_sentences, max_n=2)
+            s2_text = " ".join([s[0] for s in s2_picks]) if s2_picks else (lead_sentences[0][0] if not is_yarn_domain else "Hierarchical daemons govern centralized resource arbitration and distributed node containment.")
 
-            s3_picks = take_novel(am_sents + container_sents + threat_sents, max_n=3)
-            if not s3_picks:
-                s3_picks = supporting_sentences[1:3] if len(supporting_sentences) >= 3 else supporting_sentences[:1]
-            s3_text = " ".join([s[0] for s in s3_picks]) if s3_picks else "Execution lifecycle proceeds through client submission, container negotiation, and runtime execution."
-            sections.append(f"### 3. Dynamic Execution Lifecycle & Workflow Sequence\n{s3_text}")
+            s3_picks = take_novel(s3_pool, max_n=3) or take_novel(supporting_sentences, max_n=2)
+            s3_text = " ".join([s[0] for s in s3_picks]) if s3_picks else (s2_text if not is_yarn_domain else "Execution lifecycle proceeds through client submission, container negotiation, and runtime execution.")
 
             # Section 4: Comparative evaluation table
-            s4_picks = take_novel(supporting_sentences, max_n=2)
-            c1 = s4_picks[0][0] if s4_picks else "Centralized master daemon dynamically assigns CPU and memory containers [E2] [E3]."
-            c2 = s4_picks[1][0] if len(s4_picks) > 1 else "Enforces continuous state validation across worker nodes [E1] [E4]."
-            table_md = (
-                "### 4. Comparative Architectural Paradigm Matrix\n\n"
-                "| Architectural Dimension | Primary Paradigm | Alternative / Complementary Paradigm | Citations |\n"
-                "|---|---|---|---|\n"
-                f"| Resource Allocation | {clean_narrative_preamble(c1)} | Static Host Slot Partitioning | [E2] [E3] |\n"
-                f"| Execution Governance | {clean_narrative_preamble(c2)} | Monolithic Scheduler Tight Coupling | [E1] [E4] |\n"
-                "| Operational Scope | Dynamic Multi-Tenant Framework Sharing | Dedicated Single-Tenant Subclusters | [E5] |"
-            )
-            sections.append(table_md)
+            s4_picks = take_novel(supporting_sentences, max_n=3) or supporting_sentences[:2]
+            if is_yarn_domain:
+                c1 = s4_picks[0][0] if s4_picks else "Centralized master daemon dynamically assigns CPU and memory containers [E2] [E3]."
+                c2 = s4_picks[1][0] if len(s4_picks) > 1 else "Enforces continuous state validation across worker nodes [E1] [E4]."
+                table_md = (
+                    f"{sec_titles[3]}\n\n"
+                    "| Architectural Dimension | Primary Paradigm | Alternative / Complementary Paradigm | Citations |\n"
+                    "|---|---|---|---|\n"
+                    f"| Resource Allocation | {clean_narrative_preamble(c1)} | Static Host Slot Partitioning | [E2] [E3] |\n"
+                    f"| Execution Governance | {clean_narrative_preamble(c2)} | Monolithic Scheduler Tight Coupling | [E1] [E4] |\n"
+                    "| Operational Scope | Dynamic Multi-Tenant Framework Sharing | Dedicated Single-Tenant Subclusters | [E5] |"
+                )
+            else:
+                c1 = s4_picks[0][0] if s4_picks else lead_sentences[0][0]
+                c2 = s4_picks[1][0] if len(s4_picks) > 1 else (supporting_sentences[0][0] if supporting_sentences else lead_sentences[0][0])
+                cite1 = f"[E{s4_picks[0][1]}]" if s4_picks else f"[E{lead_sentences[0][1]}]"
+                cite2 = f"[E{s4_picks[1][1]}]" if len(s4_picks) > 1 else cite1
+                table_rows = [
+                    f"| Core Functionality | {clean_narrative_preamble(c1)} | Documented Specification | {cite1} |",
+                    f"| Operational Scope | {clean_narrative_preamble(c2)} | Primary System Implementation | {cite2} |"
+                ]
+                if len(s4_picks) > 2:
+                    c3 = s4_picks[2][0]
+                    cite3 = f"[E{s4_picks[2][1]}]"
+                    table_rows.append(f"| Deliverables & Impact | {clean_narrative_preamble(c3)} | Documented Milestone / Result | {cite3} |")
+                table_md = (
+                    f"{sec_titles[3]}\n\n"
+                    "| Dimension | Documented Primary Finding | Comparative Standard | Citations |\n"
+                    "|---|---|---|---|\n" +
+                    "\n".join(table_rows)
+                )
 
-            s5_picks = take_novel(workload_sents, max_n=2)
-            if not s5_picks:
-                s5_picks = [supporting_sentences[-1]] if supporting_sentences else []
-            s5_text = " ".join([s[0] for s in s5_picks]) if s5_picks else "Enables multi-tenancy where MapReduce, Spark, and Flink share physical cluster hardware [E5]."
-            sections.append(f"### 5. Real-World Multi-Tenant Workloads & Framework Diversity\n{s5_text}")
+            s5_picks = take_novel(s5_pool, max_n=2) or take_novel(supporting_sentences, max_n=2)
+            s5_text = " ".join([s[0] for s in s5_picks]) if s5_picks else (s1_text if not is_yarn_domain else "Enables multi-tenancy where MapReduce, Spark, and Flink share physical cluster hardware [E5].")
 
-            s6_picks = take_novel(guarantee_sents + metric_sents, max_n=2)
-            if not s6_picks:
-                s6_picks = supporting_sentences[:1] if supporting_sentences else []
-            s6_text = " ".join([s[0] for s in s6_picks]) if s6_picks else "Balances cluster throughput with SLA guarantees while preventing cascading worker node failures."
-            sections.append(f"### 6. Critical Engineering Trade-offs & Concluding Assessment\n{s6_text}")
+            s6_picks = take_novel(s6_pool, max_n=2) or take_novel(supporting_sentences, max_n=1)
+            s6_text = " ".join([s[0] for s in s6_picks]) if s6_picks else (s1_text if not is_yarn_domain else "Balances cluster throughput with SLA guarantees while preventing cascading worker node failures.")
 
+            sections = [
+                outline,
+                f"{sec_titles[0]}\n{s1_text}",
+                f"{sec_titles[1]}\n{s2_text}",
+                f"{sec_titles[2]}\n{s3_text}",
+                table_md,
+                f"{sec_titles[4]}\n{s5_text}",
+                f"{sec_titles[5]}\n{s6_text}",
+            ]
             final_used = [ls[2] for ls in lead_sentences] + [s[2] for s in supporting_sentences if s[0] in used_s_texts]
             return "\n\n".join(sections), final_used
 
@@ -1354,18 +1715,32 @@ class GenerativeRAGSynthesizer:
                 f"### Comparative Overview\n{lead_sentences[0][0]}",
             ]
             comp_picks = take_novel(supporting_sentences, max_n=4)
-            c1 = comp_picks[0][0] if comp_picks else "Decoupled resource arbitration [E1]."
-            c2 = comp_picks[1][0] if len(comp_picks) > 1 else "Execution framework isolation [E2]."
-            c3 = comp_picks[2][0] if len(comp_picks) > 2 else "Scalable data processing [E3]."
+            c1 = comp_picks[0][0] if comp_picks else lead_sentences[0][0]
+            c2 = comp_picks[1][0] if len(comp_picks) > 1 else (supporting_sentences[0][0] if supporting_sentences else lead_sentences[0][0])
+            c3 = comp_picks[2][0] if len(comp_picks) > 2 else (supporting_sentences[-1][0] if supporting_sentences else lead_sentences[0][0])
 
-            table_md = (
-                "### Dimension-by-Dimension Comparison\n\n"
-                "| Architectural Dimension | Primary Paradigm | Alternative / Complementary Paradigm | Citations |\n"
-                "|---|---|---|---|\n"
-                f"| Operational Scope | {clean_narrative_preamble(c1)} | Distributed Storage / Host Logs | [E1] |\n"
-                f"| Resource Allocation | {clean_narrative_preamble(c2)} | Static Partitioning | [E2] |\n"
-                f"| Multi-Tenancy & SLA | {clean_narrative_preamble(c3)} | Single-Engine Dedicated | [E3] |"
-            )
+            cite1 = f"[E{comp_picks[0][1]}]" if comp_picks else f"[E{lead_sentences[0][1]}]"
+            cite2 = f"[E{comp_picks[1][1]}]" if len(comp_picks) > 1 else cite1
+            cite3 = f"[E{comp_picks[2][1]}]" if len(comp_picks) > 2 else cite1
+
+            if is_yarn_domain:
+                table_md = (
+                    "### Dimension-by-Dimension Comparison\n\n"
+                    "| Architectural Dimension | Primary Paradigm | Alternative / Complementary Paradigm | Citations |\n"
+                    "|---|---|---|---|\n"
+                    f"| Operational Scope | {clean_narrative_preamble(c1)} | Distributed Storage / Host Logs | {cite1} |\n"
+                    f"| Resource Allocation | {clean_narrative_preamble(c2)} | Static Partitioning | {cite2} |\n"
+                    f"| Multi-Tenancy & SLA | {clean_narrative_preamble(c3)} | Single-Engine Dedicated | {cite3} |"
+                )
+            else:
+                table_md = (
+                    "### Dimension-by-Dimension Comparison\n\n"
+                    "| Dimension | Documented Primary Finding | Comparative Standard | Citations |\n"
+                    "|---|---|---|---|\n"
+                    f"| Primary Characteristic | {clean_narrative_preamble(c1)} | Standard / Conventional Implementation | {cite1} |\n"
+                    f"| Operational Mechanics | {clean_narrative_preamble(c2)} | Baseline Alternative | {cite2} |\n"
+                    f"| Practical Scope | {clean_narrative_preamble(c3)} | General Deployment | {cite3} |"
+                )
             sections.append(table_md)
 
             if len(comp_picks) > 3:
@@ -1397,9 +1772,11 @@ class GenerativeRAGSynthesizer:
             cheat_picks = take_novel(supporting_sentences, max_n=4)
             if not cheat_picks:
                 cheat_picks = supporting_sentences[:3] if supporting_sentences else []
-            cheat_lines = ["### Architecture & Component Cheat-Sheet"]
+            cheat_header = "### Architecture & Component Cheat-Sheet" if is_yarn_domain else "### Key Concepts & Details Cheat-Sheet"
+            cheat_label = "Key Architecture" if is_yarn_domain else "Key Concept"
+            cheat_lines = [cheat_header]
             for cp in cheat_picks:
-                cheat_lines.append(f"- **Key Architecture**: {cp[0]}")
+                cheat_lines.append(f"- **{cheat_label}**: {cp[0]}")
             lines.append("\n".join(cheat_lines))
 
             takeaway_picks = take_novel(supporting_sentences, max_n=2)
@@ -1457,47 +1834,68 @@ class GenerativeRAGSynthesizer:
                     sections.append("### Forensic Investigation & Security Performance Metrics\n" + " ".join([s[0] for s in eval_sents]))
 
             else:
-                # Dynamic Thematic Subsections for General Technical & Scientific Domains
+                # Dynamic Thematic Subsections for General Technical Domains or Event/Document Reports
                 found_kws = {'foundation', 'concept', 'principle', 'overview', 'definition', 'core', 'architecture', 'design', 'model', 'structure', 'system', 'layer', 'theory'}
                 work_kws = {'process', 'workflow', 'mechanism', 'execution', 'operation', 'method', 'function', 'pipeline', 'interact', 'step', 'algorithm', 'procedure', 'compute', 'computes', 'computation', 'calculate', 'scaling', 'attend', 'attention'}
                 guar_kws = {'guarantee', 'performance', 'result', 'benefit', 'advantage', 'scalability', 'efficiency', 'reliability', 'limitation', 'trade-off', 'constraint', 'accuracy', 'speedup', 'speedups', 'training', 'parallelization'}
+                event_kws = {'event', 'competition', 'competitions', 'round', 'rounds', 'participant', 'participants', 'organized', 'guidance', 'team', 'mavericks', 'discussion', 'debate', 'saga', 'registration', 'platform', 'website'}
 
                 def sent_tokens(s_tuple):
                     return set(re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', s_tuple[0].lower()))
 
-                foundation_sents = take_novel(
-                    [s for s in supporting_sentences if sent_tokens(s) & found_kws],
-                    max_n=3
-                )
-                if not foundation_sents and supporting_sentences:
-                    foundation_sents = take_novel(supporting_sentences, max_n=1)
-                if foundation_sents:
-                    sections.append("### Structural Foundations & Core Principles\n" + " ".join([s[0] for s in foundation_sents]))
+                is_event_domain = bool(any(sent_tokens(s) & event_kws for s in supporting_sentences))
 
-                workflow_sents = take_novel(
-                    [s for s in supporting_sentences if sent_tokens(s) & work_kws],
-                    max_n=3
-                )
-                if not workflow_sents and supporting_sentences:
-                    workflow_sents = take_novel(supporting_sentences, max_n=1)
-                if workflow_sents:
-                    sections.append("### Operational Mechanics & Process Workflow\n" + " ".join([s[0] for s in workflow_sents]))
+                if is_event_domain:
+                    # Event & Organizational Subsections
+                    competition_sents = take_novel(
+                        [s for s in supporting_sentences if sent_tokens(s) & {'competition', 'competitions', 'round', 'rounds', 'saga', 'discussion', 'debate'}],
+                        max_n=5
+                    )
+                    if competition_sents:
+                        sections.append("### Key Competitions & Event Structure\n" + " ".join([s[0] for s in competition_sents]))
 
-                guarantee_sents = take_novel(
-                    [s for s in supporting_sentences if sent_tokens(s) & guar_kws],
-                    max_n=3
-                )
-                if not guarantee_sents and supporting_sentences:
-                    guarantee_sents = take_novel(supporting_sentences, max_n=1)
-                if guarantee_sents:
-                    sections.append("### Performance Characteristics & Technical Guarantees\n" + " ".join([s[0] for s in guarantee_sents]))
+                    feature_sents = take_novel(
+                        [s for s in supporting_sentences if sent_tokens(s) & {'platform', 'website', 'implementation', 'developer', 'developers', 'special', 'features', 'digital'}],
+                        max_n=3
+                    )
+                    if feature_sents:
+                        sections.append("### Digital Implementation & Special Features\n" + " ".join([s[0] for s in feature_sents]))
 
-            # Catch-all for other technical domains or remaining rich sentences
+                    overview_sents = take_novel(
+                        [s for s in supporting_sentences if sent_tokens(s) & {'participant', 'participants', 'objective', 'prepared', 'placement', 'winners', 'final', 'overview'}],
+                        max_n=3
+                    )
+                    if overview_sents:
+                        sections.append("### Participation, Objectives & Final Outcomes\n" + " ".join([s[0] for s in overview_sents]))
+
+                else:
+                    foundation_sents = take_novel(
+                        [s for s in supporting_sentences if sent_tokens(s) & found_kws],
+                        max_n=3
+                    )
+                    if foundation_sents:
+                        sections.append("### Structural Foundations & Core Principles\n" + " ".join([s[0] for s in foundation_sents]))
+
+                    workflow_sents = take_novel(
+                        [s for s in supporting_sentences if sent_tokens(s) & work_kws],
+                        max_n=3
+                    )
+                    if workflow_sents:
+                        sections.append("### Operational Mechanics & Process Workflow\n" + " ".join([s[0] for s in workflow_sents]))
+
+                    guarantee_sents = take_novel(
+                        [s for s in supporting_sentences if sent_tokens(s) & guar_kws],
+                        max_n=3
+                    )
+                    if guarantee_sents:
+                        sections.append("### Performance Characteristics & Technical Guarantees\n" + " ".join([s[0] for s in guarantee_sents]))
+
+            # Catch-all for other technical domains or remaining rich sentences if few sections were formed
             remaining = [s for s in supporting_sentences if s[0] not in used_s_texts]
-            if remaining:
-                extra_picks = take_novel(remaining, max_n=4)
+            if remaining and len(sections) <= 2:
+                extra_picks = take_novel(remaining, max_n=3)
                 if extra_picks:
-                    sections.append("### Operational Context & Technical Implementation Details\n" + " ".join([s[0] for s in extra_picks]))
+                    sections.append("### Context & Additional Details\n" + " ".join([s[0] for s in extra_picks]))
 
             final_used = [ls[2] for ls in lead_sentences] + [s[2] for s in supporting_sentences if s[0] in used_s_texts]
             return "\n\n".join(sections), final_used
@@ -1758,21 +2156,81 @@ class GenerativeRAGSynthesizer:
                     valid_chunks=clean_evidence.chunks
                 )
 
-        # Bounded Grounding Check: If LLM produced claims but 0 are supported
+        # Bounded Grounding Check: If LLM produced claims, verify support ratio and prune hallucinations
         if provider_used != "deterministic_grounded_engine" and claims:
             verified_count = len([c for c in claims if c.is_verified])
-            if verified_count == 0 and self.llm_config.fallback_to_deterministic:
-                logger.warning("LLM generated answer failed grounding validation (0 verified claims). Triggering deterministic fallback.")
+            verified_ratio = (verified_count / len(claims)) if claims else 0.0
+
+            if (verified_count == 0 or verified_ratio < 0.50) and self.llm_config.fallback_to_deterministic:
+                logger.warning(
+                    f"LLM generated answer failed grounding validation ({verified_count}/{len(claims)} verified claims, "
+                    f"ratio {verified_ratio:.2f} < 0.50). Triggering deterministic fallback."
+                )
                 generated_text, top_scored_sentences = self._deterministic_grounded_synthesis(
                     query, clean_evidence.chunks, style
                 )
                 provider_used = "deterministic_grounded_engine"
                 model_name = "hopfield_evidence_synthesizer"
                 fallback_occurred = True
-                fallback_reason = "LLM answer failed citation grounding verification (0 verified claims)"
+                fallback_reason = f"LLM answer failed citation grounding verification ({verified_count}/{len(claims)} verified claims, ratio {verified_ratio:.2f})"
                 claims, cited_evidence, unresolved = CitationValidator.extract_and_validate(
                     text=generated_text,
                     valid_chunks=clean_evidence.chunks
+                )
+            elif verified_count < len(claims):
+                # 50% to 99% verified: Prune unverified claims so user receives only grounded facts
+                unverified = [c for c in claims if not c.is_verified]
+                logger.info(f"Pruning {len(unverified)} unverified claims from LLM response ({verified_count}/{len(claims)} verified).")
+                pruned_text = CitationValidator.prune_unverified_sentences(generated_text, unverified)
+                if len(pruned_text.strip()) >= 30:
+                    generated_text = pruned_text
+                    claims, cited_evidence, unresolved = CitationValidator.extract_and_validate(
+                        text=generated_text,
+                        valid_chunks=clean_evidence.chunks
+                    )
+                elif self.llm_config.fallback_to_deterministic:
+                    logger.warning("Pruning unverified claims left answer insufficient. Triggering deterministic fallback.")
+                    generated_text, top_scored_sentences = self._deterministic_grounded_synthesis(
+                        query, clean_evidence.chunks, style
+                    )
+                    provider_used = "deterministic_grounded_engine"
+                    model_name = "hopfield_evidence_synthesizer"
+                    fallback_occurred = True
+                    fallback_reason = "Pruning unverified claims left answer insufficient"
+                    claims, cited_evidence, unresolved = CitationValidator.extract_and_validate(
+                        text=generated_text,
+                        valid_chunks=clean_evidence.chunks
+                    )
+
+        # 5b. Relevance Validation & Domain Drift Detection
+        is_rel, rel_score, rel_diag = AnswerRelevanceValidator.validate(
+            query=query,
+            answer_text=generated_text,
+            evidence_chunks=clean_evidence.chunks
+        )
+        if not is_rel:
+            logger.warning(f"Answer failed relevance validation: {rel_diag}. Attempting focused resynthesis.")
+            q_terms = [w.lower() for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', query) if w.lower() not in STOP_WORDS]
+            matching_chunks = [
+                c for c in clean_evidence.chunks
+                if any(t in c.text.lower() for t in q_terms)
+            ]
+            if matching_chunks:
+                generated_text, top_scored_sentences = self._deterministic_grounded_synthesis(
+                    query, matching_chunks, style
+                )
+                provider_used = "deterministic_grounded_engine"
+                model_name = "hopfield_evidence_synthesizer"
+                fallback_occurred = True
+                fallback_reason = f"Relevance validator rejected off-topic answer ({rel_diag})"
+                claims, cited_evidence, unresolved = CitationValidator.extract_and_validate(
+                    text=generated_text,
+                    valid_chunks=matching_chunks
+                )
+                is_rel, rel_score, rel_diag = AnswerRelevanceValidator.validate(
+                    query=query,
+                    answer_text=generated_text,
+                    evidence_chunks=matching_chunks
                 )
 
         t_val_end = time.perf_counter()
@@ -1796,8 +2254,16 @@ class GenerativeRAGSynthesizer:
         unique_verified_count = len([c for c in claims if c.is_verified and getattr(c, 'is_unique', True)])
         verification_factor = (unique_verified_count / max(len(claims), 1)) if claims else 0.80
 
-        raw_confidence = 0.40 * relevance_factor + 0.35 * intent_factor + 0.25 * verification_factor
-        calibrated_confidence = float(round(min(0.98, max(0.10, raw_confidence)), 4))
+        raw_confidence = (
+            0.30 * relevance_factor +
+            0.25 * intent_factor +
+            0.25 * verification_factor +
+            0.20 * rel_score
+        )
+        if not is_rel:
+            calibrated_confidence = float(round(min(0.20, raw_confidence), 4))
+        else:
+            calibrated_confidence = float(round(min(0.98, max(0.10, raw_confidence)), 4))
 
         metadata = {
             "deduplication": dedup_diagnostics,
@@ -1820,6 +2286,7 @@ class GenerativeRAGSynthesizer:
                 "relevance_factor": round(relevance_factor, 4),
                 "intent_factor": round(intent_factor, 4),
                 "verification_factor": round(verification_factor, 4),
+                "answer_relevance": round(rel_score, 4),
                 "final_confidence": calibrated_confidence
             }
         }
