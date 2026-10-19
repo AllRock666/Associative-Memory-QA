@@ -363,6 +363,7 @@
             await loadChats();
             await refreshDocumentsList();
             setupDragAndDrop();
+            setInterval(checkStatus, 5000);
         });
 
         function initStorage() {
@@ -1411,12 +1412,14 @@
                 if (res.ok) {
                     const data = await res.json();
                     const badge = document.getElementById('pipeline-badge');
-                    if (data.ready) {
-                        badge.innerText = `${data.documents} docs (${data.chunks} chunks)`;
-                        badge.className = "text-[11px] px-2 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-800";
-                    } else {
-                        badge.innerText = "No Docs";
-                        badge.className = "text-[11px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800";
+                    if (badge) {
+                        if (data.ready) {
+                            badge.innerText = `${data.documents} docs (${data.chunks} chunks)`;
+                            badge.className = "text-[11px] px-2 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-800";
+                        } else {
+                            badge.innerText = "No Docs";
+                            badge.className = "text-[11px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800";
+                        }
                     }
 
                     if (data.llm) {
@@ -1428,21 +1431,40 @@
                             modelInput.value = data.llm.model;
                         }
 
-                        if (data.llm.is_healthy) {
-                            pill.innerText = "LLM Ready";
-                            pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300";
-                            if (msg) msg.innerText = `Connected: ${data.llm.effective_provider} (${data.llm.model})`;
-                        } else if (data.llm.fallback_enabled) {
-                            pill.innerText = "Fallback Active";
-                            pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-300";
-                            if (msg) msg.innerText = "Ollama offline → Auto-fallback to deterministic engine active.";
-                        } else {
-                            pill.innerText = "Offline";
-                            pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-rose-100 text-rose-800 border border-rose-300";
+                        if (pill) {
+                            if (data.llm.is_healthy) {
+                                pill.innerText = "LLM Ready";
+                                pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300";
+                                if (msg) msg.innerText = `Connected: ${data.llm.effective_provider} (${data.llm.model})`;
+                            } else if (data.llm.fallback_enabled) {
+                                pill.innerText = "Fallback Active";
+                                pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-300";
+                                if (msg) msg.innerText = "Ollama offline → Auto-fallback to deterministic engine active.";
+                            } else {
+                                pill.innerText = "Offline";
+                                pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-rose-100 text-rose-800 border border-rose-300";
+                            }
                         }
                     }
+                } else {
+                    const badge = document.getElementById('pipeline-badge');
+                    if (badge && badge.innerText === 'Checking...') {
+                        badge.innerText = 'Connecting...';
+                        badge.className = 'text-[11px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600';
+                    }
                 }
-            } catch (e) {}
+            } catch (e) {
+                const badge = document.getElementById('pipeline-badge');
+                if (badge && badge.innerText === 'Checking...') {
+                    badge.innerText = 'Connecting...';
+                    badge.className = 'text-[11px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600';
+                }
+                const pill = document.getElementById('llm-status-pill');
+                if (pill && pill.innerText.includes('Checking')) {
+                    pill.innerText = 'Connecting...';
+                    pill.className = 'text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200';
+                }
+            }
         }
 
         function setQuickStyle(style) {
@@ -1564,6 +1586,8 @@
                     modelInput.value = 'llama3.2:1b';
                 }
             }
+        }
+
         let isWideScreen = false;
         function toggleChatWidth() {
             isWideScreen = !isWideScreen;
