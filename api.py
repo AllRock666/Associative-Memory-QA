@@ -38,6 +38,7 @@ class SearchRequest(BaseModel):
     conversation_history: Optional[List[Dict[str, Any]]] = None
     web_search_enabled: Optional[bool] = None
     force_web_search: Optional[bool] = False
+    web_search_provider: Optional[str] = None
     answer_format: Optional[str] = None
     active_doc_id: Optional[str] = None
 
@@ -62,6 +63,7 @@ def startup_event():
         use_projection=False,
         projection_path=proj_path,
         use_associative_engine=True,
+        web_search_provider=os.environ.get("WEB_SEARCH_PROVIDER", "composite"),
     )
     pipeline = HopfieldQAPipeline(config)
 
@@ -171,6 +173,7 @@ def search(req: SearchRequest):
             conversation_history=history,
             web_search_enabled=req.web_search_enabled,
             force_web_search=bool(req.force_web_search),
+            web_search_provider=req.web_search_provider,
             answer_format=req.answer_format,
             active_doc_id=req.active_doc_id,
         )

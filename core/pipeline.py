@@ -4,6 +4,7 @@ Main Pipeline Orchestrator
 Ties together: Embeddings → Hopfield Memory → Query Processing → Answer Generation
 """
 
+import os
 import numpy as np
 import time
 from typing import List, Dict, Optional, Tuple, Any
@@ -67,7 +68,7 @@ class PipelineConfig:
 
     # Web Augmentation & Persistent Knowledge Memory
     web_search_enabled: bool = False
-    web_search_provider: str = "mock"  # "mock" | "duckduckgo"
+    web_search_provider: str = os.environ.get("WEB_SEARCH_PROVIDER", "composite")
     web_fetch_timeout_seconds: float = 8.0
     web_cache_path: str = "data/web_memory_store.json"
     sufficiency_min_chunks: int = 2
@@ -186,27 +187,32 @@ class HopfieldQAPipeline:
 
         # Web Search & Persistent Knowledge Memory
         from core.knowledge_memory import PersistentKnowledgeMemory
-        from core.web_search import DuckDuckGoSearchProvider, MockWebSearchProvider, WebPageExtractor, WebResearchConfig
+        from core.web_search import (
+            DuckDuckGoSearchProvider,
+            MockWebSearchProvider,
+            WikipediaSearchProvider,
+            CompositeWebSearchProvider,
+            WebPageExtractor,
+            WebResearchConfig,
+            create_web_search_provider,
+        )
         from core.retrieval_coordinator import RetrievalCoordinator, SufficiencyEvaluator
         from core.format_detector import FormatDetector
 
         self.knowledge_memory = PersistentKnowledgeMemory(
             filepath=getattr(self.config, 'web_cache_path', 'data/web_memory_store.json')
         )
-        provider_name = getattr(self.config, 'web_search_provider', 'duckduckgo').lower()
-        if provider_name == "mock":
-            self.web_search_provider = MockWebSearchProvider()
-        else:
-            self.web_search_provider = DuckDuckGoSearchProvider()
-
-        self.web_extractor = WebPageExtractor(
-            mock_provider=self.web_search_provider if isinstance(self.web_search_provider, MockWebSearchProvider) else None,
-            timeout=getattr(self.config, 'web_fetch_timeout_seconds', 8.0)
-        )
+        provider_name = getattr(self.config, 'web_search_provider', 'composite').lower()
         self.web_config = WebResearchConfig(
             enabled=getattr(self.config, 'web_search_enabled', False),
             provider=provider_name,
             fetch_timeout_seconds=getattr(self.config, 'web_fetch_timeout_seconds', 8.0)
+        )
+        self.web_search_provider = create_web_search_provider(self.web_config)
+
+        self.web_extractor = WebPageExtractor(
+            mock_provider=self.web_search_provider if isinstance(self.web_search_provider, MockWebSearchProvider) else None,
+            timeout=getattr(self.config, 'web_fetch_timeout_seconds', 8.0)
         )
         self.retrieval_coordinator = RetrievalCoordinator(
             doc_retriever=self.hopfield_retriever,
@@ -406,6 +412,7 @@ class HopfieldQAPipeline:
         conversation_history: Optional[List[Dict[str, str]]] = None,
         web_search_enabled: Optional[bool] = None,
         force_web_search: bool = False,
+        web_search_provider: Optional[str] = None,
         answer_format: Optional[str] = None,
         active_doc_id: Optional[str] = None,
         doc_filter: Optional[str] = None,
@@ -476,6 +483,14 @@ class HopfieldQAPipeline:
         # 4. Multi-Source Retrieval via RetrievalCoordinator
         t_ret_start = time.perf_counter()
         self.retrieval_coordinator.doc_retriever = selected_retriever
+        if web_search_provider:
+            from core.web_search import create_web_search_provider, WebResearchConfig
+            custom_cfg = WebResearchConfig(
+                enabled=effective_web_search,
+                provider=web_search_provider.lower().strip(),
+                fetch_timeout_seconds=getattr(self.config, 'web_fetch_timeout_seconds', 8.0)
+            )
+            self.retrieval_coordinator.web_search_provider = create_web_search_provider(custom_cfg)
         coord_res = self.retrieval_coordinator.retrieve(
             query=query_text,
             query_embedding=query_embedding,

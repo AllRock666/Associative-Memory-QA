@@ -181,7 +181,8 @@ class RetrievalCoordinator:
         self.web_search_provider = web_search_provider
         self.web_extractor = web_extractor
         self.web_config = web_config or WebResearchConfig()
-        if self.web_search_provider and not getattr(self.web_extractor, 'mock_provider', None):
+        from core.web_search import MockWebSearchProvider
+        if isinstance(self.web_search_provider, MockWebSearchProvider) and not getattr(self.web_extractor, 'mock_provider', None):
             self.web_extractor.mock_provider = self.web_search_provider
         # Dedicated Hopfield memory for web chunks
         self.web_memory = web_memory or PyTorchHopfieldMemory(beta=8.0, n_iter=1)
@@ -260,18 +261,22 @@ class RetrievalCoordinator:
                         new_web_chunks: List[Chunk] = []
                         for sr in pages_to_fetch:
                             web_doc = self.web_extractor.fetch_and_extract(sr.url)
-                            if web_doc.text and len(web_doc.text) >= 50:
-                                page_chunks = self.chunker.chunk_text(web_doc.text, source=web_doc.title or sr.title)
+                            # Prefer extracted page text; fallback to search snippet if page was JS-rendered, blocked, or minimal
+                            text_to_use = web_doc.text if (web_doc.text and len(web_doc.text) >= 50) else sr.snippet
+                            title_to_use = web_doc.title if (web_doc.title and web_doc.title != web_doc.source_domain) else sr.title
+
+                            if text_to_use and len(text_to_use) >= 20:
+                                page_chunks = self.chunker.chunk_text(text_to_use, source=title_to_use)
                                 for pc in page_chunks:
                                     pc.metadata["url"] = sr.url
-                                    pc.metadata["title"] = web_doc.title or sr.title
+                                    pc.metadata["title"] = title_to_use
                                     pc.metadata["published_date"] = web_doc.published_date or sr.published_date
                                     pc.metadata["source_domain"] = sr.source_domain
                                     pc.metadata["source_type"] = "web"
                                 new_web_chunks.extend(page_chunks)
 
                                 web_sources.append({
-                                    "title": web_doc.title or sr.title,
+                                    "title": title_to_use,
                                     "url": sr.url,
                                     "source": sr.source_domain,
                                     "published_date": web_doc.published_date or sr.published_date,

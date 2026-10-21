@@ -69,11 +69,11 @@ class WebPageDocument:
 class WebResearchConfig:
     """Configuration options for web search and extraction."""
     enabled: bool = True
-    provider: str = "mock"  # "mock" | "duckduckgo" | "searxng"
+    provider: str = "composite"  # "composite" | "duckduckgo" | "wikipedia" | "mock"
     max_search_results: int = 5
-    max_pages_to_fetch: int = 3
+    max_pages_to_fetch: int = 2
     fetch_timeout_seconds: float = 8.0
-    search_timeout_seconds: float = 6.0
+    search_timeout_seconds: float = 10.0
     max_page_bytes: int = 1_000_000  # 1 MB maximum response size
     search_endpoint: Optional[str] = None
     user_agent: str = (
@@ -90,7 +90,7 @@ class WebResearchConfig:
     def from_env(cls) -> "WebResearchConfig":
         enabled_str = os.environ.get("WEB_SEARCH_ENABLED", "true").lower().strip()
         enabled = enabled_str not in ("false", "0", "no")
-        provider = os.environ.get("WEB_SEARCH_PROVIDER", "mock").lower().strip()
+        provider = os.environ.get("WEB_SEARCH_PROVIDER", "composite").lower().strip()
         endpoint = os.environ.get("WEB_SEARCH_ENDPOINT", None)
 
         try:
@@ -99,14 +99,19 @@ class WebResearchConfig:
             max_results = 5
 
         try:
-            max_pages = int(os.environ.get("WEB_MAX_PAGES_TO_FETCH", "3"))
+            max_pages = int(os.environ.get("WEB_MAX_PAGES_TO_FETCH", "2"))
         except ValueError:
-            max_pages = 3
+            max_pages = 2
 
         try:
             timeout = float(os.environ.get("WEB_FETCH_TIMEOUT_SECONDS", "8.0"))
         except ValueError:
             timeout = 8.0
+
+        try:
+            search_timeout = float(os.environ.get("WEB_SEARCH_TIMEOUT_SECONDS", "10.0"))
+        except ValueError:
+            search_timeout = 10.0
 
         return cls(
             enabled=enabled,
@@ -114,6 +119,7 @@ class WebResearchConfig:
             max_search_results=max_results,
             max_pages_to_fetch=max_pages,
             fetch_timeout_seconds=timeout,
+            search_timeout_seconds=search_timeout,
             search_endpoint=endpoint
         )
 
@@ -300,14 +306,17 @@ class DuckDuckGoSearchProvider(BaseWebSearchProvider):
     """
 
     def is_available(self) -> Tuple[bool, Optional[str]]:
-        try:
-            with httpx.Client(timeout=3.0) as client:
-                resp = client.get("https://html.duckduckgo.com/html/", headers={"User-Agent": self.config.user_agent})
-                if resp.status_code in (200, 301, 302):
-                    return True, None
-                return False, f"DuckDuckGo returned HTTP {resp.status_code}"
-        except Exception as e:
-            return False, f"DuckDuckGo connection check failed: {e}"
+        for attempt in range(2):
+            try:
+                with httpx.Client(timeout=4.0) as client:
+                    resp = client.get("https://html.duckduckgo.com/html/", headers={"User-Agent": self.config.user_agent})
+                    if resp.status_code in (200, 301, 302):
+                        return True, None
+            except Exception as e:
+                if attempt == 1:
+                    return False, f"DuckDuckGo connection check failed: {e}"
+                time.sleep(0.5)
+        return False, "DuckDuckGo connection check failed."
 
     def search(self, query: str, max_results: int = 5) -> List[WebSearchResult]:
         search_url = "https://html.duckduckgo.com/html/"
@@ -318,51 +327,151 @@ class DuckDuckGoSearchProvider(BaseWebSearchProvider):
         }
         data = {"q": query}
 
+        for attempt in range(2):
+            try:
+                with httpx.Client(timeout=self.config.search_timeout_seconds) as client:
+                    resp = client.post(search_url, data=data, headers=headers)
+                    resp.raise_for_status()
+                    html = resp.text
+
+                soup = BeautifulSoup(html, "html.parser")
+                results: List[WebSearchResult] = []
+
+                # DuckDuckGo HTML result blocks
+                for r in soup.select(".result"):
+                    link_el = r.select_one(".result__snippet")
+                    anchor_el = r.select_one(".result__title a")
+
+                    if not anchor_el:
+                        continue
+
+                    raw_href = anchor_el.get("href", "")
+                    # Extract clean target URL from DDG redirect wrapper
+                    url = raw_href
+                    if "uddg=" in raw_href:
+                        match = re.search(r'uddg=([^&]+)', raw_href)
+                        if match:
+                            url = unquote(match.group(1))
+
+                    title = anchor_el.get_text(strip=True)
+                    snippet = link_el.get_text(strip=True) if link_el else ""
+
+                    if url.startswith("http") and not any(h in url for h in BLOCKED_HOST_PREFIXES):
+                        domain = urlparse(url).netloc
+                        results.append(WebSearchResult(
+                            title=title or domain,
+                            url=url,
+                            snippet=snippet,
+                            source_domain=domain,
+                            rank=len(results) + 1
+                        ))
+                        if len(results) >= max_results:
+                            break
+
+                if results:
+                    return results
+            except Exception as e:
+                logger.warning(f"DuckDuckGo search attempt {attempt + 1} failed for '{query}': {e}")
+                if attempt < 2:
+                    time.sleep(0.6)
+
+        return []
+
+
+class WikipediaSearchProvider(BaseWebSearchProvider):
+    """
+    Live Encyclopedic Web Search Provider querying the official MediaWiki API.
+    100% free, highly stable, fast, structured, and immune to scraping bot blocks.
+    """
+
+    def is_available(self) -> Tuple[bool, Optional[str]]:
         try:
-            with httpx.Client(timeout=self.config.search_timeout_seconds) as client:
-                resp = client.post(search_url, data=data, headers=headers)
-                resp.raise_for_status()
-                html = resp.text
-
-            soup = BeautifulSoup(html, "html.parser")
-            results: List[WebSearchResult] = []
-
-            # DuckDuckGo HTML result blocks
-            for r in soup.select(".result"):
-                link_el = r.select_one(".result__snippet")
-                title_el = r.select_one(".result__title .result__url")
-                anchor_el = r.select_one(".result__title a")
-
-                if not anchor_el:
-                    continue
-
-                raw_href = anchor_el.get("href", "")
-                # Extract clean target URL from DDG redirect wrapper
-                url = raw_href
-                if "uddg=" in raw_href:
-                    match = re.search(r'uddg=([^&]+)', raw_href)
-                    if match:
-                        url = unquote(match.group(1))
-
-                title = anchor_el.get_text(strip=True)
-                snippet = link_el.get_text(strip=True) if link_el else ""
-
-                if url.startswith("http") and not any(h in url for h in BLOCKED_HOST_PREFIXES):
-                    domain = urlparse(url).netloc
-                    results.append(WebSearchResult(
-                        title=title or domain,
-                        url=url,
-                        snippet=snippet,
-                        source_domain=domain,
-                        rank=len(results) + 1
-                    ))
-                    if len(results) >= max_results:
-                        break
-
-            return results
+            with httpx.Client(timeout=4.0) as client:
+                resp = client.get(
+                    "https://en.wikipedia.org/w/api.php?action=query&meta=siteinfo&format=json",
+                    headers={"User-Agent": "HopfieldQA/1.0 (researcher@example.com)"}
+                )
+                if resp.status_code == 200:
+                    return True, None
+                return False, f"Wikipedia API returned HTTP {resp.status_code}"
         except Exception as e:
-            logger.warning(f"DuckDuckGo search failed for query '{query}': {e}")
-            return []
+            return False, f"Wikipedia API check failed: {e}"
+
+    def search(self, query: str, max_results: int = 5) -> List[WebSearchResult]:
+        search_url = "https://en.wikipedia.org/w/api.php"
+        headers = {"User-Agent": "HopfieldQA/1.0 (researcher@example.com)"}
+        params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": query,
+            "format": "json",
+            "utf8": "1",
+            "srlimit": str(max_results)
+        }
+
+        for attempt in range(2):
+            try:
+                with httpx.Client(timeout=self.config.search_timeout_seconds) as client:
+                    resp = client.get(search_url, params=params, headers=headers)
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                results: List[WebSearchResult] = []
+                search_items = data.get("query", {}).get("search", [])
+                for idx, item in enumerate(search_items, 1):
+                    title = item.get("title", "")
+                    raw_snippet = item.get("snippet", "")
+                    clean_snippet = BeautifulSoup(raw_snippet, "html.parser").get_text(strip=True)
+                    page_slug = title.replace(" ", "_")
+                    url = f"https://en.wikipedia.org/wiki/{page_slug}"
+
+                    results.append(WebSearchResult(
+                        title=title,
+                        url=url,
+                        snippet=clean_snippet,
+                        source_domain="en.wikipedia.org",
+                        rank=idx
+                    ))
+                if results:
+                    return results
+            except Exception as e:
+                logger.warning(f"Wikipedia search attempt {attempt + 1} failed for '{query}': {e}")
+                if attempt < 2:
+                    time.sleep(0.5)
+
+        return []
+
+
+class CompositeWebSearchProvider(BaseWebSearchProvider):
+    """
+    Resilient composite web search provider that cascades across live providers:
+    1. Primary: DuckDuckGo (rich web coverage across reviews, blogs, news, forums).
+    2. Fallback: Wikipedia API (high-reliability encyclopedic knowledge).
+    """
+
+    def __init__(self, config: Optional[WebResearchConfig] = None):
+        super().__init__(config or WebResearchConfig(provider="composite"))
+        self.ddg_provider = DuckDuckGoSearchProvider(self.config)
+        self.wiki_provider = WikipediaSearchProvider(self.config)
+
+    def is_available(self) -> Tuple[bool, Optional[str]]:
+        ddg_avail, ddg_err = self.ddg_provider.is_available()
+        if ddg_avail:
+            return True, None
+        wiki_avail, wiki_err = self.wiki_provider.is_available()
+        if wiki_avail:
+            return True, None
+        return False, f"All web search providers unavailable (DDG: {ddg_err}; Wiki: {wiki_err})"
+
+    def search(self, query: str, max_results: int = 5) -> List[WebSearchResult]:
+        # Try DuckDuckGo first
+        results = self.ddg_provider.search(query, max_results=max_results)
+        if results:
+            return results
+
+        # Fallback to Wikipedia API if DDG returned no results or failed
+        logger.info(f"DuckDuckGo returned 0 results for '{query}'. Falling back to Wikipedia API.")
+        return self.wiki_provider.search(query, max_results=max_results)
 
 
 def is_safe_public_url(url: str) -> bool:
@@ -518,13 +627,13 @@ class WebPageExtractor:
                 error_message="Access to local or private IP addresses is blocked for security."
             )
 
-        # Check mock page database first
-        if self.mock_provider and url in self.mock_provider.mock_pages:
+        # Check mock page database first if using mock provider
+        if self.mock_provider and isinstance(self.mock_provider, MockWebSearchProvider) and url in self.mock_provider.mock_pages:
             mock_html = self.mock_provider.mock_pages[url]
             return self.extract_from_html(mock_html, url)
 
         # Generate realistic mock content if using mock provider
-        if self.mock_provider:
+        if self.mock_provider and isinstance(self.mock_provider, MockWebSearchProvider):
             # Search snippets in mock database to synthesize page text
             for kw, res_list in self.mock_provider.mock_database.items():
                 for r in res_list:
@@ -544,63 +653,73 @@ class WebPageExtractor:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         }
 
-        try:
-            with httpx.Client(
-                timeout=self.config.fetch_timeout_seconds,
-                follow_redirects=True,
-                verify=True
-            ) as client:
-                with client.stream("GET", url, headers=headers) as resp:
-                    if resp.status_code != 200:
-                        return WebPageDocument(
-                            url=url,
-                            title=urlparse(url).netloc,
-                            text="",
-                            source_domain=urlparse(url).netloc,
-                            status_code=resp.status_code,
-                            is_blocked=True,
-                            error_message=f"HTTP {resp.status_code}"
-                        )
+        last_err = None
+        for attempt in range(2):
+            try:
+                with httpx.Client(
+                    timeout=self.config.fetch_timeout_seconds,
+                    follow_redirects=True,
+                    verify=True
+                ) as client:
+                    with client.stream("GET", url, headers=headers) as resp:
+                        if resp.status_code != 200:
+                            return WebPageDocument(
+                                url=url,
+                                title=urlparse(url).netloc,
+                                text="",
+                                source_domain=urlparse(url).netloc,
+                                status_code=resp.status_code,
+                                is_blocked=True,
+                                error_message=f"HTTP {resp.status_code}"
+                            )
 
-                    content_chunks = []
-                    total_bytes = 0
-                    for chunk in resp.iter_bytes(chunk_size=8192):
-                        content_chunks.append(chunk)
-                        total_bytes += len(chunk)
-                        if total_bytes > self.config.max_page_bytes:
-                            break  # Bound maximum downloaded page size
+                        content_chunks = []
+                        total_bytes = 0
+                        for chunk in resp.iter_bytes(chunk_size=8192):
+                            content_chunks.append(chunk)
+                            total_bytes += len(chunk)
+                            if total_bytes > self.config.max_page_bytes:
+                                break  # Bound maximum downloaded page size
 
-                    raw_bytes = b"".join(content_chunks)
-                    encoding = resp.encoding or "utf-8"
-                    html = raw_bytes.decode(encoding, errors="replace")
+                        raw_bytes = b"".join(content_chunks)
+                        encoding = resp.encoding or "utf-8"
+                        html = raw_bytes.decode(encoding, errors="replace")
 
-            return self.extract_from_html(html, url)
-        except Exception as e:
-            logger.warning(f"Fetching URL '{url}' failed: {e}")
-            if self.mock_provider:
-                fallback_html = (
-                    f"<html><head><title>{urlparse(url).netloc}</title></head>"
-                    f"<body><article><h1>{urlparse(url).netloc}</h1>"
-                    f"<p>Synthesized offline documentation for {url}. "
-                    f"Comprehensive technical architecture, operational mechanics, and systems engineering details.</p>"
-                    f"</article></body></html>"
-                )
-                return self.extract_from_html(fallback_html, url)
-            return WebPageDocument(
-                url=url,
-                title=urlparse(url).netloc,
-                text="",
-                source_domain=urlparse(url).netloc,
-                status_code=504,
-                is_blocked=True,
-                error_message=str(e)
+                return self.extract_from_html(html, url)
+            except Exception as e:
+                last_err = e
+                logger.warning(f"Fetching URL '{url}' attempt {attempt + 1} failed: {e}")
+                if attempt < 1:
+                    time.sleep(0.5)
+
+        if self.mock_provider:
+            fallback_html = (
+                f"<html><head><title>{urlparse(url).netloc}</title></head>"
+                f"<body><article><h1>{urlparse(url).netloc}</h1>"
+                f"<p>Synthesized offline documentation for {url}. "
+                f"Comprehensive technical architecture, operational mechanics, and systems engineering details.</p>"
+                f"</article></body></html>"
             )
+            return self.extract_from_html(fallback_html, url)
+        return WebPageDocument(
+            url=url,
+            title=urlparse(url).netloc,
+            text="",
+            source_domain=urlparse(url).netloc,
+            status_code=504,
+            is_blocked=True,
+            error_message=str(last_err)
+        )
 
 
 def create_web_search_provider(config: Optional[WebResearchConfig] = None) -> BaseWebSearchProvider:
     """Factory creating configured web search provider instance."""
     cfg = config or WebResearchConfig.from_env()
     p_name = cfg.provider.lower().strip()
-    if p_name == "duckduckgo":
+    if p_name == "mock":
+        return MockWebSearchProvider(cfg)
+    if p_name in ("duckduckgo", "ddg"):
         return DuckDuckGoSearchProvider(cfg)
-    return MockWebSearchProvider(cfg)
+    if p_name in ("wikipedia", "wiki"):
+        return WikipediaSearchProvider(cfg)
+    return CompositeWebSearchProvider(cfg)
