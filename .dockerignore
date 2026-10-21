@@ -17,3 +17,6 @@ venv.bak/
 .DS_Store
 benchmarks/
 tests/
+data/
+scratch/
+*.db

@@ -268,16 +268,27 @@ class MockWebSearchProvider(BaseWebSearchProvider):
         if len(q_lower.split()) >= 2:
             domain_name = "tech-research.org"
             topic = q_lower.replace("what is", "").replace("explain", "").strip()
-            return [
-                WebSearchResult(
-                    title=f"Detailed Technical Reference on {topic.title()}",
-                    url=f"https://{domain_name}/{re.sub(r'[^a-z0-9]+', '-', topic)}",
-                    snippet=f"Authoritative technical reference on {topic}: architectural breakdown, component responsibilities, and operational mechanics.",
-                    source_domain=domain_name,
-                    published_date="2025-01-10",
-                    rank=1
-                )
-            ][:max_results]
+            slug = re.sub(r'[^a-z0-9]+', '-', topic).strip('-') or "topic"
+            url = f"https://{domain_name}/{slug}"
+            res = WebSearchResult(
+                title=f"Detailed Technical Reference on {topic.title()}",
+                url=url,
+                snippet=f"Authoritative technical reference on {topic}: architectural breakdown, component responsibilities, and operational mechanics.",
+                source_domain=domain_name,
+                published_date="2025-01-10",
+                rank=1
+            )
+            self.mock_database[topic] = [res]
+            mock_html = (
+                f"<html><head><title>{res.title}</title></head>"
+                f"<body><article><h1>{res.title}</h1>"
+                f"<p>{res.snippet}</p>"
+                f"<p>Comprehensive research details, structural characteristics, and operational framework for {topic}. "
+                f"Documented analysis demonstrating foundational performance guarantees and verified mechanisms.</p>"
+                f"</article></body></html>"
+            )
+            self.mock_pages[url] = mock_html
+            return [res][:max_results]
 
         return []
 

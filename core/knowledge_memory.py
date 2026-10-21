@@ -11,6 +11,7 @@ Implements persistent Layer A (Source-backed knowledge memory) with:
 """
 
 import os
+import re
 import json
 import time
 import hashlib

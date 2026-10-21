@@ -41,7 +41,11 @@ STOP_WORDS: Set[str] = {
     "can", "could", "should", "would", "does", "did", "have", "has", "had",
     "about", "through", "during", "before", "after", "some", "more", "most",
     "are", "is", "was", "were", "been", "being", "used", "use", "using",
-    "also", "than", "then", "just", "very", "much", "such", "only", "other"
+    "also", "than", "then", "just", "very", "much", "such", "only", "other",
+    "its", "their", "theirs", "work", "works", "working", "worked",
+    "answer", "mark", "marks", "question", "notes", "note", "revision", "depth",
+    "create", "give", "tell", "explain", "overview", "meaning", "definition",
+    "detail", "details", "concept", "role", "purpose", "example", "examples"
 }
 
 # Discourse, connective, and framing terms that should not be penalized as domain hallucinations
@@ -190,7 +194,8 @@ def extract_query_target(query: str, intent: str) -> Optional[str]:
     m = re.search(r'(?:what\s+is|what\s+are|define|meaning\s+of|overview\s+of)\s+(?:a\s+|an\s+|the\s+)?([a-zA-Z0-9_\-\s]+?)(?:\?|$|\.|\,)', q, re.I)
     if m:
         target = m.group(1).strip()
-        target = re.sub(r'\s+(?:used|applied|deployed|for|in|mean|means)$', '', target, flags=re.I).strip()
+        target = re.split(r'\s+(?:and\s+how|and\s+what|and\s+why|and\s+where)\b', target, flags=re.I)[0].strip()
+        target = re.sub(r'\s+(?:used|applied|deployed|for|in|mean|means|work|works)$', '', target, flags=re.I).strip()
         if target and target.lower() not in STOP_WORDS:
             return target
 
@@ -719,8 +724,22 @@ class AnswerRelevanceValidator:
         if not q_tokens:
             return True, 0.8, "Query has no specific entity constraint."
 
+        def _token_matches(tok: str, text: str) -> bool:
+            if tok in text:
+                return True
+            stem = get_stem(tok)
+            if len(stem) >= 3 and stem in text:
+                return True
+            if len(tok) > 6:
+                for prefix in ("cyber", "multi", "meta", "micro", "macro", "cross", "inter", "sub", "data"):
+                    if tok.startswith(prefix) and len(tok[len(prefix):]) >= 3:
+                        sub_part = tok[len(prefix):]
+                        if sub_part in text or (len(get_stem(sub_part)) >= 3 and get_stem(sub_part) in text):
+                            return True
+            return False
+
         # 2. Check for presence of primary query terms in answer
-        matched_tokens = [t for t in q_tokens if t in ans_lower]
+        matched_tokens = [t for t in q_tokens if _token_matches(t, ans_lower)]
         query_token_coverage = len(matched_tokens) / len(q_tokens)
 
         # 3. Detect cross-domain contamination
@@ -1049,7 +1068,23 @@ class GenerativeRAGSynthesizer:
                 else:
                     best_s = scored_sentences[0]
                     clean_s = clean_narrative_preamble(best_s.text).rstrip('.')
-                    if target and target_lower not in clean_s.lower():
+                    def _target_in_sents(t: str, s_list) -> bool:
+                        for s in s_list:
+                            txt = s.text.lower()
+                            if t in txt:
+                                return True
+                            stem = get_stem(t)
+                            if len(stem) >= 3 and stem in txt:
+                                return True
+                            if len(t) > 6:
+                                for prefix in ("cyber", "multi", "meta", "micro", "macro", "cross", "inter", "sub", "data"):
+                                    if t.startswith(prefix) and len(t[len(prefix):]) >= 3:
+                                        sub = t[len(prefix):]
+                                        if sub in txt or (len(get_stem(sub)) >= 3 and get_stem(sub) in txt):
+                                            return True
+                        return False
+                    target_in_evidence = _target_in_sents(target_lower, scored_sentences)
+                    if target and target_in_evidence and target_lower not in clean_s.lower():
                         s1 = f"Within the provided documentation, {target} is defined through operational practices where {clean_s[0].lower() + clean_s[1:]} [E{best_s.citation_idx}]."
                     else:
                         s1 = f"{clean_s} [E{best_s.citation_idx}]."
@@ -2108,9 +2143,23 @@ class GenerativeRAGSynthesizer:
         if not is_rel:
             logger.warning(f"Answer failed relevance validation: {rel_diag}. Attempting focused resynthesis.")
             q_terms = [w.lower() for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', query) if w.lower() not in STOP_WORDS]
+            def _chunk_matches(tok: str, text: str) -> bool:
+                if tok in text:
+                    return True
+                stem = get_stem(tok)
+                if len(stem) >= 3 and stem in text:
+                    return True
+                if len(tok) > 6:
+                    for prefix in ("cyber", "multi", "meta", "micro", "macro", "cross", "inter", "sub", "data"):
+                        if tok.startswith(prefix) and len(tok[len(prefix):]) >= 3:
+                            sub_part = tok[len(prefix):]
+                            if sub_part in text or (len(get_stem(sub_part)) >= 3 and get_stem(sub_part) in text):
+                                return True
+                return False
+
             matching_chunks = [
                 c for c in clean_evidence.chunks
-                if any(t in c.text.lower() for t in q_terms)
+                if any(_chunk_matches(t, c.text.lower()) for t in q_terms)
             ]
             if matching_chunks:
                 generated_text, top_scored_sentences = self._deterministic_grounded_synthesis(
@@ -2128,6 +2177,23 @@ class GenerativeRAGSynthesizer:
                     query=query,
                     answer_text=generated_text,
                     evidence_chunks=matching_chunks
+                )
+            else:
+                elapsed = max(0.1, (time.perf_counter() - t_start) * 1000)
+                reason = f"Retrieved passages do not contain key terms from the question: {', '.join(q_terms[:4])}."
+                return GroundedAnswer(
+                    query=query,
+                    answer=f"I cannot answer this question based on the provided documents. Reason: {reason}",
+                    claims=[],
+                    cited_evidence=[],
+                    abstained=True,
+                    abstention_reason=reason,
+                    confidence=0.0,
+                    provider_used="relevance_gate",
+                    model_name="deterministic_guardrail",
+                    generation_time_ms=round(elapsed, 2),
+                    style=style,
+                    metadata={"abstention_trigger": "relevance_validation_failure"}
                 )
 
         t_val_end = time.perf_counter()

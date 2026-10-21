@@ -130,17 +130,43 @@ pipeline = HopfieldQAPipeline(config)
 You can easily package and run the entire Hopfield QA application using Docker. This ensures that all dependencies (like PyPDF and PyTorch) and models are correctly bundled.
 
 ### 1. Build the Docker Image
-This process will download the HuggingFace models into the image so that the container starts up instantly without downloading them every time.
+This process downloads the embedding model used by the API into the image, avoiding a model download at startup.
 ```bash
 docker build -t hopfield-qa .
 ```
 
 ### 2. Run the Container
-Run the container and map the internal port (8000) to your machine's port:
+Run the container and map the internal port (8080) to your machine's port:
 ```bash
-docker run -p 8000:8000 hopfield-qa
+docker run -p 8080:8080 hopfield-qa
 ```
 
 Once running, simply open your browser and go to:
-**http://localhost:8000**
+**http://localhost:8080**
+
+## Free-tier deployment on Google Cloud Run
+
+Cloud Run has a monthly free allowance for request-based services, which can cover a small demo; the allowance and eligible regions are described in the [Cloud Run pricing docs](https://cloud.google.com/run/pricing). A Google Cloud billing account is still required, and usage beyond the free allowance can be charged. Source deployments also use Cloud Build and Artifact Registry, which have separate pricing and free allowances. Set a budget alert in Google Cloud before deploying; budget alerts notify you but do not cap spending.
+
+1. Install the Google Cloud CLI, sign in with `gcloud auth login`, create/select a project, and enable billing for that project.
+2. From the repository root in PowerShell, select your project and deploy:
+
+   ```powershell
+   gcloud config set project YOUR_PROJECT_ID
+   gcloud run deploy hopfield-qa `
+     --source . `
+     --region asia-south1 `
+     --allow-unauthenticated `
+     --memory 2Gi `
+     --cpu 2 `
+     --concurrency 1 `
+     --min 0 `
+     --max 1 `
+     --timeout 300 `
+     --set-env-vars LLM_PROVIDER=mock,LLM_FALLBACK_TO_DETERMINISTIC=true,WEB_SEARCH_ENABLED=false
+   ```
+
+3. Accept the one-time API enablement prompts. When deployment finishes, open the HTTPS service URL printed by `gcloud`.
+
+The container listens on Cloud Run's injected `PORT` as required by the [container runtime contract](https://cloud.google.com/run/docs/container-contract) and uses the built-in grounded mock provider, so no Ollama server or API key is needed. Cloud Run instances can scale to zero and have an ephemeral filesystem: uploaded documents, conversations, and learned index state are lost when an instance stops. This application also keeps one shared in-memory document index and chat store, with no authentication or per-user isolation. Use it only for public demo documents until persistent storage and user isolation are implemented. Public Cloud Run access means anyone with the URL can use the app and its API.
 

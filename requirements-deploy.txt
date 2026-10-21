@@ -1,0 +1,16 @@
+# Dependencies used by the FastAPI production container (api.py).
+# Benchmarks and the standalone Streamlit UI use requirements.txt.
+torch
+transformers
+sentence-transformers
+fastapi
+uvicorn
+python-multipart
+pypdf
+python-docx
+numpy
+scipy
+rank_bm25
+httpx
+nltk
+beautifulsoup4

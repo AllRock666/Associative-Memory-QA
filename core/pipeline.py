@@ -200,6 +200,7 @@ class HopfieldQAPipeline:
             self.web_search_provider = DuckDuckGoSearchProvider()
 
         self.web_extractor = WebPageExtractor(
+            mock_provider=self.web_search_provider if isinstance(self.web_search_provider, MockWebSearchProvider) else None,
             timeout=getattr(self.config, 'web_fetch_timeout_seconds', 8.0)
         )
         self.web_config = WebResearchConfig(

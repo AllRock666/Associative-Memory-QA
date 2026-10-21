@@ -13,3 +13,4 @@ datasets
 mlflow
 httpx
 nltk
+beautifulsoup4
