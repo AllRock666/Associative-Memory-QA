@@ -199,7 +199,14 @@ class EmbeddingEngine:
     def model(self):
         if self._model is None:
             from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(self.model_name)
+            try:
+                self._model = SentenceTransformer(self.model_name, local_files_only=True)
+            except Exception:
+                try:
+                    self._model = SentenceTransformer(self.model_name)
+                except Exception:
+                    # In case of network errors during adapter check, retry with local files or default
+                    self._model = SentenceTransformer(self.model_name, local_files_only=True)
         return self._model
 
     @property

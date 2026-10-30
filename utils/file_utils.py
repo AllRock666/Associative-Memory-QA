@@ -39,6 +39,13 @@ def extract_text_from_file(file_obj, filename: str) -> Tuple[str, str]:
         text = re.sub(r'`{1,3}.*?`{1,3}', '', text, flags=re.DOTALL)
         return _clean_text(text), source
 
+    elif ext in (".pptx", ".ppt", ".xlsx", ".xls", ".csv", ".png", ".jpg", ".jpeg", ".webp"):
+        from core.multimodal_reader import MultimodalDocumentReader
+        reader = MultimodalDocumentReader()
+        content = file_obj.read()
+        doc = reader.parse_file(content, filename)
+        return _clean_text(doc.full_text), source
+
     else:
         # Try to read as plain text
         try:

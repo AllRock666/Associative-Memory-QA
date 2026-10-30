@@ -3,1408 +3,431 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hopfield Associative Memory (HAM) - RAG Engine</title>
+    <title>Hopfield Multimodal Intelligence & Visual Learning Platform</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Interactive Visualization Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; }
         .spinner { border: 3px solid rgba(0,0,0,0.1); width: 22px; height: 22px; border-radius: 50%; border-left-color: #3b82f6; animation: spin 0.8s linear infinite; display: none; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        /* Custom scrollbar for clean ChatGPT-like sidebars */
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         .chat-scroll { scroll-behavior: smooth; }
+        .flashcard-inner { transition: transform 0.6s; transform-style: preserve-3d; }
+        .flashcard-flipped { transform: rotateY(180deg); }
+        .flashcard-front, .flashcard-back { backface-visibility: hidden; }
+        .flashcard-back { transform: rotateY(180deg); }
     </style>
 </head>
 <body class="text-slate-800 h-screen flex flex-col overflow-hidden bg-slate-50">
 
     <!-- Top App Navigation Bar -->
-    <header class="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between shadow-2xs z-20 flex-shrink-0">
+    <header class="bg-white border-b border-slate-200 px-5 py-2.5 flex items-center justify-between shadow-xs z-20 flex-shrink-0">
         <div class="flex items-center space-x-3">
-            <div class="w-8 h-8 bg-gradient-to-tr from-blue-700 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm shadow-sm tracking-tight">
+            <div class="w-9 h-9 bg-gradient-to-tr from-indigo-700 via-blue-600 to-cyan-500 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-sm tracking-tight">
                 HAM
             </div>
             <div>
                 <div class="flex items-center gap-2">
-                    <h1 class="text-sm font-bold text-slate-800 leading-none">Hopfield Memory Workspace</h1>
-                    <span id="pipeline-badge" class="text-[11px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800">Checking...</span>
+                    <h1 class="text-sm font-bold text-slate-800 leading-none">Hopfield Multimodal Intelligence</h1>
+                    <span id="pipeline-badge" class="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800">5-Level Memory Ready</span>
                 </div>
-                <p class="text-[11px] text-slate-400 mt-0.5">Continuous Energy Attractor Retrieval &bull; Multi-Document Persistent Memory</p>
+                <p class="text-[11px] text-slate-400 mt-0.5">Hierarchical Associative Memory &bull; Visual Document Intelligence &bull; AI Visual Studio</p>
             </div>
         </div>
 
-        <!-- Center: Current Chat Name -->
-        <div class="hidden md:flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-xl border border-slate-200 max-w-md truncate">
-            <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-            <span id="active-chat-title" class="text-xs font-semibold text-slate-700 truncate">New Conversation</span>
-        </div>
-
-        <!-- Right: Status and Quick Controls -->
-        <div class="flex items-center space-x-2 text-xs">
-            <div id="llm-status-pill" class="text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200" title="Checking status...">Checking LLM...</div>
-            <button onclick="exportChatMarkdown()" title="Export active conversation to Markdown (.md)" class="bg-white hover:bg-slate-100 text-slate-700 font-medium px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-200 shadow-2xs transition cursor-pointer">
-                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                <span class="hidden sm:inline">Export</span>
+        <!-- Center: Workspace Mode Switcher -->
+        <nav class="hidden md:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold space-x-1">
+            <button id="nav-btn-chat" onclick="switchMainWorkspace('chat')" class="px-3 py-1.5 rounded-lg bg-white shadow-xs text-blue-700 flex items-center gap-1.5 transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                <span>Chat &amp; RAG</span>
             </button>
-            <button onclick="createNewChat()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-2xs transition cursor-pointer">
+            <button id="nav-btn-reader" onclick="switchMainWorkspace('reader')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                <span>Visual Reader</span>
+            </button>
+            <button id="nav-btn-studio" onclick="switchMainWorkspace('studio')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path></svg>
+                <span>AI Visual Studio</span>
+            </button>
+            <button id="nav-btn-kg" onclick="switchMainWorkspace('kg')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                <span>Knowledge Graph</span>
+            </button>
+            <button id="nav-btn-study" onclick="switchMainWorkspace('study')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                <span>Study Assistant</span>
+            </button>
+            <button id="nav-btn-analytics" onclick="switchMainWorkspace('analytics')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                <span>Analytics</span>
+            </button>
+        </nav>
+
+        <!-- Right Controls -->
+        <div class="flex items-center space-x-2 text-xs">
+            <div id="llm-status-pill" class="text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200">LLM Ready</div>
+            <button onclick="createNewChat()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
-                <span>New Chat</span>
+                <span>New Session</span>
             </button>
         </div>
     </header>
 
-    <!-- App Body: Sidebar + Main Workspace -->
+    <!-- Main Body: Sidebar + Active Workspace View -->
     <div class="flex-1 flex overflow-hidden">
 
-        <!-- ChatGPT-Style Multi-Panel Sidebar -->
-        <aside class="w-80 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 z-10 shadow-xs">
-            <!-- Sidebar Navigation Tabs -->
-            <div class="flex border-b border-slate-200 bg-slate-50/70 p-1.5 gap-1 text-xs font-semibold">
-                <button id="tab-btn-chats" onclick="switchSidebarTab('chats')" class="flex-1 py-1.5 px-2 rounded-lg bg-white shadow-2xs text-blue-700 flex items-center justify-center gap-1.5 border border-slate-200/80 transition">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+        <!-- Sidebar -->
+        <aside class="w-72 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 z-10 shadow-xs">
+            <div class="flex border-b border-slate-200 bg-slate-50/80 p-1.5 gap-1 text-xs font-semibold">
+                <button id="tab-btn-chats" onclick="switchSidebarTab('chats')" class="flex-1 py-1 px-2 rounded-lg bg-white shadow-xs text-blue-700 flex items-center justify-center gap-1 border border-slate-200">
                     <span>Chats</span>
-                    <span id="chats-count-badge" class="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.2 rounded-full">0</span>
                 </button>
-                <button id="tab-btn-docs" onclick="switchSidebarTab('docs')" class="flex-1 py-1.5 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1.5 transition">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    <span>Docs</span>
+                <button id="tab-btn-docs" onclick="switchSidebarTab('docs')" class="flex-1 py-1 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1">
+                    <span>Documents</span>
                     <span id="docs-count-badge" class="bg-slate-200 text-slate-700 text-[10px] px-1.5 py-0.2 rounded-full">0</span>
                 </button>
-                <button id="tab-btn-settings" onclick="switchSidebarTab('settings')" class="flex-1 py-1.5 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1.5 transition">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <button id="tab-btn-settings" onclick="switchSidebarTab('settings')" class="flex-1 py-1 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1">
                     <span>Config</span>
                 </button>
             </div>
 
-            <!-- TAB 1: CONVERSATIONS (CHATGPT STYLE) -->
+            <!-- TAB: CHATS -->
             <div id="tab-content-chats" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-2">
-                <button onclick="createNewChat()" class="w-full py-2.5 px-3 rounded-xl border border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/50 text-slate-700 text-xs font-semibold flex items-center justify-center gap-2 transition group">
-                    <svg class="w-4 h-4 text-blue-600 group-hover:scale-110 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
-                    <span>Start New Conversation</span>
-                </button>
-
-                <div class="pt-2">
-                    <div class="flex items-center justify-between px-1 mb-2">
-                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Previous Chats</span>
-                        <span class="text-[10px] text-slate-400">Stored on disk</span>
-                    </div>
-                    <div id="chats-list" class="space-y-1">
-                        <!-- Populated dynamically via JS -->
-                        <div class="text-center py-8 text-slate-400 text-xs">No saved chats yet.</div>
-                    </div>
+                <div id="chats-list" class="space-y-1">
+                    <div class="text-center py-6 text-slate-400 text-xs">No active chats.</div>
                 </div>
             </div>
 
-            <!-- TAB 2: PERSISTENT DOCUMENTS & MEMORY STORE -->
-            <div id="tab-content-docs" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-4 hidden">
-                <!-- Dropzone / Upload Box -->
+            <!-- TAB: DOCUMENTS -->
+            <div id="tab-content-docs" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-3 hidden">
                 <div>
-                    <label for="file-upload" class="border-2 border-dashed border-slate-300 rounded-xl p-3.5 text-center hover:bg-slate-50 hover:border-blue-400 transition cursor-pointer bg-white block select-none" id="upload-box">
-                        <div id="upload-icon-wrap" class="pointer-events-none">
-                            <svg class="w-6 h-6 text-blue-500 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                        </div>
-                        <span id="upload-box-title" class="text-xs text-slate-700 font-semibold block pointer-events-none">Upload Document</span>
-                        <span id="upload-box-subtitle" class="text-[10px] text-slate-400 block pointer-events-none">PDF, TXT, DOCX, MD &bull; Click or Drag</span>
+                    <label for="file-upload" class="border-2 border-dashed border-slate-300 rounded-xl p-3 text-center hover:bg-slate-50 hover:border-blue-400 transition cursor-pointer bg-white block" id="upload-box">
+                        <svg class="w-5 h-5 text-blue-500 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                        <span class="text-xs text-slate-700 font-semibold block">Upload File</span>
+                        <span class="text-[10px] text-slate-400 block">PDF, DOCX, PPTX, XLSX, CSV, Images</span>
                     </label>
-                    <input type="file" id="file-upload" class="hidden" accept=".txt,.pdf,.docx,.md" onchange="uploadFile(this)">
-                    <div id="upload-status" class="text-xs text-green-600 mt-2 font-medium" style="display:none;"></div>
+                    <input type="file" id="file-upload" class="hidden" accept=".txt,.pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.webp,.md" onchange="uploadFile(this)">
+                    <div id="upload-status" class="text-xs text-emerald-600 mt-2 font-medium" style="display:none;"></div>
                 </div>
-
-                <!-- Persistent Documents List -->
                 <div class="flex-1 flex flex-col">
                     <div class="flex items-center justify-between px-1 mb-2">
-                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Memory Chunks</span>
-                        <button onclick="refreshDocumentsList()" title="Refresh documents" class="text-slate-400 hover:text-slate-600">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Memory Documents</span>
+                        <button onclick="refreshDocumentsList()" class="text-slate-400 hover:text-slate-600">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                         </button>
                     </div>
-
-                    <div id="documents-list" class="space-y-1.5 flex-1 overflow-y-auto">
-                        <!-- Populated dynamically via JS -->
-                        <div class="text-center py-6 text-slate-400 text-xs">No documents loaded.</div>
-                    </div>
-
-                    <div class="mt-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 flex items-start gap-2">
-                        <svg class="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                        <span><strong>Persistent Storage Active:</strong> Chunks stay in Hopfield memory across all chats and server restarts.</span>
+                    <div id="documents-list" class="space-y-1 flex-1 overflow-y-auto">
+                        <div class="text-center py-6 text-slate-400 text-xs">No documents uploaded.</div>
                     </div>
                 </div>
             </div>
 
-            <!-- TAB 3: RETRIEVAL & LLM ENGINE CONFIG -->
-            <div id="tab-content-settings" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-4 hidden text-xs">
-                <!-- Retrieval Paradigm -->
-                <div class="space-y-2">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Retrieval Paradigm</span>
-                    <div class="space-y-1.5">
-                        <label class="flex items-start p-2 rounded-lg border border-blue-200 bg-blue-50/50 cursor-pointer hover:bg-blue-50 transition">
-                            <input type="radio" name="retriever-mode" value="hopfield" checked class="mt-0.5 text-blue-600 focus:ring-blue-500">
-                            <div class="ml-2">
-                                <span class="block text-xs font-bold text-blue-900 leading-tight">Modern Hopfield Memory</span>
-                                <span class="block text-[10px] text-blue-700 leading-tight mt-0.5">Continuous attractor dynamics & trajectory discovery.</span>
-                            </div>
-                        </label>
-                        <label class="flex items-start p-2 rounded-lg border border-purple-200 bg-purple-50/30 cursor-pointer hover:bg-purple-50 transition">
-                            <input type="radio" name="retriever-mode" value="hybrid" class="mt-0.5 text-purple-600 focus:ring-purple-500">
-                            <div class="ml-2">
-                                <span class="block text-xs font-bold text-purple-900 leading-tight">Hybrid (BM25 + Neural RRF)</span>
-                                <span class="block text-[10px] text-purple-700 leading-tight mt-0.5">Combines keyword BM25 with attractor embeddings.</span>
-                            </div>
-                        </label>
-                        <label class="flex items-start p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50 transition">
-                            <input type="radio" name="retriever-mode" value="dense" class="mt-0.5 text-slate-600 focus:ring-slate-400">
-                            <div class="ml-2">
-                                <span class="block text-xs font-bold text-slate-800 leading-tight">Dense Cosine Baseline</span>
-                                <span class="block text-[10px] text-slate-500 leading-tight mt-0.5">Standard vector similarity without attractor relaxation.</span>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- Parameters -->
-                <div class="space-y-2 pt-2 border-t border-slate-200">
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Energy Function</label>
-                        <select id="energy-type" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white focus:ring-blue-500">
-                            <option value="softmax">Softmax (Continuous Exponential)</option>
-                            <option value="sparsemax">Sparsemax (Exact Sparse Support)</option>
-                            <option value="polynomial">Polynomial (High-Degree Attractor)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1 flex justify-between">
-                            <span>Temperature Beta (&beta;)</span> <span id="beta-val" class="text-blue-600 font-mono font-bold">8.0</span>
-                        </label>
-                        <input type="range" id="hopfield-beta" min="0.5" max="20" step="0.5" value="8.0" class="w-full" oninput="document.getElementById('beta-val').innerText=this.value">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1 flex justify-between">
-                            <span>Top-K Chunks</span> <span id="topk-val" class="text-blue-600 font-mono font-bold">5</span>
-                        </label>
-                        <input type="range" id="top-k" min="1" max="10" step="1" value="5" class="w-full" oninput="document.getElementById('topk-val').innerText=this.value">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Answer Format & Mark Tier</label>
-                        <select id="answer-format-select" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white focus:ring-blue-500 font-medium text-slate-700">
-                            <option value="auto" selected>Auto-Detect from Query</option>
-                            <option value="2_mark">2-Mark Answer (Concise &bull; 40-70 words)</option>
-                            <option value="5_mark">5-Mark Answer (Core + 3-4 Points &bull; 140-200 words)</option>
-                            <option value="8_mark">8-Mark Answer (In-Depth Technical Breakdown &bull; 260-380 words)</option>
-                            <option value="10_mark">10-Mark Answer (Exhaustive + Comparative Matrix &bull; 350-500 words)</option>
-                            <option value="comparison">Comparative Analysis (Side-by-side Table)</option>
-                            <option value="worked_example">Worked Walkthrough (Setup, Steps, State)</option>
-                            <option value="structured_notes">Revision Cheat-Sheet (Key Terms + High-Yield Points)</option>
-                            <option value="detailed">Deep & Comprehensive (Multi-Paragraph Analysis)</option>
-                            <option value="conversational">Conversational (Natural Multi-Turn)</option>
-                            <option value="executive">Executive Summary (Bulleted Briefing)</option>
-                            <option value="concise">Concise Direct Fact (1-2 Sentences)</option>
-                        </select>
-                        <input type="hidden" id="answer-style" value="detailed">
-                    </div>
-                </div>
-
-                <!-- Web Augmentation & Knowledge Memory -->
-                <div class="space-y-2 pt-2 border-t border-slate-200">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Web Augmentation & Memory</span>
-                    <label class="flex items-center space-x-2 cursor-pointer">
-                        <input type="checkbox" id="web-search-enabled-chk" class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5" onchange="syncWebSearchToggle()">
-                        <span class="text-[11px] font-medium text-slate-700">Enable Web Search Augmentation</span>
+            <!-- TAB: CONFIG -->
+            <div id="tab-content-settings" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-3 hidden text-xs">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hopfield Engine Parameters</span>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1 flex justify-between">
+                        <span>Temperature Beta (&beta;)</span> <span id="beta-val" class="text-blue-600 font-mono font-bold">8.0</span>
                     </label>
-                    <label class="flex items-center space-x-2 cursor-pointer">
-                        <input type="checkbox" id="force-web-search-chk" class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
-                        <span class="text-[11px] text-slate-600">Force Web Research (Bypass document sufficiency check)</span>
-                    </label>
-                    <div class="flex items-center justify-between pt-1">
-                        <span class="text-[11px] text-slate-500">Persistent Web Knowledge:</span>
-                        <button type="button" onclick="clearKnowledgeCache()" class="text-[10px] text-rose-600 hover:text-rose-800 font-semibold px-2 py-0.5 rounded border border-rose-200 hover:bg-rose-50 transition">Clear Cache</button>
-                    </div>
+                    <input type="range" id="hopfield-beta" min="0.5" max="20" step="0.5" value="8.0" class="w-full" oninput="document.getElementById('beta-val').innerText=this.value">
                 </div>
-
-                <!-- LLM Config -->
-                <div class="space-y-2 pt-2 border-t border-slate-200">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">LLM Synthesizer</span>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Provider</label>
-                        <select id="llm-provider" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white focus:ring-blue-500 font-medium" onchange="updateLLMUI()">
-                            <option value="ollama" selected>Ollama (Local / Docker)</option>
-                            <option value="openai">OpenAI / Groq / OpenRouter API</option>
-                            <option value="mock">Mock LLM (Testing)</option>
-                            <option value="deterministic">Deterministic Engine (No LLM)</option>
-                        </select>
-                    </div>
-                    <div id="llm-model-group">
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Model Name</label>
-                        <input type="text" id="llm-model" value="llama3.2:1b" placeholder="e.g. llama3.2:1b, gpt-4o-mini, llama-3.3-70b-versatile" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white font-mono">
-                    </div>
-                    <div id="llm-base-url-group">
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Base URL</label>
-                        <input type="text" id="llm-base-url" value="http://localhost:11434/v1" placeholder="e.g. http://localhost:11434/v1 or https://api.openai.com/v1" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white font-mono">
-                    </div>
-                    <div id="llm-api-key-group" style="display: none;">
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">API Key (Optional / Cloud)</label>
-                        <input type="password" id="llm-api-key" placeholder="sk-... (for OpenAI / Groq / OpenRouter)" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white font-mono">
-                    </div>
-                    <div id="llm-max-tokens-group">
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Max Tokens (Output Limit)</label>
-                        <input type="number" id="llm-max-tokens" value="4096" min="128" max="32768" step="256" class="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 text-xs bg-white font-mono">
-                    </div>
-                    <label class="flex items-center space-x-2 cursor-pointer pt-1">
-                        <input type="checkbox" id="use-projection" class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5" checked>
-                        <span class="text-[11px] font-medium text-slate-700">Use SQuAD Projection Layer</span>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1 flex justify-between">
+                        <span>Top-K Attractors</span> <span id="topk-val" class="text-blue-600 font-mono font-bold">5</span>
                     </label>
-                    <div id="llm-status-msg" class="text-[10px] text-slate-500 leading-tight"></div>
+                    <input type="range" id="top-k" min="1" max="15" step="1" value="5" class="w-full" oninput="document.getElementById('topk-val').innerText=this.value">
                 </div>
-            </div>
-
-            <!-- Sidebar Footer -->
-            <div class="p-3 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between text-[11px] text-slate-500">
-                <span id="footer-memory-stat">Memory: 0 chunks</span>
-                <span class="font-mono text-blue-600 font-bold">HAM v2.4</span>
+                <div class="pt-2 border-t border-slate-200">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Answer Style</label>
+                    <select id="answer-style-select" class="w-full border border-slate-300 rounded-lg p-1.5 bg-white text-xs">
+                        <option value="conversational" selected>Conversational (Grounded)</option>
+                        <option value="detailed">Exhaustive &amp; Academic</option>
+                        <option value="executive">Executive Summary</option>
+                        <option value="concise">Concise 2-Mark</option>
+                    </select>
+                </div>
             </div>
         </aside>
 
-        <!-- Main Workspace (Chat Area) -->
-        <main class="flex-1 flex flex-col bg-white relative overflow-hidden">
-            <!-- Workspace Top Bar with Flexible Width Controls -->
-            <div class="h-10 border-b border-slate-100 flex items-center justify-between px-4 text-xs text-slate-500 bg-white/90 backdrop-blur z-20">
-                <div class="flex items-center gap-2">
-                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span id="active-session-title" class="font-medium text-slate-700 truncate max-w-xs">Hopfield Memory Workspace</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button id="width-toggle-btn" onclick="toggleChatWidth()" title="Toggle full-width / standard view for flexible reading" class="p-1 px-2.5 text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition text-xs flex items-center gap-1.5 border border-slate-200 cursor-pointer shadow-2xs">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
-                        <span id="width-toggle-text" class="text-[11px] font-semibold">Wide Screen</span>
-                    </button>
-                </div>
-            </div>
+        <!-- Main Workspace Container -->
+        <main class="flex-1 flex flex-col relative overflow-hidden bg-white">
 
-            <!-- Scrollable Message Feed -->
-            <div id="results-area" class="flex-1 overflow-y-auto p-4 md:p-8 pb-36 chat-scroll">
-                
-                <!-- Empty State (ChatGPT Hero) -->
-                <div id="empty-state" class="max-w-5xl mx-auto flex flex-col items-center justify-center min-h-[60vh] text-center transition-all duration-300">
-                    <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-md mb-4">
-                        HAM
+            <!-- VIEW 1: CHAT & RAG -->
+            <div id="view-chat" class="flex-1 flex flex-col overflow-hidden">
+                <div id="chat-scroll-container" class="flex-1 overflow-y-auto px-4 py-6 pb-36 chat-scroll">
+                    <div id="welcome-state" class="max-w-2xl mx-auto text-center py-12">
+                        <h2 class="text-2xl font-black text-slate-800 tracking-tight mb-2">Multimodal Hopfield Intelligence</h2>
+                        <p class="text-xs text-slate-500 max-w-md mx-auto mb-6">Continuous energy attractor retrieval grounded in PDF layouts, tables, diagrams, and cross-document knowledge graph memory.</p>
+                        <div class="grid grid-cols-2 gap-2 text-left">
+                            <button onclick="setQueryAndSearch('Explain Yet Another Resource Negotiator (YARN) architecture')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition">
+                                <span class="font-semibold block text-slate-800">What is YARN architecture?</span>
+                                <span class="text-[11px] text-slate-400 block mt-0.5">Explore cluster resource management workloads</span>
+                            </button>
+                            <button onclick="setQueryAndSearch('How does continuous modern Hopfield memory minimize energy?')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition">
+                                <span class="font-semibold block text-slate-800">Continuous Hopfield Dynamics</span>
+                                <span class="text-[11px] text-slate-400 block mt-0.5">Exponential attention attractor basins</span>
+                            </button>
+                        </div>
                     </div>
-                    <h2 class="text-xl font-bold text-slate-800">What would you like to explore?</h2>
-                    <p class="text-xs text-slate-500 max-w-xl mt-1 mb-6">
-                        Ask questions across all your uploaded documents. Modern Hopfield Memory uses continuous attractor dynamics to pull together related passages and generate truthful, grounded answers.
-                    </p>
-
-                    <!-- Suggested Prompts / Chips -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5 w-full max-w-xl text-left">
-                        <button onclick="setQueryAndSearch('Where is YARN used?')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition shadow-2xs group">
-                            <span class="font-semibold block text-slate-800 group-hover:text-blue-700">Where is YARN used?</span>
-                            <span class="text-[11px] text-slate-400 block mt-0.5">Explore cluster resource management workloads</span>
-                        </button>
-                        <button onclick="setQueryAndSearch('What workloads does YARN support?')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition shadow-2xs group">
-                            <span class="font-semibold block text-slate-800 group-hover:text-blue-700">What workloads does YARN support?</span>
-                            <span class="text-[11px] text-slate-400 block mt-0.5">Compare MapReduce, Spark SQL, and streaming</span>
-                        </button>
-                        <button onclick="setQueryAndSearch('How does Modern Hopfield continuous energy minimization work?')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition shadow-2xs group">
-                            <span class="font-semibold block text-slate-800 group-hover:text-blue-700">How does continuous energy minimization work?</span>
-                            <span class="text-[11px] text-slate-400 block mt-0.5">Understand multi-hop attractor convergence</span>
-                        </button>
-                        <button onclick="setQueryAndSearch('Compare Hopfield retrieval with dense vector cosine similarity')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition shadow-2xs group">
-                            <span class="font-semibold block text-slate-800 group-hover:text-blue-700">Hopfield vs Dense Cosine Baseline</span>
-                            <span class="text-[11px] text-slate-400 block mt-0.5">Contrast attractor basins with static dot products</span>
-                        </button>
-                    </div>
+                    <div id="chat-history" class="max-w-4xl mx-auto space-y-6 hidden"></div>
                 </div>
 
-                <!-- Chat History Container -->
-                <div id="chat-history" class="max-w-5xl xl:max-w-6xl w-full mx-auto space-y-6 hidden transition-all duration-300">
-                    <!-- Messages dynamically rendered here -->
-                </div>
-            </div>
-
-            <!-- Floating Prompt Input Bar (ChatGPT Style) -->
-            <div class="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-white via-white/95 to-transparent z-10 pointer-events-none">
-                <div id="prompt-container" class="max-w-5xl xl:max-w-6xl w-full mx-auto pointer-events-auto transition-all duration-300">
-
-
-                    <div class="relative shadow-lg rounded-2xl border border-slate-200 bg-white flex items-end p-2 transition focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
-                        <!-- Attachment Upload Shortcut Button -->
-                        <button onclick="triggerFileInput()" title="Upload and index document into persistent memory" class="p-2 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-slate-100 transition flex-shrink-0">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
-                        </button>
-
-                        <!-- Input Field -->
-                        <textarea id="query-input" rows="1" placeholder="Message Hopfield Memory (e.g. multi-hop questions across uploaded documents)..." class="w-full px-3 py-2 outline-none text-slate-800 text-sm bg-transparent resize-none max-h-36" onkeydown="handleInputKey(event)" oninput="autoGrowTextarea(this)"></textarea>
-
-                        <!-- Send Button -->
-                        <button id="send-button" onclick="sendQuery()" class="p-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl text-white transition shadow-sm flex items-center justify-center h-10 w-10 flex-shrink-0">
-                            <svg id="send-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-                            <div class="spinner" id="search-spinner"></div>
-                        </button>
-                    </div>
-                    <div class="flex items-center justify-between text-[11px] text-slate-400 px-3 mt-1.5">
-                        <span>Press <kbd class="px-1 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-mono">Enter</kbd> to send, <kbd class="px-1 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-mono">Shift+Enter</kbd> for new line</span>
-                        <span id="quick-doc-hint">0 documents in continuous memory</span>
+                <!-- Floating Chat Input Bar -->
+                <div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white via-white/95 to-transparent z-10">
+                    <div class="max-w-4xl mx-auto">
+                        <div class="shadow-lg rounded-2xl border border-slate-200 bg-white flex items-end p-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
+                            <button onclick="document.getElementById('file-upload').click()" class="p-2 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-slate-100 transition">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                            </button>
+                            <textarea id="query-input" rows="1" placeholder="Ask questions across uploaded documents, tables, or diagrams..." class="w-full px-3 py-2 outline-none text-slate-800 text-sm bg-transparent resize-none max-h-32" onkeydown="handleInputKey(event)"></textarea>
+                            <button id="send-button" onclick="sendQuery()" class="p-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl text-white transition flex items-center justify-center h-10 w-10 flex-shrink-0">
+                                <svg id="send-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                                <div class="spinner" id="search-spinner"></div>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <!-- VIEW 2: VISUAL DOCUMENT READER -->
+            <div id="view-reader" class="flex-1 flex flex-col p-4 overflow-hidden hidden">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                    <div class="flex items-center gap-3">
+                        <h2 class="text-base font-bold text-slate-800">Visual Document Reader</h2>
+                        <select id="reader-doc-select" onchange="loadReaderDocument(this.value)" class="text-xs border border-slate-300 rounded-lg p-1.5 bg-white font-medium text-slate-700">
+                            <option value="">Select Document...</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        <button onclick="prevReaderPage()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg font-semibold">&larr; Prev</button>
+                        <span id="reader-page-indicator" class="font-mono text-slate-600">Page 1 of 1</span>
+                        <button onclick="nextReaderPage()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg font-semibold">Next &rarr;</button>
+                    </div>
+                </div>
+
+                <!-- Side-by-Side Canvas + Extracted Structure -->
+                <div class="flex-1 flex gap-4 pt-4 overflow-hidden">
+                    <!-- Left: Rendered Visual Preview -->
+                    <div class="w-1/2 bg-slate-100 rounded-2xl border border-slate-200 flex flex-col items-center justify-center p-4 overflow-auto">
+                        <div id="reader-image-wrap" class="max-w-full max-h-full flex items-center justify-center">
+                            <span class="text-xs text-slate-400">Select a document to inspect rendered page layout.</span>
+                        </div>
+                    </div>
+                    <!-- Right: Extracted Facts, Tables & Page Summary -->
+                    <div class="w-1/2 flex flex-col overflow-y-auto space-y-4 pr-2">
+                        <div class="bg-blue-50/60 border border-blue-200 rounded-xl p-3">
+                            <h3 class="text-xs font-bold text-blue-900 mb-1">AI Page Summary</h3>
+                            <p id="reader-ai-summary" class="text-xs text-blue-800">No page selected.</p>
+                            <div id="reader-key-concepts" class="flex flex-wrap gap-1 mt-2"></div>
+                        </div>
+
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-700 mb-2">Detected Tables on Page</h3>
+                            <div id="reader-tables-list" class="space-y-2">
+                                <div class="text-xs text-slate-400 italic">No tables on this page.</div>
+                            </div>
+                        </div>
+
+                        <div class="flex-1">
+                            <h3 class="text-xs font-bold text-slate-700 mb-2">Extracted Page Text &amp; Headings</h3>
+                            <div id="reader-extracted-text" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700 font-mono whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
+                                No page content available.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 3: AI VISUAL STUDIO -->
+            <div id="view-studio" class="flex-1 flex flex-col p-4 overflow-hidden hidden">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-800">AI Visual Studio</h2>
+                        <p class="text-xs text-slate-400">Generate strictly grounded diagrams, mind maps, and interactive numerical charts.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <select id="studio-type-select" class="text-xs border border-slate-300 rounded-lg p-1.5 bg-white font-medium">
+                            <option value="mindmap">Mind Map (Mermaid)</option>
+                            <option value="flowchart">Workflow Flowchart (Mermaid)</option>
+                            <option value="architecture">System Architecture (Mermaid)</option>
+                            <option value="sequence">Sequence Diagram (Mermaid)</option>
+                            <option value="roadmap">Study Roadmap (Mermaid)</option>
+                            <option value="bar">Bar Chart (Plotly)</option>
+                            <option value="line">Line Trend (Plotly)</option>
+                            <option value="pie">Distribution Pie (Plotly)</option>
+                        </select>
+                        <button onclick="generateStudioViz()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs">Generate</button>
+                    </div>
+                </div>
+
+                <div class="pt-3 pb-2">
+                    <input type="text" id="studio-prompt-input" placeholder="e.g. Generate a mind map of operating systems or bar chart comparing workloads..." class="w-full text-xs p-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500">
+                </div>
+
+                <!-- Studio Output Canvas -->
+                <div class="flex-1 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col p-4 overflow-auto">
+                    <div id="studio-loading" class="hidden text-center py-12 text-xs text-indigo-600 font-semibold">Generating verified visualization...</div>
+                    <div id="studio-notice" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800"></div>
+                    <div id="studio-render-container" class="flex-1 flex items-center justify-center overflow-auto">
+                        <span class="text-xs text-slate-400">Enter a prompt above and click Generate to build diagrams or interactive charts.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 4: KNOWLEDGE GRAPH EXPLORER -->
+            <div id="view-kg" class="flex-1 flex flex-col p-4 overflow-hidden hidden">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-800">Knowledge Graph Explorer</h2>
+                        <p class="text-xs text-slate-400">Level 4 Multi-Relational Knowledge Network grounded across documents and pages.</p>
+                    </div>
+                    <button onclick="loadKnowledgeGraph()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold">Refresh Graph</button>
+                </div>
+                <div class="flex-1 flex gap-4 pt-3 overflow-hidden">
+                    <div id="cy-container" class="flex-1 bg-slate-900 rounded-2xl border border-slate-800"></div>
+                    <div class="w-64 bg-slate-50 border border-slate-200 rounded-2xl p-3 flex flex-col text-xs">
+                        <h3 class="font-bold text-slate-700 mb-2">Node Inspector</h3>
+                        <div id="kg-node-details" class="text-slate-500">Click any entity or document node to inspect relationships and provenance.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 5: STUDY ASSISTANT -->
+            <div id="view-study" class="flex-1 flex flex-col p-4 overflow-hidden hidden">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-800">AI Study Workspace</h2>
+                        <p class="text-xs text-slate-400">Active recall flashcards and pedagogical multiple-choice assessments.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="study-topic-input" placeholder="Topic or Document Subject..." class="text-xs border border-slate-300 rounded-lg p-1.5 bg-white">
+                        <button onclick="loadStudyDeck()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold">Build Study Deck</button>
+                    </div>
+                </div>
+
+                <div class="flex-1 flex gap-4 pt-4 overflow-y-auto">
+                    <!-- Left: Flashcards Deck -->
+                    <div class="w-1/2 flex flex-col space-y-3">
+                        <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Active Recall Flashcards (Click to Flip)</h3>
+                        <div id="study-flashcards-list" class="space-y-3 overflow-y-auto">
+                            <div class="text-xs text-slate-400 text-center py-8">Generate a study deck above to drill flashcards.</div>
+                        </div>
+                    </div>
+                    <!-- Right: Multiple Choice Assessment -->
+                    <div class="w-1/2 flex flex-col space-y-3 border-l border-slate-200 pl-4">
+                        <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Assessment Quiz with Explanations</h3>
+                        <div id="study-mcqs-list" class="space-y-4 overflow-y-auto">
+                            <div class="text-xs text-slate-400 text-center py-8">Questions and distractor rationales will appear here.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 6: MEMORY ANALYTICS & BENCHMARK -->
+            <div id="view-analytics" class="flex-1 flex flex-col p-4 overflow-y-auto hidden">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-800">5-Level Memory Diagnostics &amp; Benchmark</h2>
+                        <p class="text-xs text-slate-400">Thermodynamic energy landscape monitoring and standard retrieval benchmarks.</p>
+                    </div>
+                    <button onclick="runLiveBenchmark()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs">Run Benchmark</button>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-5 gap-3 my-4">
+                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                        <span class="text-[10px] uppercase font-bold text-slate-400">Level 1: Raw Chunks</span>
+                        <div id="stat-l1" class="text-xl font-black text-slate-800 mt-1">0</div>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                        <span class="text-[10px] uppercase font-bold text-blue-500">Level 2: Embeddings</span>
+                        <div id="stat-l2" class="text-xl font-black text-blue-900 mt-1">0</div>
+                    </div>
+                    <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
+                        <span class="text-[10px] uppercase font-bold text-indigo-500">Level 3: Hopfield &beta;</span>
+                        <div id="stat-l3" class="text-xl font-black text-indigo-900 mt-1">8.0</div>
+                    </div>
+                    <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                        <span class="text-[10px] uppercase font-bold text-emerald-500">Level 4: KG Nodes</span>
+                        <div id="stat-l4" class="text-xl font-black text-emerald-900 mt-1">0</div>
+                    </div>
+                    <div class="bg-purple-50 border border-purple-200 rounded-xl p-3">
+                        <span class="text-[10px] uppercase font-bold text-purple-500">Level 5: Episodic</span>
+                        <div id="stat-l5" class="text-xl font-black text-purple-900 mt-1">0</div>
+                    </div>
+                </div>
+
+                <div class="mt-4 bg-slate-900 text-white rounded-2xl p-4 font-mono text-xs">
+                    <h3 class="text-emerald-400 font-bold mb-2">Live Benchmark Results:</h3>
+                    <pre id="benchmark-output" class="whitespace-pre-wrap leading-relaxed text-slate-300">Click "Run Benchmark" to evaluate Recall@k, MRR, NDCG@5, and Attractor Energy Basin stability.</pre>
+                </div>
+            </div>
+
         </main>
     </div>
 
-    <!-- JavaScript Application Logic -->
+    <!-- Application Script -->
     <script>
-        // State Management
         let chatSessions = [];
         let activeChatId = null;
         let isSearching = false;
+        let multimodalDocs = [];
+        let currentReaderDoc = null;
+        let currentReaderPage = 1;
+        let cyInstance = null;
 
-        // On DOM Load
+        mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+
         window.addEventListener('DOMContentLoaded', async () => {
-            initStorage();
             await checkStatus();
             await loadChats();
             await refreshDocumentsList();
-            setupDragAndDrop();
+            await loadMultimodalDocs();
+            await refreshMemoryStats();
             setInterval(checkStatus, 5000);
         });
 
-        function initStorage() {
-            try {
-                const stored = localStorage.getItem('ham_chats_v2');
-                if (stored) {
-                    chatSessions = JSON.parse(stored);
+        // =====================================================================
+        // WORKSPACE TAB NAVIGATION
+        // =====================================================================
+        function switchMainWorkspace(view) {
+            ['chat', 'reader', 'studio', 'kg', 'study', 'analytics'].forEach(v => {
+                const btn = document.getElementById(`nav-btn-${v}`);
+                const panel = document.getElementById(`view-${v}`);
+                if (v === view) {
+                    btn.className = "px-3 py-1.5 rounded-lg bg-white shadow-xs text-blue-700 flex items-center gap-1.5 font-bold";
+                    panel.classList.remove('hidden');
+                } else {
+                    btn.className = "px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 font-semibold";
+                    panel.classList.add('hidden');
                 }
-            } catch (e) {
-                chatSessions = [];
-            }
+            });
+            if (view === 'kg') loadKnowledgeGraph();
+            if (view === 'analytics') refreshMemoryStats();
         }
 
-        function saveLocalChats() {
-            try {
-                localStorage.setItem('ham_chats_v2', JSON.stringify(chatSessions));
-            } catch (e) {}
-        }
-
-        // =====================================================================
-        // TAB NAVIGATION
-        // =====================================================================
         function switchSidebarTab(tab) {
             ['chats', 'docs', 'settings'].forEach(t => {
                 const btn = document.getElementById(`tab-btn-${t}`);
                 const content = document.getElementById(`tab-content-${t}`);
                 if (t === tab) {
-                    btn.className = "flex-1 py-1.5 px-2 rounded-lg bg-white shadow-2xs text-blue-700 flex items-center justify-center gap-1.5 border border-slate-200/80 transition";
+                    btn.className = "flex-1 py-1 px-2 rounded-lg bg-white shadow-xs text-blue-700 flex items-center justify-center gap-1 border border-slate-200";
                     content.classList.remove('hidden');
                 } else {
-                    btn.className = "flex-1 py-1.5 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1.5 transition";
+                    btn.className = "flex-1 py-1 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1";
                     content.classList.add('hidden');
                 }
             });
         }
 
         // =====================================================================
-        // CHAT SESSION HANDLING (CHATGPT-STYLE)
-        // =====================================================================
-        async function loadChats() {
-            try {
-                const res = await fetch('/api/chats');
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.chats && data.chats.length > 0) {
-                        // Merge server sessions
-                        chatSessions = data.chats;
-                        saveLocalChats();
-                    }
-                }
-            } catch (e) {}
-
-            renderChatsList();
-
-            // Select active chat or create first one
-            if (!activeChatId) {
-                if (chatSessions.length > 0) {
-                    selectChat(chatSessions[0].id);
-                } else {
-                    createNewChat();
-                }
-            } else {
-                selectChat(activeChatId);
-            }
-        }
-
-        function renderChatsList() {
-            const listEl = document.getElementById('chats-list');
-            const badgeEl = document.getElementById('chats-count-badge');
-            if (badgeEl) badgeEl.innerText = chatSessions.length;
-
-            if (chatSessions.length === 0) {
-                listEl.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs">No saved chats yet.</div>`;
-                return;
-            }
-
-            listEl.innerHTML = chatSessions.map(c => {
-                const isActive = c.id === activeChatId;
-                const activeCls = isActive 
-                    ? "bg-blue-50/80 border-blue-200 text-blue-900 font-semibold shadow-2xs" 
-                    : "hover:bg-slate-100/70 border-transparent text-slate-700";
-
-                return `
-                    <div class="group flex items-center justify-between p-2 rounded-xl border ${activeCls} transition cursor-pointer select-none" onclick="selectChat('${c.id}')">
-                        <div class="flex items-center gap-2 flex-1 min-w-0 pr-1">
-                            <svg class="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-                            <span class="text-xs truncate">${escapeHtml(c.title || 'New Chat')}</span>
-                        </div>
-                        <button onclick="deleteChat(event, '${c.id}')" title="Delete chat" class="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-600 rounded transition text-slate-400">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        async function createNewChat() {
-            const newId = 'chat_' + Date.now();
-            const newSession = {
-                id: newId,
-                title: "New Chat",
-                created_at: Date.now() / 1000,
-                updated_at: Date.now() / 1000,
-                messages: []
-            };
-
-            chatSessions.unshift(newSession);
-            saveLocalChats();
-            renderChatsList();
-            selectChat(newId);
-
-            // Sync with backend
-            try {
-                fetch('/api/chats', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ chat_id: newId, title: "New Chat" })
-                });
-            } catch (e) {}
-
-            // Focus query input
-            const input = document.getElementById('query-input');
-            if (input) input.focus();
-        }
-
-        async function selectChat(chatId) {
-            activeChatId = chatId;
-            renderChatsList();
-
-            let session = chatSessions.find(c => c.id === chatId);
-            
-            // Try fetching full history from server if messages not loaded
-            if (!session || !session.messages || session.messages.length === 0) {
-                try {
-                    const res = await fetch(`/api/chats/${chatId}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.chat) {
-                            session = data.chat;
-                            const idx = chatSessions.findIndex(c => c.id === chatId);
-                            if (idx >= 0) chatSessions[idx] = session;
-                            else chatSessions.unshift(session);
-                            saveLocalChats();
-                        }
-                    }
-                } catch (e) {}
-            }
-
-            const titleEl = document.getElementById('active-chat-title');
-            if (titleEl) titleEl.innerText = session ? (session.title || 'New Chat') : 'New Chat';
-
-            renderActiveChatMessages(session ? (session.messages || []) : []);
-        }
-
-        function renderActiveChatMessages(messages) {
-            const emptyEl = document.getElementById('empty-state');
-            const historyEl = document.getElementById('chat-history');
-
-            if (!messages || messages.length === 0) {
-                emptyEl.classList.remove('hidden');
-                historyEl.classList.add('hidden');
-                historyEl.innerHTML = '';
-                return;
-            }
-
-            emptyEl.classList.add('hidden');
-            historyEl.classList.remove('hidden');
-            historyEl.innerHTML = '';
-
-            messages.forEach(msg => {
-                if (msg.role === 'user') {
-                    appendUserMessageToUI(msg.content);
-                } else if (msg.role === 'assistant') {
-                    appendAssistantMessageToUI(msg);
-                }
-            });
-
-            const resultsArea = document.getElementById('results-area');
-            resultsArea.scrollTop = resultsArea.scrollHeight;
-        }
-
-        async function deleteChat(event, chatId) {
-            event.stopPropagation();
-            if (!confirm("Delete this conversation?")) return;
-
-            chatSessions = chatSessions.filter(c => c.id !== chatId);
-            saveLocalChats();
-
-            try {
-                fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
-            } catch (e) {}
-
-            if (activeChatId === chatId) {
-                if (chatSessions.length > 0) {
-                    selectChat(chatSessions[0].id);
-                } else {
-                    createNewChat();
-                }
-            } else {
-                renderChatsList();
-            }
-        }
-
-        // =====================================================================
-        // PERSISTENT DOCUMENTS MANAGEMENT (KNOWLEDGE BASE)
-        // =====================================================================
-        async function refreshDocumentsList() {
-            try {
-                const res = await fetch('/api/documents');
-                if (res.ok) {
-                    const data = await res.json();
-                    renderDocumentsList(data.documents || [], data.total_chunks || 0);
-                }
-            } catch (e) {}
-        }
-
-        function renderDocumentsList(docs, totalChunks) {
-            const listEl = document.getElementById('documents-list');
-            const badgeEl = document.getElementById('docs-count-badge');
-            const footerStat = document.getElementById('footer-memory-stat');
-            const quickHint = document.getElementById('quick-doc-hint');
-
-            if (badgeEl) badgeEl.innerText = docs.length;
-            if (footerStat) footerStat.innerText = `Memory: ${totalChunks} chunks`;
-            if (quickHint) quickHint.innerText = `${docs.length} documents in continuous memory (${totalChunks} chunks)`;
-
-            if (!docs || docs.length === 0) {
-                listEl.innerHTML = `<div class="text-center py-6 text-slate-400 text-xs">No documents in memory store.</div>`;
-                return;
-            }
-
-            listEl.innerHTML = docs.map(d => `
-                <div class="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200/70 hover:bg-slate-100/70 transition group text-xs">
-                    <div class="flex items-center gap-2 min-w-0 pr-1">
-                        <svg class="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                        <div class="min-w-0">
-                            <span class="font-medium text-slate-800 block truncate" title="${escapeHtml(d.source)}">${escapeHtml(d.source)}</span>
-                            <span class="text-[10px] text-slate-400 font-mono">${d.chunks} chunks &bull; ${(d.characters / 1024).toFixed(1)} KB</span>
-                        </div>
-                    </div>
-                    <button onclick="deleteDocument(event, '${escapeHtml(d.source)}')" title="Remove document from memory" class="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 rounded transition">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                </div>
-            `).join('');
-        }
-
-        async function deleteDocument(event, source) {
-            event.stopPropagation();
-            if (!confirm(`Remove '${source}' from Hopfield memory?`)) return;
-
-            try {
-                const res = await fetch(`/api/documents/${encodeURIComponent(source)}`, { method: 'DELETE' });
-                if (res.ok) {
-                    await refreshDocumentsList();
-                    await checkStatus();
-                } else {
-                    const err = await res.json();
-                    alert(err.detail || "Failed to remove document");
-                }
-            } catch (e) {
-                alert("Network error removing document: " + e.message);
-            }
-        }
-
-        // =====================================================================
-        // FILE UPLOAD HANDLING
-        // =====================================================================
-        function triggerFileInput() {
-            const input = document.getElementById('file-upload');
-            if (input) input.click();
-        }
-
-        function setupDragAndDrop() {
-            const uploadBox = document.getElementById('upload-box');
-            if (!uploadBox) return;
-
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                uploadBox.addEventListener(eventName, e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }, false);
-            });
-
-            ['dragenter', 'dragover'].forEach(eventName => {
-                uploadBox.addEventListener(eventName, () => {
-                    uploadBox.classList.add('bg-blue-50', 'border-blue-500');
-                }, false);
-            });
-
-            ['dragleave', 'drop'].forEach(eventName => {
-                uploadBox.addEventListener(eventName, () => {
-                    uploadBox.classList.remove('bg-blue-50', 'border-blue-500');
-                }, false);
-            });
-
-            uploadBox.addEventListener('drop', e => {
-                const dt = e.dataTransfer;
-                if (dt && dt.files && dt.files.length > 0) {
-                    handleFileUpload(dt.files[0]);
-                }
-            });
-        }
-
-        async function handleFileUpload(file) {
-            if (!file) return;
-            const statusBox = document.getElementById('upload-status');
-            const titleEl = document.getElementById('upload-box-title');
-            const origTitle = "Upload Document";
-
-            if (titleEl) titleEl.innerText = `Ingesting ${file.name}...`;
-            if (statusBox) {
-                statusBox.style.display = 'block';
-                statusBox.className = "text-xs text-blue-600 mt-2 font-medium";
-                statusBox.innerText = `Parsing text & indexing into Hopfield memory...`;
-            }
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const response = await fetch('/api/upload', { method: 'POST', body: formData });
-                let data;
-                const ct = response.headers.get("content-type");
-                if (ct && ct.includes("application/json")) {
-                    data = await response.json();
-                } else {
-                    data = { detail: await response.text() };
-                }
-
-                if (response.ok) {
-                    if (titleEl) titleEl.innerText = `✓ ${file.name} Indexed`;
-                    if (statusBox) {
-                        statusBox.className = "text-xs text-emerald-700 mt-2 font-medium bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg";
-                        statusBox.innerText = data.message;
-                    }
-                    await refreshDocumentsList();
-                    await checkStatus();
-                    setTimeout(() => {
-                        if (titleEl) titleEl.innerText = origTitle;
-                        if (statusBox) statusBox.style.display = 'none';
-                    }, 4000);
-                } else {
-                    const msg = data.detail || "Upload error";
-                    if (titleEl) titleEl.innerText = "Upload Failed";
-                    if (statusBox) {
-                        statusBox.className = "text-xs text-rose-700 mt-2 font-medium bg-rose-50 border border-rose-200 p-2.5 rounded-lg";
-                        statusBox.innerText = "Failed: " + msg;
-                    }
-                }
-            } catch (e) {
-                if (statusBox) {
-                    statusBox.className = "text-xs text-rose-700 mt-2 font-medium bg-rose-50 border border-rose-200 p-2.5 rounded-lg";
-                    statusBox.innerText = "Connection error: " + e.message;
-                }
-            } finally {
-                const input = document.getElementById('file-upload');
-                if (input) input.value = '';
-            }
-        }
-
-        function uploadFile(el) {
-            if (el && el.files && el.files.length > 0) {
-                handleFileUpload(el.files[0]);
-            }
-        }
-
-        // =====================================================================
-        // QUERY & GENERATION (SEARCH)
-        // =====================================================================
-        function handleInputKey(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendQuery();
-            }
-        }
-
-        function autoGrowTextarea(el) {
-            el.style.height = 'auto';
-            el.style.height = Math.min(el.scrollHeight, 140) + 'px';
-        }
-
-        function setQueryAndSearch(q) {
-            const input = document.getElementById('query-input');
-            input.value = q;
-            sendQuery();
-        }
-
-        async function sendQuery() {
-            if (isSearching) return;
-            const input = document.getElementById('query-input');
-            const query = input.value.trim();
-            if (!query) return;
-
-            // Ensure active chat session
-            if (!activeChatId) {
-                await createNewChat();
-            }
-
-            // UI Loading state
-            isSearching = true;
-            input.value = '';
-            input.style.height = 'auto';
-            
-            document.getElementById('empty-state').classList.add('hidden');
-            const history = document.getElementById('chat-history');
-            history.classList.remove('hidden');
-
-            const btnIcon = document.getElementById('send-icon');
-            const spinner = document.getElementById('search-spinner');
-            btnIcon.style.opacity = '0';
-            spinner.style.display = 'block';
-
-            // Append User Message to UI
-            appendUserMessageToUI(query);
-
-            const resultsArea = document.getElementById('results-area');
-            resultsArea.scrollTop = resultsArea.scrollHeight;
-
-            const selectedRetriever = (document.querySelector('input[name="retriever-mode"]:checked') || {}).value || 'hopfield';
-            const provVal = document.getElementById('llm-provider').value;
-            const modelVal = document.getElementById('llm-model').value.trim();
-            const baseUrlVal = document.getElementById('llm-base-url') ? document.getElementById('llm-base-url').value.trim() : '';
-            const apiKeyVal = document.getElementById('llm-api-key') ? document.getElementById('llm-api-key').value.trim() : '';
-            const maxTokensVal = document.getElementById('llm-max-tokens') ? parseInt(document.getElementById('llm-max-tokens').value) : 2048;
-            const styleVal = document.getElementById('answer-style').value;
-
-            const formatVal = (document.getElementById('answer-format-select') || {}).value || 'auto';
-            const webSearchEnabled = isWebSearchActive();
-            const forceWebSearch = (document.getElementById('force-web-search-chk') || {}).checked || false;
-
-            const reqBody = {
-                query: query,
-                chat_id: activeChatId,
-                retriever_mode: selectedRetriever,
-                engine_mode: (selectedRetriever === "dense" ? "naive_rag" : "associative"),
-                answer_style: styleVal,
-                detail_level: styleVal,
-                answer_format: formatVal !== 'auto' ? formatVal : undefined,
-                web_search_enabled: webSearchEnabled,
-                force_web_search: forceWebSearch,
-                energy_type: document.getElementById('energy-type').value,
-                hopfield_beta: parseFloat(document.getElementById('hopfield-beta').value),
-                top_k: parseInt(document.getElementById('top-k').value),
-                use_projection: document.getElementById('use-projection').checked,
-                llm_provider: provVal,
-                llm_model: modelVal || undefined,
-                llm_base_url: baseUrlVal || undefined,
-                llm_api_key: apiKeyVal || undefined,
-                max_tokens: maxTokensVal || 2048
-            };
-
-            try {
-                const response = await fetch('/api/search', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(reqBody)
-                });
-
-                let data;
-                const ct = response.headers.get("content-type");
-                if (ct && ct.includes("application/json")) {
-                    data = await response.json();
-                } else {
-                    data = { detail: await response.text() };
-                }
-
-                if (!response.ok) {
-                    throw new Error(data.detail || `Search returned HTTP ${response.status}`);
-                }
-
-                // Append Assistant Message to UI
-                appendAssistantMessageToUI({
-                    role: 'assistant',
-                    content: data.answer,
-                    confidence: data.confidence,
-                    evidence: data.evidence,
-                    associative_diagnostics: data.associative_diagnostics,
-                    grounded_answer: data.grounded_answer,
-                    latencies: data.latencies,
-                    deduplication: data.deduplication,
-                    web_search_used: data.web_search_used,
-                    cached_knowledge_used: data.cached_knowledge_used,
-                    format_detected: data.format_detected,
-                    sufficiency_decision: data.sufficiency_decision,
-                    web_sources: data.web_sources
-                });
-
-                // Update session title in local state if newly auto-titled
-                if (data.chat_title) {
-                    const sess = chatSessions.find(c => c.id === activeChatId);
-                    if (sess) {
-                        sess.title = data.chat_title;
-                        const titleEl = document.getElementById('active-chat-title');
-                        if (titleEl) titleEl.innerText = data.chat_title;
-                        saveLocalChats();
-                        renderChatsList();
-                    }
-                }
-
-            } catch (err) {
-                appendErrorMessageToUI("Error generating answer: " + err.message);
-            } finally {
-                isSearching = false;
-                btnIcon.style.opacity = '1';
-                spinner.style.display = 'none';
-                resultsArea.scrollTop = resultsArea.scrollHeight;
-            }
-        }
-
-        // =====================================================================
-        // UI MESSAGE RENDERING (CHATGPT-STYLE)
-        // =====================================================================
-        function appendUserMessageToUI(text) {
-            const history = document.getElementById('chat-history');
-            const div = document.createElement('div');
-            div.className = "flex justify-end";
-            div.innerHTML = `
-                <div class="max-w-[85%] bg-blue-600 text-white rounded-2xl rounded-tr-xs px-4 py-3 shadow-xs text-sm leading-relaxed">
-                    ${escapeHtml(text)}
-                </div>
-            `;
-            history.appendChild(div);
-        }
-
-        function appendErrorMessageToUI(err) {
-            const history = document.getElementById('chat-history');
-            const div = document.createElement('div');
-            div.className = "flex justify-start";
-            div.innerHTML = `
-                <div class="max-w-[90%] bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl rounded-tl-xs p-4 text-xs leading-relaxed">
-                    <strong>Error:</strong> ${escapeHtml(err)}
-                </div>
-            `;
-            history.appendChild(div);
-        }
-
-        let assistantMessageCounter = 0;
-
-        function renderMarkdown(md, evidenceList, msgId) {
-            if (!md) return '';
-            let text = md.trim().replace(/\r\n/g, '\n');
-            let safe = escapeHtml(text);
-
-            // 1. Code blocks (```lang ... ```)
-            safe = safe.replace(/```([a-zA-Z0-9_\-]*)\n([\s\S]*?)```/g, function(match, lang, code) {
-                return `<pre class="bg-slate-900 text-slate-100 p-3.5 rounded-xl font-mono text-xs my-2.5 overflow-x-auto border border-slate-800"><code>${code}</code></pre>`;
-            });
-
-            // 2. Inline code (`code`)
-            safe = safe.replace(/`([^`]+)`/g, '<code class="bg-slate-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-mono border border-slate-200">$1</code>');
-
-            // 3. Horizontal rules: --- or ***
-            safe = safe.replace(/^(?:---|\*\*\*|___)\s*$/gm, '<hr class="my-4 border-slate-200">');
-
-            // 4. Headers: # Heading 1, ## Heading 2, ### Heading 3
-            safe = safe.replace(/^# (.*$)/gim, '<h1 class="text-sm font-bold text-slate-900 mt-4 mb-2 flex items-center gap-1.5">$1</h1>');
-            safe = safe.replace(/^## (.*$)/gim, '<h2 class="text-sm font-bold text-slate-900 mt-4 mb-2 flex items-center gap-1.5">$1</h2>');
-            safe = safe.replace(/^### (.*$)/gim, '<h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider mt-4 mb-2 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block"></span>$1</h3>');
-
-            // 5. Bold & Italic: **bold**, *italic*
-            safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-slate-900">$1</strong>');
-            safe = safe.replace(/\*([^*]+)\*/g, '<em class="italic text-slate-700">$1</em>');
-
-            // 6. Blockquotes: > quote
-            safe = safe.replace(/^> (.*$)/gim, '<blockquote class="border-l-3 border-blue-500 pl-3 my-2 text-slate-600 italic bg-blue-50/30 py-1 rounded-r-lg">$1</blockquote>');
-
-            // 7. Markdown Tables: | col1 | col2 |
-            safe = safe.replace(/(?:^|\n)((?:\|[^\n]+\|\r?\n?){2,})/g, function(match, tableBlock) {
-                const rows = tableBlock.trim().split('\n').map(r => r.trim()).filter(r => r.length > 0);
-                if (rows.length < 2) return match;
-                
-                const isDelimiter = rows[1].includes('---') || rows[1].includes('-|-');
-                if (!isDelimiter) return match;
-
-                const parseCols = (rowStr) => {
-                    let parts = rowStr.split('|');
-                    if (parts.length > 0 && parts[0].trim() === '') parts.shift();
-                    if (parts.length > 0 && parts[parts.length - 1].trim() === '') parts.pop();
-                    return parts.map(p => p.trim());
-                };
-
-                const ths = parseCols(rows[0]).map(h => `<th class="px-3.5 py-2.5 font-bold text-slate-800 bg-slate-50 border-b border-slate-200">${h}</th>`).join('');
-                
-                let tbodyRows = [];
-                for (let i = 2; i < rows.length; i++) {
-                    const tds = parseCols(rows[i]).map(c => `<td class="px-3.5 py-2 text-slate-700 border-b border-slate-100 font-normal">${c}</td>`).join('');
-                    tbodyRows.push(`<tr class="hover:bg-slate-50/70 transition">${tds}</tr>`);
-                }
-
-                return `\n<div class="overflow-x-auto my-3 rounded-xl border border-slate-200 shadow-2xs"><table class="min-w-full text-xs text-left"><thead class="bg-slate-50"><tr>${ths}</tr></thead><tbody class="bg-white divide-y divide-slate-100">${tbodyRows.join('')}</tbody></table></div>\n`;
-            });
-
-            // 8. Bullet & Numbered lists
-            const lines = safe.split('\n');
-            let inUl = false;
-            let inOl = false;
-            let processedLines = [];
-            for (let line of lines) {
-                const trimmed = line.trim();
-                const numMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
-
-                if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-                    if (inOl) { processedLines.push('</ol>'); inOl = false; }
-                    if (!inUl) { processedLines.push('<ul class="space-y-1.5 my-2">'); inUl = true; }
-                    const itemContent = trimmed.substring(2);
-                    processedLines.push(`<li class="flex items-start gap-2 text-xs leading-relaxed text-slate-700"><span class="text-blue-500 mt-1 flex-shrink-0 leading-none">&bull;</span><span>${itemContent}</span></li>`);
-                } else if (numMatch) {
-                    if (inUl) { processedLines.push('</ul>'); inUl = false; }
-                    if (!inOl) { processedLines.push('<ol class="space-y-1.5 my-2">'); inOl = true; }
-                    const num = numMatch[1];
-                    const itemContent = numMatch[2];
-                    processedLines.push(`<li class="flex items-start gap-2 text-xs leading-relaxed text-slate-700"><span class="font-bold text-blue-600 flex-shrink-0">${num}.</span><span>${itemContent}</span></li>`);
-                } else {
-                    if (inUl) { processedLines.push('</ul>'); inUl = false; }
-                    if (inOl) { processedLines.push('</ol>'); inOl = false; }
-                    processedLines.push(line);
-                }
-            }
-            if (inUl) processedLines.push('</ul>');
-            if (inOl) processedLines.push('</ol>');
-            safe = processedLines.join('\n');
-
-            // 9. Interactive Citations [E1], [D1], [W1]
-            if (evidenceList) {
-                messageEvidenceCache[msgId] = evidenceList;
-            }
-            safe = safe.replace(/\[([EDW]?)(\d+)\]/g, function(match, prefix, num) {
-                const citeIdx = parseInt(num, 10);
-                const ev = (evidenceList && evidenceList[citeIdx - 1]) ? evidenceList[citeIdx - 1] : null;
-                const isWeb = prefix === 'W' || (ev && (ev.source_type === 'web' || !!ev.url));
-                const pfx = prefix || (isWeb ? 'W' : 'D');
-                const pillLabel = `[${pfx}${citeIdx}]`;
-                const pillColor = isWeb
-                    ? "bg-emerald-50 text-emerald-800 hover:bg-emerald-600 hover:text-white border-emerald-300"
-                    : "bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border-blue-200";
-                let tooltip = `Supporting Evidence Passage ${pillLabel}`;
-                if (ev) {
-                    const src = ev.source || (isWeb ? 'Web Source' : 'Document');
-                    const snippet = (ev.text || '').replace(/\s+/g, ' ').substring(0, 100) + '...';
-                    tooltip = `${pillLabel} ${src}: "${snippet}"`;
-                }
-                const iconSvg = isWeb
-                    ? `<svg class="w-2.5 h-2.5 text-emerald-600 group-hover:text-white transition flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>`
-                    : `<svg class="w-2.5 h-2.5 text-blue-500 group-hover:text-white transition flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>`;
-                return `<button type="button" onclick="jumpToEvidence(${msgId}, ${citeIdx})" onmouseenter="showCitationPreview(event, ${msgId}, ${citeIdx})" onmouseleave="hideCitationPreview()" class="citation-pill inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md ${pillColor} text-[11px] font-bold mx-0.5 border cursor-pointer transition shadow-2xs group" title="${escapeHtml(tooltip)}">${iconSvg}${pillLabel}</button>`;
-            });
-
-            // 10. Paragraphs (split by double newlines, ignoring block elements)
-            const blocks = safe.split(/\n\s*\n/);
-            const wrappedBlocks = blocks.map(block => {
-                const b = block.trim();
-                if (!b) return '';
-                if (
-                    b.startsWith('<h') ||
-                    b.startsWith('<ul') ||
-                    b.startsWith('<ol') ||
-                    b.startsWith('<pre') ||
-                    b.startsWith('<blockquote') ||
-                    b.startsWith('<hr') ||
-                    b.startsWith('<div class="overflow-x-auto')
-                ) {
-                    return b;
-                }
-                return `<p class="text-slate-800 leading-relaxed text-xs my-1.5">${b.replace(/\n/g, '<br>')}</p>`;
-            });
-
-            return wrappedBlocks.filter(b => b.length > 0).join('\n');
-        }
-
-        const messageEvidenceCache = {};
-
-        function showCitationPreview(e, msgId, citeIdx) {
-            const card = document.getElementById('citation-preview-card');
-            if (!card) return;
-            const evList = messageEvidenceCache[msgId];
-            if (!evList || !evList[citeIdx - 1]) return;
-            const ev = evList[citeIdx - 1];
-
-            const source = escapeHtml(ev.source || 'Document');
-            const page = ev.page_number ? `Page ${ev.page_number}` : null;
-            const scoreVal = ev.similarity_score !== undefined ? ev.similarity_score : (ev.score || 0);
-            const score = typeof scoreVal === 'number' ? scoreVal.toFixed(3) : scoreVal;
-            const isWeb = ev.source_type === 'web' || !!ev.url;
-            const pfx = isWeb ? 'W' : 'D';
-            const roleBadge = isWeb
-                ? `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded">🌐 Web Research</span>`
-                : (ev.is_core_attractor 
-                    ? `<span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded">Core Attractor</span>`
-                    : `<span class="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-1.5 py-0.5 rounded">Associative Bridge</span>`);
-            const cleanText = (ev.text || '').replace(/\s+/g, ' ').trim();
-            const snippet = escapeHtml(cleanText.length > 200 ? cleanText.substring(0, 200) + '...' : cleanText);
-
-            const urlHTML = ev.url ? `<div class="text-[10px] text-blue-600 truncate mt-1"><a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" class="hover:underline flex items-center gap-1"><svg class="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> ${escapeHtml(ev.url)}</a></div>` : '';
-
-            card.innerHTML = `
-                <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 mb-2">
-                    <div class="flex items-center gap-1.5 min-w-0">
-                        <span class="font-bold text-xs ${isWeb ? 'text-emerald-800 bg-emerald-50 border-emerald-300' : 'text-blue-700 bg-blue-50 border-blue-200'} px-1.5 py-0.5 rounded border">[${pfx}${citeIdx}]</span>
-                        <span class="font-semibold text-xs text-slate-800 truncate max-w-[140px]" title="${source}">${source}</span>
-                        ${page ? `<span class="text-[10px] text-slate-400">(${page})</span>` : ''}
-                    </div>
-                    ${roleBadge}
-                </div>
-                ${urlHTML}
-                <p class="text-xs text-slate-600 leading-relaxed italic mt-1.5">"${snippet}"</p>
-                <div class="mt-2 pt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
-                    <span>Score: <strong class="text-slate-600 font-mono">${score}</strong></span>
-                    <span class="text-blue-600 font-medium">Click pill to jump</span>
-                </div>
-            `;
-
-            // Position preview card above or below the pill
-            const rect = e.currentTarget.getBoundingClientRect();
-            card.classList.remove('hidden');
-            const cardHeight = card.offsetHeight || 130;
-            const top = rect.top > cardHeight + 10 ? rect.top - cardHeight - 8 : rect.bottom + 8;
-            const left = Math.max(10, Math.min(window.innerWidth - 360, rect.left - 20));
-            card.style.top = `${top}px`;
-            card.style.left = `${left}px`;
-        }
-
-        function hideCitationPreview() {
-            const card = document.getElementById('citation-preview-card');
-            if (card) card.classList.add('hidden');
-        }
-
-        function exportChatMarkdown() {
-            const session = chatSessions.find(c => c.id === activeChatId);
-            if (!session || !session.messages || session.messages.length === 0) {
-                alert("Current conversation is empty. Nothing to export.");
-                return;
-            }
-
-            const title = session.title || "HopfieldQA Conversation";
-            const dateStr = new Date().toLocaleString();
-            let md = `# ${title}\n\n`;
-            md += `*Exported from Hopfield Memory Workspace on ${dateStr}*\n\n`;
-            md += `---\n\n`;
-
-            session.messages.forEach((msg, idx) => {
-                if (msg.role === 'user') {
-                    md += `## User\n\n${msg.content.trim()}\n\n`;
-                } else if (msg.role === 'assistant') {
-                    md += `## Assistant (HopfieldQA)\n\n`;
-                    if (msg.contextualized_query && msg.contextualized_query.trim().toLowerCase() !== (msg.query || '').trim().toLowerCase()) {
-                        md += `*Understood Context*: **${msg.contextualized_query}**\n\n`;
-                    }
-                    md += `${(msg.content || '').trim()}\n\n`;
-
-                    if (msg.grounded_answer && msg.grounded_answer.provider_used) {
-                        md += `> **Model**: ${msg.grounded_answer.model_name || 'N/A'} | **Provider**: ${msg.grounded_answer.provider_used} | **Confidence**: ${((msg.confidence !== undefined ? msg.confidence : 0.95) * 100).toFixed(1)}%\n\n`;
-                    }
-
-                    if (msg.evidence && msg.evidence.length > 0) {
-                        md += `### Cited Evidence Passages\n\n`;
-                        msg.evidence.forEach((ev, eIdx) => {
-                            const eNum = eIdx + 1;
-                            const src = ev.source || 'Document';
-                            const score = (ev.similarity_score !== undefined ? ev.similarity_score : (ev.score || 0)).toFixed(3);
-                            const role = ev.is_core_attractor ? "Core Attractor" : "Associative Bridge";
-                            const page = ev.page_number ? ` (Page ${ev.page_number})` : '';
-                            md += `**[E${eNum}] ${src}${page}** *(Role: ${role}, Score: ${score})*\n`;
-                            md += `> ${ev.text.trim().replace(/\n/g, '\n> ')}\n\n`;
-                        });
-                    }
-                    md += `---\n\n`;
-                }
-            });
-
-            const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const safeTitle = (title.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 40) || 'chat');
-            a.download = `${safeTitle}_export.md`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-
-        function jumpToEvidence(msgId, citeIdx) {
-            const details = document.getElementById(`evidence-details-${msgId}`);
-            if (details) details.open = true;
-            setTimeout(() => {
-                const card = document.getElementById(`evidence-card-${msgId}-${citeIdx}`);
-                if (card) {
-                    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    card.classList.add('ring-2', 'ring-blue-500', 'bg-blue-50');
-                    setTimeout(() => {
-                        card.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50');
-                    }, 2200);
-                }
-            }, 60);
-        }
-
-        function copyAnswerText(btn) {
-            const card = btn.closest('.answer-card');
-            if (!card) return;
-            const raw = card.getAttribute('data-raw-content') || card.innerText;
-            navigator.clipboard.writeText(raw).then(() => {
-                const orig = btn.innerHTML;
-                btn.innerHTML = `<svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg><span class="text-emerald-700 font-semibold">Copied!</span>`;
-                setTimeout(() => { btn.innerHTML = orig; }, 2000);
-            }).catch(() => {
-                const ta = document.createElement('textarea');
-                ta.value = raw;
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-                btn.innerText = 'Copied!';
-                setTimeout(() => { btn.innerText = 'Copy'; }, 2000);
-            });
-        }
-
-        function copySnippet(btn, text) {
-            navigator.clipboard.writeText(text).then(() => {
-                const orig = btn.innerHTML;
-                btn.innerHTML = `<svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
-                setTimeout(() => { btn.innerHTML = orig; }, 1500);
-            });
-        }
-
-        function appendAssistantMessageToUI(msg) {
-            const history = document.getElementById('chat-history');
-            const div = document.createElement('div');
-            div.className = "flex justify-start space-x-3";
-
-            const msgId = ++assistantMessageCounter;
-            const ga = msg.grounded_answer || {};
-            const provUsed = ga.provider_used || (msg.provider_used || 'deterministic_grounded_engine');
-            const modelUsed = ga.model_name || (msg.model_name || 'hopfield_evidence_synthesizer');
-            const confVal = msg.confidence !== undefined ? msg.confidence : 0.95;
-            const conf = (confVal * 100).toFixed(1);
-            const latency = msg.latencies ? `${msg.latencies.total_ms}ms` : '3.1s';
-            const rawContent = msg.content || '';
-
-            // Calibrated Grounding status
-            let confBadgeClass = "bg-emerald-50 text-emerald-800 border-emerald-200";
-            let confIcon = `<svg class="w-3 h-3 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
-            let confText = `Verified Grounded (${conf}%)`;
-            if (ga.abstained) {
-                confBadgeClass = "bg-rose-50 text-rose-800 border-rose-200";
-                confIcon = `<svg class="w-3 h-3 text-rose-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>`;
-                confText = "Abstained (Insufficient Evidence)";
-            } else if (confVal < 0.65) {
-                confBadgeClass = "bg-amber-50 text-amber-800 border-amber-200";
-                confIcon = `<svg class="w-3 h-3 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>`;
-                confText = `Moderate Confidence (${conf}%)`;
-            }
-
-            const claims = ga.claims || [];
-            const verifiedClaims = claims.filter(c => c.is_verified);
-            let claimsBadge = '';
-            if (claims.length > 0) {
-                claimsBadge = `
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200" title="${verifiedClaims.length} of ${claims.length} claims verified against retrieved passages">
-                        ${verifiedClaims.length}/${claims.length} Claims Verified
-                    </span>
-                `;
-            }
-
-            // Render Markdown & Citations
-            const formattedContent = renderMarkdown(rawContent, msg.evidence, msgId);
-
-            // Diagnostics accordion HTML
-            let diagHTML = '';
-            if (msg.associative_diagnostics && msg.associative_diagnostics.mode.includes("Hopfield")) {
-                const d = msg.associative_diagnostics;
-                let trajectoryHops = '';
-                if (d.trajectory && d.trajectory.length > 0) {
-                    trajectoryHops = d.trajectory.map(h => `
-                        <div class="flex items-start gap-2 text-[11px] bg-white p-2 rounded-lg border border-slate-200/80">
-                            <span class="font-bold text-blue-700 font-mono">Hop ${h.hop}</span>
-                            <div class="flex-1">
-                                <span class="font-medium text-slate-800">${escapeHtml(h.description)}</span>
-                                <div class="text-[10px] text-slate-400 mt-0.5 font-mono">Energy: ${h.energy} &bull; &Delta;: ${h.delta}</div>
-                            </div>
-                        </div>
-                    `).join('');
-                }
-
-                diagHTML = `
-                    <details class="group mt-3 border border-slate-200 rounded-xl overflow-hidden text-xs bg-slate-50">
-                        <summary class="px-4 py-2.5 font-semibold text-slate-700 cursor-pointer flex items-center justify-between hover:bg-slate-100 transition select-none">
-                            <span class="flex items-center gap-1.5 text-blue-900">
-                                <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                                Hopfield Attractor Landscape Diagnostics
-                            </span>
-                            <span class="text-[10px] text-slate-400 font-mono group-open:rotate-180 transition">&or;</span>
-                        </summary>
-                        <div class="p-3.5 space-y-3 bg-gradient-to-r from-blue-50/40 to-indigo-50/40 border-t border-slate-200">
-                            <div class="grid grid-cols-3 gap-2 text-center">
-                                <div class="bg-white p-2 rounded-lg border border-blue-100 shadow-2xs">
-                                    <span class="text-[10px] text-slate-500 uppercase font-semibold block">Attractor Energy</span>
-                                    <span class="font-mono text-xs font-bold text-blue-900">${d.attractor_energy}</span>
-                                </div>
-                                <div class="bg-white p-2 rounded-lg border border-blue-100 shadow-2xs">
-                                    <span class="text-[10px] text-slate-500 uppercase font-semibold block">Basin Depth &Delta;E</span>
-                                    <span class="font-mono text-xs font-bold text-blue-900">${d.energy_depth}</span>
-                                </div>
-                                <div class="bg-white p-2 rounded-lg border border-blue-100 shadow-2xs">
-                                    <span class="text-[10px] text-slate-500 uppercase font-semibold block">Attractor Hops</span>
-                                    <span class="font-mono text-xs font-bold text-blue-900">${d.convergence_steps}</span>
-                                </div>
-                            </div>
-                            ${trajectoryHops ? `
-                                <div class="space-y-1.5 pt-1">
-                                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Associative Trajectory</span>
-                                    ${trajectoryHops}
-                                </div>
-                            ` : ''}
-                        </div>
-                    </details>
-                `;
-            }
-
-            // Evidence passages accordion HTML
-            let evidenceHTML = '';
-            if (msg.evidence && msg.evidence.length > 0) {
-                evidenceHTML = `
-                    <details id="evidence-details-${msgId}" class="group mt-2 border border-slate-200 rounded-xl overflow-hidden text-xs bg-slate-50">
-                        <summary class="px-4 py-2 font-semibold text-slate-700 cursor-pointer flex items-center justify-between hover:bg-slate-100 transition select-none">
-                            <span class="flex items-center gap-1.5 text-slate-700">
-                                <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                Retrieved Evidence Passages (${msg.evidence.length})
-                            </span>
-                            <span class="text-[10px] text-slate-400 font-mono group-open:rotate-180 transition">&or;</span>
-                        </summary>
-                        <div class="p-3 space-y-2 bg-white border-t border-slate-200">
-                            ${msg.evidence.map((e, idx) => {
-                                const isWeb = e.source_type === 'web' || !!e.url;
-                                const pfx = isWeb ? `W${idx+1}` : `D${idx+1}`;
-                                const badgeClass = isWeb 
-                                    ? "bg-emerald-100/70 text-emerald-800 border-emerald-300" 
-                                    : "bg-blue-100/70 text-blue-700 border-blue-200";
-                                const sourceDisplay = e.url 
-                                    ? `<a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer" class="font-semibold text-blue-600 hover:underline truncate max-w-[200px] flex items-center gap-1" title="${escapeHtml(e.url)}">
-                                        <svg class="w-3 h-3 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                                        <span>${escapeHtml(e.title || (new URL(e.url).hostname))}</span>
-                                       </a>`
-                                    : `<span class="font-semibold text-slate-800 truncate max-w-[220px]" title="${escapeHtml(e.source || 'Doc')}">${escapeHtml(e.source || 'Doc')}</span>`;
-                                return `
-                                <div id="evidence-card-${msgId}-${idx+1}" class="p-3 rounded-xl border border-slate-100 bg-slate-50/70 text-xs space-y-1.5 transition duration-300">
-                                    <div class="flex items-center justify-between text-[11px]">
-                                        <div class="flex items-center gap-1.5">
-                                            <span class="font-bold font-mono px-1.5 py-0.5 rounded border ${badgeClass}">[${pfx}]</span>
-                                            ${sourceDisplay}
-                                            ${e.page_number ? `<span class="text-[10px] text-slate-400">p.${e.page_number}</span>` : ''}
-                                            ${isWeb ? `<span class="text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded border border-emerald-200 font-medium">Web</span>` : ''}
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            <span class="font-mono text-[10px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">Score: ${Number(e.score).toFixed(4)}</span>
-                                            <button onclick="copySnippet(this, ${JSON.stringify(e.text || '')})" class="text-slate-400 hover:text-slate-600 p-0.5 rounded" title="Copy excerpt">
-                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <p class="text-slate-700 leading-relaxed text-[11px]">${escapeHtml(e.text || '')}</p>
-                                </div>
-                            `}).join('')}
-                        </div>
-                    </details>
-                `;
-            }
-
-            // Contextualized Query resolution indicator
-            let contextPillHTML = '';
-            if (msg.contextualized_query && msg.contextualized_query.trim().toLowerCase() !== (msg.query || '').trim().toLowerCase()) {
-                contextPillHTML = `
-                    <div class="mb-3 flex items-center gap-2 text-[11px] text-indigo-700 bg-indigo-50/80 border border-indigo-200/80 rounded-xl px-3 py-1.5 w-fit shadow-2xs">
-                        <svg class="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        <span>Understood context: <strong class="font-semibold text-indigo-900">${escapeHtml(msg.contextualized_query)}</strong></span>
-                    </div>
-                `;
-            }
-
-            let webBadge = '';
-            if (msg.web_search_used) {
-                webBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">🌐 Web Augmented</span>`;
-            } else if (msg.cached_knowledge_used) {
-                webBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-800 border border-cyan-300">🧠 Knowledge Cache</span>`;
-            }
-
-            let formatBadge = '';
-            if (msg.format_detected) {
-                formatBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">📝 Format: ${escapeHtml(msg.format_detected)}</span>`;
-            }
-
-            div.innerHTML = `
-                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 shadow-xs mt-1">
-                    HAM
-                </div>
-                <div class="flex-1 max-w-full min-w-0">
-                    <!-- Grounded Answer Card -->
-                    <div class="answer-card bg-white border border-slate-200 rounded-2xl rounded-tl-xs p-6 shadow-xs text-sm leading-relaxed text-slate-800 w-full overflow-x-auto" data-raw-content="${escapeHtml(rawContent)}">
-                        <!-- Header with Grounding Badge & Copy Button -->
-                        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${confBadgeClass}">
-                                    ${confIcon} <span>${confText}</span>
-                                </span>
-                                ${claimsBadge}
-                                ${webBadge}
-                                ${formatBadge}
-                            </div>
-                            <button onclick="copyAnswerText(this)" class="copy-btn text-xs text-slate-400 hover:text-slate-700 flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition border border-transparent hover:border-slate-200 cursor-pointer" title="Copy answer to clipboard">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                                <span>Copy</span>
-                            </button>
-                        </div>
-
-                        ${contextPillHTML}
-
-                        <!-- Rendered Markdown Body -->
-                        <div class="markdown-body text-slate-800">
-                            ${formattedContent}
-                        </div>
-
-                        ${diagHTML}
-                        ${evidenceHTML}
-                        
-                        <!-- Metadata Footer -->
-                        <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-2">
-                            <div class="flex items-center gap-3">
-                                <span>Model: <strong class="text-slate-600 font-mono">${escapeHtml(modelUsed)}</strong></span>
-                                <span>Engine: <strong class="text-slate-600 font-mono">${escapeHtml(provUsed)}</strong></span>
-                                <span>Confidence: <strong class="text-emerald-700">${conf}%</strong></span>
-                            </div>
-                            <span class="font-mono text-slate-400">${latency}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-            history.appendChild(div);
-        }
-
-        // =====================================================================
-        // STATUS & HELPERS
+        // CHAT & RAG ENGINE
         // =====================================================================
         async function checkStatus() {
             try {
@@ -1412,235 +435,506 @@
                 if (res.ok) {
                     const data = await res.json();
                     const badge = document.getElementById('pipeline-badge');
-                    if (badge) {
-                        if (data.ready) {
-                            badge.innerText = `${data.documents} docs (${data.chunks} chunks)`;
-                            badge.className = "text-[11px] px-2 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-800";
-                        } else {
-                            badge.innerText = "No Docs";
-                            badge.className = "text-[11px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800";
-                        }
-                    }
-
-                    if (data.llm) {
-                        const pill = document.getElementById('llm-status-pill');
-                        const msg = document.getElementById('llm-status-msg');
-                        const modelInput = document.getElementById('llm-model');
-
-                        if (modelInput && !modelInput.dataset.userEdited && data.llm.model) {
-                            modelInput.value = data.llm.model;
-                        }
-
-                        if (pill) {
-                            if (data.llm.is_healthy) {
-                                pill.innerText = "LLM Ready";
-                                pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300";
-                                if (msg) msg.innerText = `Connected: ${data.llm.effective_provider} (${data.llm.model})`;
-                            } else if (data.llm.fallback_enabled) {
-                                pill.innerText = "Fallback Active";
-                                pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-300";
-                                if (msg) msg.innerText = "Ollama offline → Auto-fallback to deterministic engine active.";
-                            } else {
-                                pill.innerText = "Offline";
-                                pill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-rose-100 text-rose-800 border border-rose-300";
-                            }
-                        }
-                    }
-                } else {
-                    const badge = document.getElementById('pipeline-badge');
-                    if (badge && badge.innerText === 'Checking...') {
-                        badge.innerText = 'Connecting...';
-                        badge.className = 'text-[11px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600';
+                    if (data.ready) {
+                        badge.className = "text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800";
+                        badge.innerText = `${data.chunks} Chunks Ready`;
                     }
                 }
-            } catch (e) {
-                const badge = document.getElementById('pipeline-badge');
-                if (badge && badge.innerText === 'Checking...') {
-                    badge.innerText = 'Connecting...';
-                    badge.className = 'text-[11px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600';
-                }
-                const pill = document.getElementById('llm-status-pill');
-                if (pill && pill.innerText.includes('Checking')) {
-                    pill.innerText = 'Connecting...';
-                    pill.className = 'text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200';
-                }
-            }
+            } catch (e) {}
         }
 
-        function setQuickStyle(style) {
-            const select = document.getElementById('answer-style');
-            if (select) select.value = style;
-            ['detailed', 'conversational', 'executive', 'concise'].forEach(s => {
-                const pill = document.getElementById(`pill-${s}`);
-                if (pill) {
-                    if (s === style) {
-                        pill.className = "text-[11px] px-2.5 py-0.5 rounded-full font-semibold transition bg-blue-600 text-white shadow-2xs";
-                    } else {
-                        pill.className = "text-[11px] px-2.5 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600";
-                    }
-                }
-            });
-        }
-
-        let isWebSearchToggleActive = false;
-
-        function setQuickFormat(fmt) {
-            const select = document.getElementById('answer-format-select');
-            if (select) select.value = fmt;
-            ['auto', '2_mark', '5_mark', '8_mark', '10_mark', 'comparison', 'worked_example', 'structured_notes'].forEach(f => {
-                const pill = document.getElementById(`pill-fmt-${f}`);
-                if (pill) {
-                    if (f === fmt) {
-                        pill.className = "px-2 py-0.5 rounded-full font-semibold transition bg-blue-600 text-white shadow-2xs";
-                    } else {
-                        pill.className = "px-2 py-0.5 rounded-full font-medium transition bg-slate-100 hover:bg-slate-200 text-slate-600";
-                    }
-                }
-            });
-        }
-
-        function isWebSearchActive() {
-            const chk = document.getElementById('web-search-enabled-chk');
-            if (chk && chk.checked) return true;
-            if (isWebSearchToggleActive) return true;
-            return undefined; // Automatic backend sufficiency decision
-        }
-
-        function toggleWebSearch() {
-            isWebSearchToggleActive = !isWebSearchToggleActive;
-            const chk = document.getElementById('web-search-enabled-chk');
-            if (chk) chk.checked = isWebSearchToggleActive;
-            updateWebSearchUI();
-        }
-
-        function syncWebSearchToggle() {
-            const chk = document.getElementById('web-search-enabled-chk');
-            isWebSearchToggleActive = chk ? chk.checked : false;
-            updateWebSearchUI();
-        }
-
-        function updateWebSearchUI() {
-            const btn = document.getElementById('web-search-toggle-btn');
-            const dot = document.getElementById('web-search-dot');
-            if (btn && dot) {
-                if (isWebSearchToggleActive) {
-                    btn.className = "ml-auto text-[11px] px-2.5 py-0.5 rounded-full font-semibold transition flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs cursor-pointer flex-shrink-0";
-                    dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
-                } else {
-                    btn.className = "ml-auto text-[11px] px-2.5 py-0.5 rounded-full font-semibold transition flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 cursor-pointer flex-shrink-0";
-                    dot.className = "w-2 h-2 rounded-full bg-slate-400";
-                }
-            }
-        }
-
-        async function clearKnowledgeCache() {
-            if (!confirm("Clear all persistent web knowledge cached from searches?")) return;
+        async function loadChats() {
             try {
-                const res = await fetch('/api/knowledge', { method: 'DELETE' });
+                const res = await fetch('/api/chats');
                 if (res.ok) {
-                    alert("Persistent web knowledge cache cleared successfully.");
+                    const data = await res.json();
+                    chatSessions = data.chats || [];
+                    renderChatsList();
+                    if (chatSessions.length > 0 && !activeChatId) {
+                        selectChat(chatSessions[0].id);
+                    } else if (!activeChatId) {
+                        createNewChat();
+                    }
+                }
+            } catch (e) {}
+        }
+
+        function renderChatsList() {
+            const listEl = document.getElementById('chats-list');
+            if (chatSessions.length === 0) {
+                listEl.innerHTML = `<div class="text-center py-6 text-slate-400 text-xs">No active chats.</div>`;
+                return;
+            }
+            listEl.innerHTML = chatSessions.map(c => `
+                <div class="p-2 rounded-lg cursor-pointer text-xs ${c.id === activeChatId ? 'bg-blue-50 text-blue-800 font-bold border border-blue-200' : 'hover:bg-slate-100 text-slate-700'}" onclick="selectChat('${c.id}')">
+                    <div class="truncate">${c.title || 'Conversation'}</div>
+                </div>
+            `).join('');
+        }
+
+        function createNewChat() {
+            const id = 'chat_' + Date.now();
+            activeChatId = id;
+            chatSessions.unshift({ id, title: 'New Conversation', messages: [] });
+            renderChatsList();
+            document.getElementById('chat-history').innerHTML = '';
+            document.getElementById('chat-history').classList.add('hidden');
+            document.getElementById('welcome-state').classList.remove('hidden');
+        }
+
+        function selectChat(id) {
+            activeChatId = id;
+            renderChatsList();
+            const sess = chatSessions.find(c => c.id === id);
+            const history = document.getElementById('chat-history');
+            const welcome = document.getElementById('welcome-state');
+            if (sess && sess.messages && sess.messages.length > 0) {
+                welcome.classList.add('hidden');
+                history.classList.remove('hidden');
+                history.innerHTML = sess.messages.map(m => renderMessageBubble(m)).join('');
+            } else {
+                history.innerHTML = '';
+                history.classList.add('hidden');
+                welcome.classList.remove('hidden');
+            }
+        }
+
+        function renderMessageBubble(m) {
+            const isUser = m.role === 'user';
+            return `
+                <div class="flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}">
+                    <div class="max-w-3xl p-3.5 rounded-2xl ${isUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none border border-slate-200'} text-xs leading-relaxed">
+                        <div class="whitespace-pre-wrap">${m.content}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function setQueryAndSearch(q) {
+            document.getElementById('query-input').value = q;
+            sendQuery();
+        }
+
+        function handleInputKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendQuery();
+            }
+        }
+
+        async function sendQuery() {
+            const input = document.getElementById('query-input');
+            const q = input.value.trim();
+            if (!q || isSearching) return;
+            isSearching = true;
+
+            const welcome = document.getElementById('welcome-state');
+            const history = document.getElementById('chat-history');
+            welcome.classList.add('hidden');
+            history.classList.remove('hidden');
+
+            // Append User Message
+            const userMsg = { role: 'user', content: q };
+            history.insertAdjacentHTML('beforeend', renderMessageBubble(userMsg));
+            input.value = '';
+
+            const sess = chatSessions.find(c => c.id === activeChatId);
+            if (sess) {
+                sess.messages.push(userMsg);
+                if (sess.title === 'New Conversation') sess.title = q.slice(0, 30);
+                renderChatsList();
+            }
+
+            // Spinner
+            document.getElementById('send-icon').classList.add('hidden');
+            document.getElementById('search-spinner').style.display = 'block';
+
+            try {
+                const beta = parseFloat(document.getElementById('hopfield-beta').value) || 8.0;
+                const top_k = parseInt(document.getElementById('top-k').value) || 5;
+                const style = document.getElementById('answer-style-select').value;
+
+                const res = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: q,
+                        hopfield_beta: beta,
+                        top_k: top_k,
+                        answer_style: style,
+                        chat_id: activeChatId
+                    })
+                });
+                const data = await res.json();
+                const botContent = data.answer || "No response received.";
+                const botMsg = { role: 'assistant', content: botContent };
+                history.insertAdjacentHTML('beforeend', renderMessageBubble(botMsg));
+                if (sess) sess.messages.push(botMsg);
+            } catch (err) {
+                history.insertAdjacentHTML('beforeend', renderMessageBubble({ role: 'assistant', content: 'Error: ' + err.message }));
+            } finally {
+                isSearching = false;
+                document.getElementById('send-icon').classList.remove('hidden');
+                document.getElementById('search-spinner').style.display = 'none';
+                document.getElementById('chat-scroll-container').scrollTop = document.getElementById('chat-scroll-container').scrollHeight;
+            }
+        }
+
+        // =====================================================================
+        // FILE UPLOAD & DOCUMENTS
+        // =====================================================================
+        async function uploadFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const status = document.getElementById('upload-status');
+            status.style.display = 'block';
+            status.innerText = `Ingesting ${file.name}...`;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (res.ok) {
+                    status.innerText = `Successfully indexed: ${file.name}`;
+                    await refreshDocumentsList();
+                    await loadMultimodalDocs();
+                    await refreshMemoryStats();
                 } else {
-                    alert("Could not clear knowledge cache.");
+                    status.innerText = `Upload failed: ${data.detail || 'Unknown error'}`;
                 }
             } catch (e) {
-                alert("Error: " + e.message);
+                status.innerText = `Error: ${e.message}`;
             }
         }
 
-        function updateLLMUI() {
-            const prov = document.getElementById('llm-provider').value;
-            const modelGrp = document.getElementById('llm-model-group');
-            const urlGrp = document.getElementById('llm-base-url-group');
-            const keyGrp = document.getElementById('llm-api-key-group');
-            const tokensGrp = document.getElementById('llm-max-tokens-group');
+        async function refreshDocumentsList() {
+            try {
+                const res = await fetch('/api/documents');
+                if (res.ok) {
+                    const data = await res.json();
+                    const docs = data.documents || [];
+                    document.getElementById('docs-count-badge').innerText = docs.length;
+                    const listEl = document.getElementById('documents-list');
+                    if (docs.length === 0) {
+                        listEl.innerHTML = `<div class="text-center py-6 text-slate-400 text-xs">No documents uploaded.</div>`;
+                    } else {
+                        listEl.innerHTML = docs.map(d => `
+                            <div class="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs flex justify-between items-center">
+                                <span class="truncate font-semibold text-slate-700">${d.source}</span>
+                                <span class="text-[10px] text-slate-400">${d.chunks} chunks</span>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch (e) {}
+        }
 
-            if (prov === 'deterministic') {
-                if (modelGrp) modelGrp.style.display = 'none';
-                if (urlGrp) urlGrp.style.display = 'none';
-                if (keyGrp) keyGrp.style.display = 'none';
-                if (tokensGrp) tokensGrp.style.display = 'none';
-            } else if (prov === 'openai') {
-                if (modelGrp) modelGrp.style.display = 'block';
-                if (urlGrp) urlGrp.style.display = 'block';
-                if (keyGrp) keyGrp.style.display = 'block';
-                if (tokensGrp) tokensGrp.style.display = 'block';
-                const urlInput = document.getElementById('llm-base-url');
-                if (urlInput && urlInput.value.includes('localhost:11434')) {
-                    urlInput.value = 'https://api.openai.com/v1';
+        // =====================================================================
+        // VISUAL DOCUMENT READER
+        // =====================================================================
+        async function loadMultimodalDocs() {
+            try {
+                const res = await fetch('/api/documents/multimodal');
+                if (res.ok) {
+                    const data = await res.json();
+                    multimodalDocs = data.documents || [];
+                    const sel = document.getElementById('reader-doc-select');
+                    sel.innerHTML = '<option value="">Select Document...</option>' + multimodalDocs.map(d => `
+                        <option value="${d.doc_id}">${d.filename} (${d.total_pages}p)</option>
+                    `).join('');
                 }
-                const modelInput = document.getElementById('llm-model');
-                if (modelInput && modelInput.value.includes('llama3.2')) {
-                    modelInput.value = 'gpt-4o-mini';
+            } catch (e) {}
+        }
+
+        async function loadReaderDocument(docId) {
+            if (!docId) return;
+            currentReaderDoc = multimodalDocs.find(d => d.doc_id === docId);
+            currentReaderPage = 1;
+            await renderCurrentReaderPage();
+        }
+
+        function prevReaderPage() {
+            if (currentReaderPage > 1) {
+                currentReaderPage--;
+                renderCurrentReaderPage();
+            }
+        }
+
+        function nextReaderPage() {
+            if (currentReaderDoc && currentReaderPage < currentReaderDoc.total_pages) {
+                currentReaderPage++;
+                renderCurrentReaderPage();
+            }
+        }
+
+        async function renderCurrentReaderPage() {
+            if (!currentReaderDoc) return;
+            const docId = currentReaderDoc.doc_id;
+            const pageNum = currentReaderPage;
+
+            document.getElementById('reader-page-indicator').innerText = `Page ${pageNum} of ${currentReaderDoc.total_pages}`;
+
+            try {
+                const res = await fetch(`/api/documents/${docId}/pages/${pageNum}`);
+                if (res.ok) {
+                    const data = await res.json();
+
+                    // 1. Render Preview Image or Placeholder
+                    const imgWrap = document.getElementById('reader-image-wrap');
+                    if (data.image_base64) {
+                        imgWrap.innerHTML = `<img src="data:image/png;base64,${data.image_base64}" class="rounded-xl shadow-sm border border-slate-300 max-h-[70vh] object-contain">`;
+                    } else {
+                        imgWrap.innerHTML = `
+                            <div class="text-center p-8 bg-white border border-slate-200 rounded-xl shadow-xs">
+                                <div class="text-3xl mb-2">📄</div>
+                                <div class="font-bold text-slate-700">${currentReaderDoc.filename}</div>
+                                <div class="text-[11px] text-slate-400 mt-1">Page ${pageNum} &bull; ${data.elements ? data.elements.length : 0} extracted elements</div>
+                            </div>
+                        `;
+                    }
+
+                    // 2. Summary & Concepts
+                    document.getElementById('reader-ai-summary').innerText = data.ai_summary || "Native document layout extracted.";
+                    const conceptsWrap = document.getElementById('reader-key-concepts');
+                    conceptsWrap.innerHTML = (data.key_concepts || []).map(c => `<span class="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded-full font-medium">${c}</span>`).join('');
+
+                    // 3. Tables
+                    const tablesWrap = document.getElementById('reader-tables-list');
+                    const tblElems = (data.elements || []).filter(e => e.element_type === 'table');
+                    if (tblElems.length === 0) {
+                        tablesWrap.innerHTML = `<div class="text-xs text-slate-400 italic">No tables on this page.</div>`;
+                    } else {
+                        tablesWrap.innerHTML = tblElems.map(t => `
+                            <div class="bg-white border border-slate-200 rounded-xl p-2.5 text-xs">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="font-bold text-slate-700">Table: ${t.element_id}</span>
+                                    <a href="/api/documents/${docId}/tables/${t.element_id}/csv" class="text-indigo-600 hover:underline font-semibold text-[11px]" download>Download CSV</a>
+                                </div>
+                                <pre class="text-[10px] bg-slate-50 p-1.5 rounded overflow-x-auto text-slate-600">${t.content}</pre>
+                            </div>
+                        `).join('');
+                    }
+
+                    // 4. Extracted Text
+                    document.getElementById('reader-extracted-text').innerText = data.text_content || "No text on this page.";
                 }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // =====================================================================
+        // AI VISUAL STUDIO
+        // =====================================================================
+        async function generateStudioViz() {
+            const prompt = document.getElementById('studio-prompt-input').value.trim();
+            const vizType = document.getElementById('studio-type-select').value;
+            if (!prompt) return;
+
+            const loading = document.getElementById('studio-loading');
+            const notice = document.getElementById('studio-notice');
+            const container = document.getElementById('studio-render-container');
+
+            loading.classList.remove('hidden');
+            notice.classList.add('hidden');
+            container.innerHTML = '';
+
+            try {
+                const res = await fetch('/api/visual-studio/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: prompt, requested_type: vizType })
+                });
+                const data = await res.json();
+
+                if (!data.has_numerical_data && data.description) {
+                    notice.classList.remove('hidden');
+                    notice.innerText = data.description;
+                }
+
+                if (data.viz_type === 'mermaid') {
+                    const id = 'mermaid_' + Date.now();
+                    container.innerHTML = `<div class="mermaid w-full max-w-3xl overflow-auto text-center" id="${id}">${data.content}</div>`;
+                    mermaid.init(undefined, `#${id}`);
+                } else if (data.viz_type === 'plotly') {
+                    const pid = 'plotly_' + Date.now();
+                    container.innerHTML = `<div id="${pid}" class="w-full h-96"></div>`;
+                    Plotly.newPlot(pid, data.content.data, data.content.layout, { responsive: true });
+                } else {
+                    container.innerHTML = `<pre class="text-xs font-mono p-4 bg-white rounded-xl border border-slate-200">${JSON.stringify(data.content, null, 2)}</pre>`;
+                }
+            } catch (e) {
+                container.innerHTML = `<div class="text-red-500 text-xs">Error generating visualization: ${e.message}</div>`;
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        // =====================================================================
+        // KNOWLEDGE GRAPH
+        // =====================================================================
+        async function loadKnowledgeGraph() {
+            try {
+                const res = await fetch('/api/knowledge-graph');
+                if (res.ok) {
+                    const data = await res.json();
+                    const cyContainer = document.getElementById('cy-container');
+                    cyInstance = cytoscape({
+                        container: cyContainer,
+                        elements: data.elements,
+                        style: [
+                            {
+                                selector: 'node',
+                                style: {
+                                    'background-color': 'data(color)',
+                                    'label': 'data(label)',
+                                    'color': '#ffffff',
+                                    'font-size': '10px',
+                                    'text-valign': 'center',
+                                    'text-halign': 'center',
+                                    'width': '50px',
+                                    'height': '50px'
+                                }
+                            },
+                            {
+                                selector: 'edge',
+                                style: {
+                                    'width': 1.5,
+                                    'line-color': '#475569',
+                                    'target-arrow-color': '#475569',
+                                    'target-arrow-shape': 'triangle',
+                                    'curve-style': 'bezier',
+                                    'label': 'data(label)',
+                                    'font-size': '8px',
+                                    'color': '#94a3b8'
+                                }
+                            }
+                        ],
+                        layout: { name: 'cose', animate: false }
+                    });
+
+                    cyInstance.on('tap', 'node', function(evt){
+                        const node = evt.target;
+                        const d = node.data();
+                        document.getElementById('kg-node-details').innerHTML = `
+                            <div class="space-y-1.5">
+                                <div class="font-bold text-slate-800">${d.label}</div>
+                                <div class="text-[11px] text-slate-400">Type: <span class="text-slate-700">${d.type}</span></div>
+                                <div class="text-[11px] text-slate-400">Page: <span class="text-slate-700">${d.page || 1}</span></div>
+                            </div>
+                        `;
+                    });
+                }
+            } catch (e) {}
+        }
+
+        // =====================================================================
+        // AI STUDY ASSISTANT
+        // =====================================================================
+        async function loadStudyDeck() {
+            const topic = document.getElementById('study-topic-input').value.trim() || "General Knowledge";
+            try {
+                const res = await fetch('/api/study/deck', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topic })
+                });
+                const data = await res.json();
+
+                // 1. Render Flashcards
+                const fcWrap = document.getElementById('study-flashcards-list');
+                if (!data.flashcards || data.flashcards.length === 0) {
+                    fcWrap.innerHTML = `<div class="text-xs text-slate-400 text-center py-8">No flashcards found.</div>`;
+                } else {
+                    fcWrap.innerHTML = data.flashcards.map((f, i) => `
+                        <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs cursor-pointer hover:border-blue-300 transition" onclick="this.classList.toggle('border-blue-500'); this.querySelector('.answer-box').classList.toggle('hidden')">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-[10px] uppercase font-bold text-blue-600">Card ${i+1} &bull; ${f.concept}</span>
+                                <span class="text-[10px] text-slate-400">${f.source_citation} p.${f.page_number}</span>
+                            </div>
+                            <div class="text-xs font-bold text-slate-800 mb-2">${f.front_question}</div>
+                            <div class="answer-box hidden mt-2 pt-2 border-t border-slate-100 text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl">
+                                <strong>Answer:</strong> ${f.back_answer}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                // 2. Render MCQs
+                const mcqWrap = document.getElementById('study-mcqs-list');
+                if (!data.questions || data.questions.length === 0) {
+                    mcqWrap.innerHTML = `<div class="text-xs text-slate-400 text-center py-8">No questions generated.</div>`;
+                } else {
+                    mcqWrap.innerHTML = data.questions.map((q, idx) => `
+                        <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                            <div class="text-xs font-bold text-slate-800 mb-2">${idx+1}. ${q.question}</div>
+                            <div class="space-y-1.5">
+                                ${q.options.map((opt, optIdx) => `
+                                    <button onclick="revealMcqAnswer(this, ${optIdx === q.correct_option_index}, '${q.explanation}')" class="w-full text-left p-2 rounded-xl border border-slate-200 text-xs text-slate-700 hover:bg-slate-50 transition">
+                                        ${opt}
+                                    </button>
+                                `).join('')}
+                            </div>
+                            <div class="mcq-feedback hidden mt-2 text-xs p-2 rounded-xl"></div>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function revealMcqAnswer(btn, isCorrect, explanation) {
+            const parent = btn.parentElement;
+            const feedback = parent.parentElement.querySelector('.mcq-feedback');
+            feedback.classList.remove('hidden');
+            if (isCorrect) {
+                btn.className = "w-full text-left p-2 rounded-xl border border-emerald-500 bg-emerald-50 text-xs text-emerald-800 font-bold";
+                feedback.className = "mcq-feedback mt-2 text-xs p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800";
+                feedback.innerHTML = `<strong>Correct!</strong> ${explanation}`;
             } else {
-                if (modelGrp) modelGrp.style.display = 'block';
-                if (urlGrp) urlGrp.style.display = 'block';
-                if (keyGrp) keyGrp.style.display = 'none';
-                if (tokensGrp) tokensGrp.style.display = 'block';
-                const urlInput = document.getElementById('llm-base-url');
-                if (urlInput && urlInput.value.includes('api.openai.com')) {
-                    urlInput.value = 'http://localhost:11434/v1';
-                }
-                const modelInput = document.getElementById('llm-model');
-                if (modelInput && modelInput.value.includes('gpt-')) {
-                    modelInput.value = 'llama3.2:1b';
-                }
+                btn.className = "w-full text-left p-2 rounded-xl border border-rose-500 bg-rose-50 text-xs text-rose-800";
+                feedback.className = "mcq-feedback mt-2 text-xs p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800";
+                feedback.innerHTML = `<strong>Incorrect.</strong> ${explanation}`;
             }
         }
 
-        let isWideScreen = false;
-        function toggleChatWidth() {
-            isWideScreen = !isWideScreen;
-            const history = document.getElementById('chat-history');
-            const promptBar = document.getElementById('prompt-container');
-            const emptyState = document.getElementById('empty-state');
-            const btnText = document.getElementById('width-toggle-text');
-
-            const wideClasses = ['max-w-none', 'w-full', 'px-4'];
-            const standardClasses = ['max-w-5xl', 'xl:max-w-6xl', 'mx-auto'];
-
-            if (isWideScreen) {
-                if (history) {
-                    history.classList.remove(...standardClasses);
-                    history.classList.add(...wideClasses);
+        // =====================================================================
+        // MEMORY ANALYTICS & BENCHMARK
+        // =====================================================================
+        async function refreshMemoryStats() {
+            try {
+                const res = await fetch('/api/memory/hierarchical/stats');
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('stat-l1').innerText = data.level1_raw_memory_count || 0;
+                    document.getElementById('stat-l2').innerText = data.level2_semantic_patterns || 0;
+                    document.getElementById('stat-l3').innerText = (data.level3_associative_beta || 8.0).toFixed(1);
+                    document.getElementById('stat-l4').innerText = data.level4_kg_nodes || 0;
+                    document.getElementById('stat-l5').innerText = data.level5_episodic_interactions || 0;
                 }
-                if (promptBar) {
-                    promptBar.classList.remove(...standardClasses);
-                    promptBar.classList.add(...wideClasses);
-                }
-                if (emptyState) {
-                    emptyState.classList.remove(...standardClasses);
-                    emptyState.classList.add(...wideClasses);
-                }
-                if (btnText) btnText.textContent = "Standard Width";
-            } else {
-                if (history) {
-                    history.classList.remove(...wideClasses);
-                    history.classList.add(...standardClasses);
-                }
-                if (promptBar) {
-                    promptBar.classList.remove(...wideClasses);
-                    promptBar.classList.add(...standardClasses);
-                }
-                if (emptyState) {
-                    emptyState.classList.remove(...wideClasses);
-                    emptyState.classList.add(...standardClasses);
-                }
-                if (btnText) btnText.textContent = "Wide Screen";
-            }
+            } catch (e) {}
         }
 
-        function escapeHtml(text) {
-            if (!text) return '';
-            return String(text)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+        async function runLiveBenchmark() {
+            const out = document.getElementById('benchmark-output');
+            out.innerText = "Running Hopfield continuous retrieval benchmark across test manifolds...";
+            try {
+                const res = await fetch('/api/memory/benchmark');
+                if (res.ok) {
+                    const data = await res.json();
+                    out.innerText = JSON.stringify(data, null, 2);
+                    await refreshMemoryStats();
+                } else {
+                    out.innerText = "Benchmark execution failed.";
+                }
+            } catch (e) {
+                out.innerText = "Error: " + e.message;
+            }
         }
     </script>
-    <!-- Floating Citation Hover Preview Card -->
-    <div id="citation-preview-card" class="fixed hidden z-50 w-80 max-w-sm bg-white rounded-xl shadow-xl border border-slate-200 p-3 pointer-events-none transition-opacity duration-150 text-left"></div>
 </body>
 </html>

@@ -13,11 +13,33 @@ from core.pipeline import HopfieldQAPipeline, PipelineConfig
 from core.llm_provider import LLMConfig, create_llm_provider, MockLLMProvider
 from core.chat_manager import ChatManager
 from utils.file_utils import extract_text_from_file
+from core.multimodal_reader import MultimodalDocumentReader, MultimodalDocument
+from core.visual_studio import VisualStudioEngine
+from core.study_assistant import StudyAssistantEngine
+from core.hopfield_hierarchical import HierarchicalHopfieldMemory
+import base64
+import csv
+from fastapi.responses import Response
 
 app = FastAPI(title="Hopfield QA API")
 
 pipeline = None
 chat_manager = ChatManager("data")
+multimodal_reader = MultimodalDocumentReader()
+multimodal_store: Dict[str, MultimodalDocument] = {}
+visual_studio = VisualStudioEngine()
+study_assistant = StudyAssistantEngine()
+hierarchical_memory: Optional[HierarchicalHopfieldMemory] = None
+
+class VisualStudioRequest(BaseModel):
+    prompt: str
+    requested_type: Optional[str] = None
+    doc_id: Optional[str] = None
+    page_num: Optional[int] = None
+
+class StudyDeckRequest(BaseModel):
+    topic: Optional[str] = "General Knowledge"
+    doc_id: Optional[str] = None
 
 class SearchRequest(BaseModel):
     query: str
@@ -51,7 +73,7 @@ class UpdateChatRequest(BaseModel):
 
 @app.on_event("startup")
 def startup_event():
-    global pipeline
+    global pipeline, hierarchical_memory
     proj_path = "models/projection_squad.pt" if os.path.exists("models/projection_squad.pt") else None
     config = PipelineConfig(
         embedding_model="all-MiniLM-L6-v2",
@@ -66,6 +88,8 @@ def startup_event():
         web_search_provider=os.environ.get("WEB_SEARCH_PROVIDER", "composite"),
     )
     pipeline = HopfieldQAPipeline(config)
+    hierarchical_memory = HierarchicalHopfieldMemory(embedding_dim=pipeline.embedder.embedding_dim)
+    pipeline.hierarchical_memory = hierarchical_memory
 
 @app.get("/api/status")
 def get_status():
@@ -404,7 +428,7 @@ def remove_document(source: str):
 
 @app.post("/api/upload")
 async def upload_document(file: UploadFile = File(...)):
-    global pipeline
+    global pipeline, hierarchical_memory, multimodal_store
     if not pipeline:
         raise HTTPException(status_code=500, detail="Pipeline not initialized")
         
@@ -417,23 +441,261 @@ async def upload_document(file: UploadFile = File(...)):
         )
 
     try:
-        bio = io.BytesIO(content)
-        text, _ = extract_text_from_file(bio, file.filename)
-            
+        # Parse through MultimodalDocumentReader
+        parsed_doc = multimodal_reader.parse_file(content, file.filename)
+        multimodal_store[parsed_doc.doc_id] = parsed_doc
+        multimodal_store[file.filename] = parsed_doc
+
+        text = parsed_doc.full_text
         if not text or not text.strip():
-            raise ValueError(f"Extracted text from '{file.filename}' is empty or unreadable. Please check the document format.")
-            
+            bio = io.BytesIO(content)
+            text, _ = extract_text_from_file(bio, file.filename)
+
+        if not text or not text.strip():
+            raise ValueError(f"Extracted text from '{file.filename}' is empty or unreadable.")
+
         print(f"[API] Upload request received: {file.filename} ({len(content)} bytes)", flush=True)
         docs = [(text, file.filename)]
         pipeline.add_documents(docs)
+
+        # Ingest into Hierarchical Hopfield Memory 2.0
+        if hierarchical_memory:
+            chunks = parsed_doc.to_chunks()
+            if chunks:
+                chunk_texts = [c["text"] for c in chunks]
+                embeddings = pipeline.embedder.embed_texts(chunk_texts, show_progress=False)
+                hierarchical_memory.ingest_chunks(chunks, embeddings)
+
         total_chunks = pipeline.n_chunks
         print(f"[API] Successfully ingested {file.filename}: {total_chunks} total chunks indexed.", flush=True)
         return {
-            "message": f"Successfully ingested {file.filename} ({total_chunks} chunks indexed in Hopfield memory)."
+            "message": f"Successfully ingested {file.filename} ({total_chunks} chunks indexed in Hopfield memory).",
+            "doc_id": parsed_doc.doc_id,
+            "filename": file.filename,
+            "total_pages": parsed_doc.total_pages,
+            "tables_found": len(parsed_doc.tables),
+            "diagrams_found": len(parsed_doc.diagrams)
         }
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==============================================================================
+# Multimodal Document Reader Endpoints
+# ==============================================================================
+
+@app.get("/api/documents/multimodal")
+def list_multimodal_documents():
+    """List parsed multimodal documents with page counts and structural stats."""
+    docs = []
+    seen = set()
+    for doc_id, doc in multimodal_store.items():
+        if doc.doc_id in seen:
+            continue
+        seen.add(doc.doc_id)
+        docs.append({
+            "doc_id": doc.doc_id,
+            "filename": doc.filename,
+            "file_type": doc.file_type,
+            "total_pages": doc.total_pages,
+            "tables_count": len(doc.tables),
+            "diagrams_count": len(doc.diagrams)
+        })
+    return {"documents": docs, "total_documents": len(docs)}
+
+
+@app.get("/api/documents/{doc_id}/pages")
+def get_document_pages(doc_id: str):
+    """Retrieve metadata and summaries for each page of a multimodal document."""
+    doc = multimodal_store.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    pages_summary = []
+    for p in doc.pages:
+        pages_summary.append({
+            "page_number": p.page_number,
+            "snippet": p.text_content[:200] + "..." if len(p.text_content) > 200 else p.text_content,
+            "has_tables": p.has_tables,
+            "has_images": p.has_images,
+            "ai_summary": p.ai_summary,
+            "key_concepts": p.key_concepts
+        })
+    return {"doc_id": doc_id, "filename": doc.filename, "pages": pages_summary}
+
+
+@app.get("/api/documents/{doc_id}/pages/{page_num}")
+def get_page_details(doc_id: str, page_num: int):
+    """Retrieve detailed elements and optional rendered image for a specific page."""
+    doc = multimodal_store.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    page = doc.get_page(page_num)
+    if not page:
+        raise HTTPException(status_code=404, detail=f"Page {page_num} not found")
+
+    img_b64 = None
+    if page.page_image_bytes:
+        img_b64 = base64.b64encode(page.page_image_bytes).decode("utf-8")
+
+    elements_data = []
+    for elem in page.elements:
+        elements_data.append({
+            "element_id": elem.element_id,
+            "element_type": elem.element_type,
+            "content": elem.content,
+            "bbox": elem.bbox,
+            "structured_data": elem.structured_data
+        })
+
+    return {
+        "doc_id": doc_id,
+        "page_number": page_num,
+        "text_content": page.text_content,
+        "ai_summary": page.ai_summary,
+        "key_concepts": page.key_concepts,
+        "has_tables": page.has_tables,
+        "has_images": page.has_images,
+        "image_base64": img_b64,
+        "elements": elements_data
+    }
+
+
+@app.get("/api/documents/{doc_id}/tables")
+def get_document_tables(doc_id: str):
+    """List all extracted tables for a document."""
+    doc = multimodal_store.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"doc_id": doc_id, "tables": doc.tables}
+
+
+@app.get("/api/documents/{doc_id}/tables/{table_id}/csv")
+def export_table_csv(doc_id: str, table_id: str):
+    """Exports an extracted table as a downloadable CSV file."""
+    doc = multimodal_store.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    target_table = None
+    for tbl in doc.tables:
+        if tbl.get("table_id") == table_id:
+            target_table = tbl
+            break
+    if not target_table:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    if target_table.get("headers"):
+        writer.writerow(target_table["headers"])
+    for row in target_table.get("rows", []):
+        writer.writerow(row)
+    csv_str = output.getvalue()
+
+    return Response(
+        content=csv_str,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={table_id}.csv"}
+    )
+
+
+# ==============================================================================
+# AI Visual Studio Endpoints
+# ==============================================================================
+
+@app.post("/api/visual-studio/generate")
+def generate_studio_visualization(req: VisualStudioRequest):
+    """
+    Generates Mermaid diagrams, Plotly interactive charts, or Cytoscape graphs
+    grounded in retrieved Hopfield memory.
+    """
+    global pipeline, hierarchical_memory
+    if not pipeline:
+        raise HTTPException(status_code=500, detail="Pipeline not initialized")
+
+    # Retrieve context chunks
+    q_emb = pipeline.embedder.embed_query(req.prompt)
+    if hierarchical_memory:
+        retrieval = hierarchical_memory.retrieve(req.prompt, q_emb, top_k=6)
+        context_chunks = retrieval.core_attractors + retrieval.associative_bridges
+    else:
+        results = pipeline.memory.retrieve(q_emb, top_k=6)
+        context_chunks = [{"text": r.text, "source": r.source, "page_number": getattr(r, "metadata", {}).get("page", 1)} for r in results]
+
+    viz_result = visual_studio.generate_visualization(
+        prompt=req.prompt,
+        context_chunks=context_chunks,
+        requested_type=req.requested_type
+    )
+
+    return {
+        "viz_type": viz_result.viz_type,
+        "subtype": viz_result.subtype,
+        "title": viz_result.title,
+        "description": viz_result.description,
+        "content": viz_result.content,
+        "raw_data": viz_result.raw_data,
+        "citations": viz_result.citations,
+        "has_numerical_data": viz_result.has_numerical_data,
+        "suggested_alternative": viz_result.suggested_alternative
+    }
+
+
+# ==============================================================================
+# Knowledge Graph Explorer Endpoints
+# ==============================================================================
+
+@app.get("/api/knowledge-graph")
+def get_knowledge_graph(max_nodes: int = 50):
+    """Returns Cytoscape.js compatible graph data from Level 4 memory."""
+    global hierarchical_memory
+    if not hierarchical_memory:
+        return {"elements": {"nodes": [], "edges": []}}
+    return hierarchical_memory.knowledge_graph.to_cytoscape(max_nodes=max_nodes)
+
+
+# ==============================================================================
+# AI Study Assistant Endpoints
+# ==============================================================================
+
+@app.post("/api/study/deck")
+def create_study_deck(req: StudyDeckRequest):
+    """Generates flashcards, MCQs, and revision roadmap for active learning."""
+    global pipeline, hierarchical_memory
+    if not pipeline:
+        raise HTTPException(status_code=500, detail="Pipeline not initialized")
+
+    topic = req.topic or "Document Concepts"
+    q_emb = pipeline.embedder.embed_query(topic)
+    if hierarchical_memory:
+        retrieval = hierarchical_memory.retrieve(topic, q_emb, top_k=6)
+        context_chunks = retrieval.core_attractors + retrieval.associative_bridges
+    else:
+        results = pipeline.memory.retrieve(q_emb, top_k=6)
+        context_chunks = [{"text": r.text, "source": r.source, "page_number": getattr(r, "metadata", {}).get("page", 1)} for r in results]
+
+    deck = study_assistant.generate_study_deck(topic, context_chunks)
+    return deck.to_dict()
+
+
+# ==============================================================================
+# Hopfield Hierarchical Memory & Benchmark Endpoints
+# ==============================================================================
+
+@app.get("/api/memory/hierarchical/stats")
+def get_memory_stats():
+    """Returns 5-level memory health and diagnostic metrics."""
+    global hierarchical_memory
+    if not hierarchical_memory:
+        return {"error": "Hierarchical memory not initialized"}
+    return hierarchical_memory.get_stats()
+
+
+@app.get("/api/memory/benchmark")
+def run_benchmark():
+    """Runs standard Recall, MRR, NDCG, and energy basin benchmarks."""
+    from eval.benchmark_hopfield import run_hopfield_benchmark
+    return run_hopfield_benchmark()
 
 
 # ==============================================================================
