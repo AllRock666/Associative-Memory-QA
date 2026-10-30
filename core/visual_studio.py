@@ -285,7 +285,11 @@ class VisualStudioEngine:
     def _generate_mindmap(self, prompt: str, context: str, chunks: List[Dict[str, Any]]) -> str:
         """Generates a valid Mermaid mindmap."""
         concepts = self._extract_key_concepts(context, limit=8)
-        root = re.sub(r'[^a-zA-Z0-9\s]', '', prompt.split("about")[-1].split("from")[-1].strip()) or "Core Topic"
+        clean_p = re.sub(r'^(?:make|generate|create|build|draw)\s+(?:a\s+)?(?:mind\s*map|diagram|flowchart)\s+(?:of|for|about)?\s*', '', prompt, flags=re.I).strip()
+        clean_p = re.sub(r'^(?:that|this|the)\s+(?:paragraph|document|text|notes|passage)\s*', '', clean_p, flags=re.I).strip()
+        root = re.sub(r'[^a-zA-Z0-9\s]', '', clean_p) if clean_p else ""
+        if not root or len(root) < 3:
+            root = concepts[0].split(":")[0] if concepts else "Knowledge Map"
         root = root[:25].strip() or "Knowledge Map"
 
         lines = ["mindmap", f"  root(({root}))"]
