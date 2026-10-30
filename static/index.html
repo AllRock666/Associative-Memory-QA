@@ -492,6 +492,7 @@
                 welcome.classList.add('hidden');
                 history.classList.remove('hidden');
                 history.innerHTML = sess.messages.map(m => renderMessageBubble(m)).join('');
+                try { mermaid.run({ querySelector: '.mermaid' }); } catch(e) {}
             } else {
                 history.innerHTML = '';
                 history.classList.add('hidden');
@@ -501,10 +502,26 @@
 
         function renderMessageBubble(m) {
             const isUser = m.role === 'user';
+            let formatted = m.content || '';
+
+            if (!isUser) {
+                // Render Mermaid code blocks
+                if (formatted.includes('```mermaid')) {
+                    formatted = formatted.replace(/```mermaid\s*([\s\S]*?)```/g, (match, p1) => {
+                        return `<div class="mermaid my-3 p-3 bg-white border border-slate-200 rounded-xl overflow-x-auto text-center">${p1.trim()}</div>`;
+                    });
+                }
+                // Basic markdown styling
+                formatted = formatted
+                    .replace(/^### (.*$)/gim, '<div class="text-xs font-bold text-slate-800 mt-2 mb-1">$1</div>')
+                    .replace(/^## (.*$)/gim, '<div class="text-sm font-bold text-slate-900 mt-2 mb-1">$1</div>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            }
+
             return `
                 <div class="flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}">
                     <div class="max-w-3xl p-3.5 rounded-2xl ${isUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none border border-slate-200'} text-xs leading-relaxed">
-                        <div class="whitespace-pre-wrap">${m.content}</div>
+                        <div class="leading-relaxed whitespace-pre-wrap">${formatted}</div>
                     </div>
                 </div>
             `;
@@ -569,6 +586,7 @@
                 const botContent = data.answer || "No response received.";
                 const botMsg = { role: 'assistant', content: botContent };
                 history.insertAdjacentHTML('beforeend', renderMessageBubble(botMsg));
+                try { mermaid.run({ querySelector: '.mermaid' }); } catch(e) {}
                 if (sess) sess.messages.push(botMsg);
             } catch (err) {
                 history.insertAdjacentHTML('beforeend', renderMessageBubble({ role: 'assistant', content: 'Error: ' + err.message }));

@@ -170,6 +170,29 @@ def search(req: SearchRequest):
     # Adaptive retrieval depth: scale k for detailed, multi-aspect, or explanatory questions
     q_lower = req.query.lower()
     q_words = req.query.strip().split()
+
+    # Automatically index any large paragraphs pasted directly in history or current prompt
+    if history:
+        for idx, h_msg in enumerate(history):
+            h_text = h_msg.get("content", "").strip()
+            if h_msg.get("role") == "user" and len(h_text) > 120 and len(h_text.split()) > 15:
+                h_src = f"pasted_chat_{req.chat_id or 'turn'}_{idx}"
+                if h_src not in pipeline._documents:
+                    pipeline.add_documents([(h_text, h_src)])
+                    if hierarchical_memory:
+                        chunks = [{"text": h_text, "source": h_src, "page_number": 1, "element_type": "text"}]
+                        emb = pipeline.embedder.embed_texts([h_text], show_progress=False)
+                        hierarchical_memory.ingest_chunks(chunks, emb)
+
+    if len(req.query.strip()) > 150 and (len(req.query.split()) > 20 or "\n" in req.query):
+        curr_src = f"pasted_chat_{req.chat_id or 'current'}"
+        if curr_src not in pipeline._documents:
+            pipeline.add_documents([(req.query.strip(), curr_src)])
+            if hierarchical_memory:
+                chunks = [{"text": req.query.strip(), "source": curr_src, "page_number": 1, "element_type": "text"}]
+                emb = pipeline.embedder.embed_texts([req.query.strip()], show_progress=False)
+                hierarchical_memory.ingest_chunks(chunks, emb)
+
     is_multi_aspect = any(w in q_lower for w in [
         "explain", "architecture", "components", "mechanism", "mechanisms", "responsibilities",
         "difference", "compare", "breakdown", "elaborate", "comprehensive", "lifecycle",
@@ -322,6 +345,34 @@ def search(req: SearchRequest):
         "sufficiency_decision": getattr(res, "sufficiency_decision", None),
         "web_sources": getattr(res, "web_sources", [])
     }
+
+    # Check if this query requested a visualization (e.g. mind map, flowchart, architecture diagram)
+    is_viz_query = any(w in req.query.lower() for w in ["mind map", "mindmap", "flowchart", "flow chart", "architecture diagram", "sequence diagram", "concept map", "draw a diagram", "make a diagram"])
+    if is_viz_query:
+        viz_context = [
+            {"text": c.get("text", ""), "source": c.get("source", "Document"), "page_number": c.get("page_number", 1)}
+            for c in evidence_list
+        ]
+        if not viz_context and pipeline._documents:
+            latest_src = list(pipeline._documents.keys())[-1]
+            viz_context = [{"text": pipeline._documents[latest_src], "source": latest_src, "page_number": 1}]
+
+        viz_res = visual_studio.generate_visualization(
+            prompt=req.query,
+            context_chunks=viz_context
+        )
+        if viz_res.viz_type == "mermaid":
+            mermaid_block = f"\n\n```mermaid\n{viz_res.content}\n```\n\n*{viz_res.description}*"
+            if response_payload["answer"].startswith("I cannot answer"):
+                response_payload["answer"] = f"### Conceptual Mind Map\n\n```mermaid\n{viz_res.content}\n```\n\n*{viz_res.description}*"
+            else:
+                response_payload["answer"] += mermaid_block
+        response_payload["visualization"] = {
+            "viz_type": viz_res.viz_type,
+            "subtype": viz_res.subtype,
+            "title": viz_res.title,
+            "content": viz_res.content
+        }
 
     # Automatically persist turn to chat session if chat_id provided
     if req.chat_id:
