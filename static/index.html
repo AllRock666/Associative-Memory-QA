@@ -4,75 +4,288 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hopfield Multimodal Intelligence & Visual Learning Platform</title>
+    
+    <!-- Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS with Dark Mode support -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Interactive Visualization Libraries -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        },
+                        accent: {
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
+                    }
+                }
+            }
+        };
+    </script>
+
+    <!-- Markdown & Visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; }
-        .spinner { border: 3px solid rgba(0,0,0,0.1); width: 22px; height: 22px; border-radius: 50%; border-left-color: #3b82f6; animation: spin 0.8s linear infinite; display: none; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        .chat-scroll { scroll-behavior: smooth; }
-        .flashcard-inner { transition: transform 0.6s; transform-style: preserve-3d; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Markdown Body Styling */
+        .markdown-body {
+            line-height: 1.65;
+            color: inherit;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+            font-weight: 700;
+            margin-top: 1rem;
+            margin-bottom: 0.35rem;
+            line-height: 1.3;
+        }
+        .markdown-body h1 { font-size: 1.25rem; }
+        .markdown-body h2 { font-size: 1.12rem; }
+        .markdown-body h3 { font-size: 1.02rem; }
+        .markdown-body p { margin-bottom: 0.65rem; }
+        .markdown-body ul, .markdown-body ol { margin-left: 1.4rem; margin-bottom: 0.65rem; }
+        .markdown-body ul { list-style-type: disc; }
+        .markdown-body ol { list-style-type: decimal; }
+        .markdown-body li { margin-bottom: 0.25rem; }
+        .markdown-body pre {
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 0.85rem 1rem;
+            border-radius: 0.75rem;
+            overflow-x: auto;
+            margin: 0.75rem 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            border: 1px solid #1e293b;
+        }
+        .dark .markdown-body pre {
+            background: #020617;
+            border-color: #1e293b;
+        }
+        .markdown-body code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11.5px;
+        }
+        .markdown-body :not(pre) > code {
+            background: rgba(99, 102, 241, 0.08);
+            color: #4f46e5;
+            padding: 0.15rem 0.35rem;
+            border-radius: 0.35rem;
+            font-weight: 500;
+        }
+        .dark .markdown-body :not(pre) > code {
+            background: rgba(99, 102, 241, 0.25);
+            color: #a5b4fc;
+        }
+        .markdown-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.85rem 0;
+            font-size: 12px;
+        }
+        .markdown-body th {
+            background: #f1f5f9;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            text-align: left;
+            font-weight: 700;
+        }
+        .dark .markdown-body th {
+            background: #1e293b;
+            border-color: #334155;
+            color: #f1f5f9;
+        }
+        .markdown-body td {
+            padding: 7px 12px;
+            border: 1px solid #e2e8f0;
+        }
+        .dark .markdown-body td {
+            border-color: #334155;
+        }
+        .markdown-body tr:nth-child(even) { background: #f8fafc; }
+        .dark .markdown-body tr:nth-child(even) { background: #0f172a/50; }
+        .markdown-body blockquote {
+            border-left: 3.5px solid #3b82f6;
+            padding: 0.5rem 0.85rem;
+            color: #475569;
+            background: rgba(59, 130, 246, 0.05);
+            border-radius: 0 0.5rem 0.5rem 0;
+            margin: 0.65rem 0;
+            font-style: italic;
+        }
+        .dark .markdown-body blockquote {
+            color: #94a3b8;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        /* 3D Flip Flashcard */
+        .flashcard-scene { perspective: 1000px; }
+        .flashcard-inner {
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-style: preserve-3d;
+        }
         .flashcard-flipped { transform: rotateY(180deg); }
-        .flashcard-front, .flashcard-back { backface-visibility: hidden; }
+        .flashcard-front, .flashcard-back {
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+        }
         .flashcard-back { transform: rotateY(180deg); }
+
+        /* Pulsing Voice Animation */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .recording-pulse { animation: pulse-ring 1.4s infinite cubic-bezier(0.4, 0, 0.6, 1); }
+
+        /* Dropzone Hover */
+        .drag-active {
+            border-color: #3b82f6 !important;
+            background-color: rgba(59, 130, 246, 0.08) !important;
+        }
+    
+        /* Dedicated Assistant Card & Dark Mode Contrast Safeguards */
+        .assistant-message-card {
+            background-color: #ffffff;
+            border-color: #e2e8f0;
+            color: #1e293b;
+        }
+        .dark .assistant-message-card {
+            background-color: #0f172a !important; /* Tailwind slate-900 */
+            border-color: #1e293b !important; /* Tailwind slate-800 */
+            color: #f1f5f9 !important;
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+        }
+        .dark .assistant-message-card .markdown-body {
+            color: #e2e8f0 !important;
+        }
+        .dark .assistant-message-card .markdown-body p,
+        .dark .assistant-message-card .markdown-body li {
+            color: #cbd5e1 !important;
+        }
+        .dark .assistant-message-card .markdown-body strong {
+            color: #ffffff !important;
+            font-weight: 700;
+        }
+        .dark .assistant-message-card .markdown-body h1,
+        .dark .assistant-message-card .markdown-body h2,
+        .dark .assistant-message-card .markdown-body h3,
+        .dark .assistant-message-card .markdown-body h4 {
+            color: #f8fafc !important;
+        }
+        .dark .assistant-message-card details summary {
+            color: #94a3b8 !important;
+        }
+        .dark .assistant-message-card details summary:hover {
+            color: #60a5fa !important;
+            background-color: rgba(30, 41, 59, 0.7) !important;
+        }
+
     </style>
 </head>
-<body class="text-slate-800 h-screen flex flex-col overflow-hidden bg-slate-50">
+<body class="h-screen flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100">
 
-    <!-- Top App Navigation Bar -->
-    <header class="bg-white border-b border-slate-200 px-5 py-2.5 flex items-center justify-between shadow-xs z-20 flex-shrink-0">
+    <!-- Top App Navigation Header -->
+    <header class="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-5 py-2.5 flex items-center justify-between shadow-xs z-30 flex-shrink-0 transition-colors">
+        <!-- Brand & Badge -->
         <div class="flex items-center space-x-3">
-            <div class="w-9 h-9 bg-gradient-to-tr from-indigo-700 via-blue-600 to-cyan-500 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-sm tracking-tight">
+            <div class="w-9 h-9 bg-gradient-to-tr from-blue-700 via-indigo-600 to-cyan-500 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md tracking-tight">
                 HAM
             </div>
             <div>
                 <div class="flex items-center gap-2">
-                    <h1 class="text-sm font-bold text-slate-800 leading-none">Hopfield Multimodal Intelligence</h1>
-                    <span id="pipeline-badge" class="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800">5-Level Memory Ready</span>
+                    <h1 class="text-sm font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
+                        Hopfield Multimodal Intelligence
+                    </h1>
+                    <span id="pipeline-badge" class="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                        5-Level Memory Ready
+                    </span>
                 </div>
-                <p class="text-[11px] text-slate-400 mt-0.5">Hierarchical Associative Memory &bull; Visual Document Intelligence &bull; AI Visual Studio</p>
+                <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                    Hierarchical Associative Memory &bull; Continuous Attractor Dynamics &bull; Multimodal Grounding
+                </p>
             </div>
         </div>
 
-        <!-- Center: Workspace Mode Switcher -->
-        <nav class="hidden md:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold space-x-1">
-            <button id="nav-btn-chat" onclick="switchMainWorkspace('chat')" class="px-3 py-1.5 rounded-lg bg-white shadow-xs text-blue-700 flex items-center gap-1.5 transition">
+        <!-- Center: Workspace Mode Switcher Tabs -->
+        <nav class="hidden lg:flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700/80 text-xs font-semibold space-x-1">
+            <button id="nav-btn-chat" onclick="switchMainWorkspace('chat')" class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-700 shadow-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5 transition">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
                 <span>Chat &amp; RAG</span>
             </button>
-            <button id="nav-btn-reader" onclick="switchMainWorkspace('reader')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition">
+            <button id="nav-btn-reader" onclick="switchMainWorkspace('reader')" class="px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60 flex items-center gap-1.5 transition">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
                 <span>Visual Reader</span>
             </button>
-            <button id="nav-btn-studio" onclick="switchMainWorkspace('studio')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition">
+            <button id="nav-btn-studio" onclick="switchMainWorkspace('studio')" class="px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60 flex items-center gap-1.5 transition">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path></svg>
                 <span>AI Visual Studio</span>
             </button>
-            <button id="nav-btn-kg" onclick="switchMainWorkspace('kg')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition">
+            <button id="nav-btn-kg" onclick="switchMainWorkspace('kg')" class="px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60 flex items-center gap-1.5 transition">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
                 <span>Knowledge Graph</span>
             </button>
-            <button id="nav-btn-study" onclick="switchMainWorkspace('study')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition">
+            <button id="nav-btn-study" onclick="switchMainWorkspace('study')" class="px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60 flex items-center gap-1.5 transition">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
                 <span>Study Assistant</span>
             </button>
-            <button id="nav-btn-analytics" onclick="switchMainWorkspace('analytics')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 transition">
+            <button id="nav-btn-analytics" onclick="switchMainWorkspace('analytics')" class="px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60 flex items-center gap-1.5 transition">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                 <span>Analytics</span>
             </button>
         </nav>
 
-        <!-- Right Controls -->
+        <!-- Right Quick Controls -->
         <div class="flex items-center space-x-2 text-xs">
-            <div id="llm-status-pill" class="text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200">LLM Ready</div>
-            <button onclick="createNewChat()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition">
+            <!-- LLM Engine Configuration Pill -->
+            <button onclick="openLLMModal()" id="llm-settings-btn" class="px-2.5 py-1.5 rounded-xl text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 font-semibold flex items-center gap-1.5 transition text-xs shadow-xs" title="Select Local Llama or Cloud LLM (API Key)">
+                <svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span>LLM Engine</span>
+            </button>
+            <div id="llm-status-pill" onclick="openLLMModal()" class="text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-blue-400 dark:hover:border-blue-400 transition" title="Click to configure LLM synthesis engine">
+                LLM Ready
+            </div>
+
+            <!-- Dark / Light Theme Toggle -->
+            <button id="theme-toggle-btn" onclick="toggleTheme()" class="p-1.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition" title="Toggle Dark / Light Mode">
+                <span id="theme-toggle-icon" class="text-xs">🌙</span>
+            </button>
+
+            <!-- New Session Button -->
+            <button onclick="createNewChat()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm transition">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
                 <span>New Session</span>
             </button>
@@ -82,177 +295,326 @@
     <!-- Main Body: Sidebar + Active Workspace View -->
     <div class="flex-1 flex overflow-hidden">
 
-        <!-- Sidebar -->
-        <aside class="w-72 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 z-10 shadow-xs">
-            <div class="flex border-b border-slate-200 bg-slate-50/80 p-1.5 gap-1 text-xs font-semibold">
-                <button id="tab-btn-chats" onclick="switchSidebarTab('chats')" class="flex-1 py-1 px-2 rounded-lg bg-white shadow-xs text-blue-700 flex items-center justify-center gap-1 border border-slate-200">
+        <!-- Sidebar Navigation & Tools -->
+        <aside class="w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col flex-shrink-0 z-10 shadow-xs transition-colors">
+            <!-- Sidebar Tab Buttons -->
+            <div class="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 p-1.5 gap-1 text-xs font-semibold">
+                <button id="tab-btn-chats" onclick="switchSidebarTab('chats')" class="flex-1 py-1.5 px-2 rounded-lg bg-white dark:bg-slate-800 shadow-xs text-blue-600 dark:text-blue-400 flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-700 transition">
                     <span>Chats</span>
                 </button>
-                <button id="tab-btn-docs" onclick="switchSidebarTab('docs')" class="flex-1 py-1 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1">
+                <button id="tab-btn-docs" onclick="switchSidebarTab('docs')" class="flex-1 py-1.5 px-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center gap-1 transition">
                     <span>Documents</span>
-                    <span id="docs-count-badge" class="bg-slate-200 text-slate-700 text-[10px] px-1.5 py-0.2 rounded-full">0</span>
+                    <span id="docs-count-badge" class="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] px-1.5 py-0.2 rounded-full font-bold">0</span>
                 </button>
-                <button id="tab-btn-settings" onclick="switchSidebarTab('settings')" class="flex-1 py-1 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1">
-                    <span>Config</span>
+                <button id="tab-btn-settings" onclick="switchSidebarTab('settings')" class="flex-1 py-1.5 px-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center gap-1 transition">
+                    <span>Engine Config</span>
                 </button>
             </div>
 
-            <!-- TAB: CHATS -->
-            <div id="tab-content-chats" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-2">
-                <div id="chats-list" class="space-y-1">
-                    <div class="text-center py-6 text-slate-400 text-xs">No active chats.</div>
+            <!-- TAB CONTENT 1: CHATS -->
+            <div id="tab-content-chats" class="flex-1 flex flex-col p-3 overflow-hidden">
+                <div class="relative mb-2">
+                    <input type="text" id="chat-search-input" oninput="filterChats()" placeholder="Search conversations..." class="w-full text-xs pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 outline-none focus:border-blue-500 transition">
+                    <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+
+                <div id="chats-list" class="flex-1 overflow-y-auto space-y-1 pr-1">
+                    <div class="text-center py-8 text-slate-400 text-xs">Loading conversations...</div>
                 </div>
             </div>
 
-            <!-- TAB: DOCUMENTS -->
-            <div id="tab-content-docs" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-3 hidden">
-                <div>
-                    <label for="file-upload" class="border-2 border-dashed border-slate-300 rounded-xl p-3 text-center hover:bg-slate-50 hover:border-blue-400 transition cursor-pointer bg-white block" id="upload-box">
-                        <svg class="w-5 h-5 text-blue-500 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                        <span class="text-xs text-slate-700 font-semibold block">Upload File</span>
-                        <span class="text-[10px] text-slate-400 block">PDF, DOCX, PPTX, XLSX, CSV, Images</span>
-                    </label>
-                    <input type="file" id="file-upload" class="hidden" accept=".txt,.pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.webp,.md" onchange="uploadFile(this)">
-                    <div id="upload-status" class="text-xs text-emerald-600 mt-2 font-medium" style="display:none;"></div>
+            <!-- TAB CONTENT 2: DOCUMENTS -->
+            <div id="tab-content-docs" class="flex-1 flex flex-col p-3 overflow-hidden hidden">
+                <!-- Drag and Drop Upload Zone -->
+                <div id="drop-zone" class="border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 rounded-2xl p-3.5 text-center transition cursor-pointer mb-3 bg-slate-50/50 dark:bg-slate-800/40 group" onclick="document.getElementById('file-upload-input').click()">
+                    <input type="file" id="file-upload-input" class="hidden" onchange="uploadFile(this)" accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg">
+                    <div class="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 mx-auto flex items-center justify-center mb-1.5 group-hover:scale-110 transition-transform">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                    </div>
+                    <span class="text-xs font-bold text-slate-700 dark:text-slate-200 block">Click or Drop Documents</span>
+                    <span class="text-[10px] text-slate-400 block mt-0.5">PDF, PPTX, DOCX, XLSX, Images</span>
                 </div>
-                <div class="flex-1 flex flex-col">
-                    <div class="flex items-center justify-between px-1 mb-2">
-                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Memory Documents</span>
-                        <button onclick="refreshDocumentsList()" class="text-slate-400 hover:text-slate-600">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                        </button>
-                    </div>
-                    <div id="documents-list" class="space-y-1 flex-1 overflow-y-auto">
-                        <div class="text-center py-6 text-slate-400 text-xs">No documents uploaded.</div>
-                    </div>
+                <div id="upload-status" class="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mb-2 px-1 hidden animate-pulse"></div>
+
+                <!-- Document Search -->
+                <div class="relative mb-2">
+                    <input type="text" id="doc-search-input" oninput="filterDocuments()" placeholder="Filter indexed files..." class="w-full text-xs pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 transition">
+                    <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+
+                <div id="documents-list" class="flex-1 overflow-y-auto space-y-1.5 pr-1">
+                    <div class="text-center py-6 text-slate-400 text-xs">No documents uploaded.</div>
                 </div>
             </div>
 
-            <!-- TAB: CONFIG -->
-            <div id="tab-content-settings" class="flex-1 flex flex-col p-3 overflow-y-auto space-y-3 hidden text-xs">
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hopfield Engine Parameters</span>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1 flex justify-between">
-                        <span>Temperature Beta (&beta;)</span> <span id="beta-val" class="text-blue-600 font-mono font-bold">8.0</span>
-                    </label>
-                    <input type="range" id="hopfield-beta" min="0.5" max="20" step="0.5" value="8.0" class="w-full" oninput="document.getElementById('beta-val').innerText=this.value">
+            <!-- TAB CONTENT 3: SETTINGS -->
+            <div id="tab-content-settings" class="flex-1 p-3 overflow-y-auto space-y-4 text-xs hidden">
+                <!-- Sidebar LLM Engine Box -->
+                <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Synthesis Engine</span>
+                        <span id="sb-llm-badge" class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">Local Llama</span>
+                    </div>
+
+                    <!-- Local vs Cloud selector -->
+                    <div class="grid grid-cols-2 gap-1 bg-slate-200/60 dark:bg-slate-900 p-0.5 rounded-xl text-[11px] font-semibold">
+                        <label id="sb-lbl-mode-local" class="flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-400 shadow-xs font-bold">
+                            <input type="radio" name="sb_mode" value="local" class="hidden" checked onchange="onSidebarModeChange('local')">
+                            <span>Local Llama</span>
+                        </label>
+                        <label id="sb-lbl-mode-cloud" class="flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                            <input type="radio" name="sb_mode" value="cloud" class="hidden" onchange="onSidebarModeChange('cloud')">
+                            <span>Cloud API</span>
+                        </label>
+                    </div>
+
+                    <!-- Cloud fields -->
+                    <div id="sb-cloud-fields" class="space-y-2 pt-1 hidden">
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">Provider Preset</label>
+                            <select id="sb-cloud-provider" onchange="onSidebarPresetChange()" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs">
+                                <option value="groq" selected>Groq (Ultra-Fast Llama-3.3)</option>
+                                <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
+                                <option value="gemini">Google Gemini (1.5 Flash)</option>
+                                <option value="custom">Custom OpenAI-Compatible</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">API Key (Session Only)</label>
+                            <div class="relative">
+                                <input type="password" id="sb-api-key" placeholder="gsk_..." class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 pr-7 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs focus:border-blue-500 outline-none">
+                                <button type="button" onclick="togglePasswordVisibility('sb-api-key')" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">👁️</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">Model Name</label>
+                            <input type="text" id="sb-model-name" value="llama-3.3-70b-versatile" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs">
+                        </div>
+                        <div class="text-[10px] text-slate-500 dark:text-slate-400 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900 rounded-xl p-2 leading-relaxed">
+                            🔒 <strong>Session Memory:</strong> Key is held purely in volatile browser memory (<code class="text-[9px] bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-blue-200 dark:border-blue-900">sessionStorage</code>) and cleared when tab closes.
+                        </div>
+                        <div class="flex gap-1.5 pt-1">
+                            <button onclick="testLLMFromSidebar()" class="flex-1 py-1.5 px-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold rounded-lg text-[11px] transition">Test</button>
+                            <button onclick="saveLLMFromSidebar()" class="flex-1 py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-[11px] transition">Save</button>
+                            <button onclick="clearLLMSession()" class="py-1.5 px-2 bg-rose-50 dark:bg-rose-950 hover:bg-rose-100 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-900 font-semibold rounded-lg text-[11px] transition" title="Clear API Key from memory">Clear</button>
+                        </div>
+                        <div id="sb-test-status" class="text-[10px] font-medium hidden"></div>
+                    </div>
+
+                    <!-- Local info -->
+                    <div id="sb-local-fields" class="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
+                        Running local Ollama inference (<code class="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-[9px]">http://localhost:11434</code>) with <strong class="text-slate-700 dark:text-slate-200">llama3.2</strong>. Zero API keys required.
+                        <div class="mt-2 flex gap-1.5">
+                            <button onclick="testLLMFromSidebar()" class="py-1 px-2.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold rounded-lg text-[11px] transition">Check Ollama</button>
+                        </div>
+                        <div id="sb-local-status" class="text-[10px] font-medium mt-1.5 hidden"></div>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1 flex justify-between">
-                        <span>Top-K Attractors</span> <span id="topk-val" class="text-blue-600 font-mono font-bold">5</span>
-                    </label>
-                    <input type="range" id="top-k" min="1" max="15" step="1" value="5" class="w-full" oninput="document.getElementById('topk-val').innerText=this.value">
-                </div>
-                <div class="pt-2 border-t border-slate-200">
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Answer Style</label>
-                    <select id="answer-style-select" class="w-full border border-slate-300 rounded-lg p-1.5 bg-white text-xs">
-                        <option value="conversational" selected>Conversational (Grounded)</option>
-                        <option value="detailed">Exhaustive &amp; Academic</option>
-                        <option value="executive">Executive Summary</option>
-                        <option value="concise">Concise 2-Mark</option>
-                    </select>
+
+                <!-- Hopfield Attractor Engine Tuning -->
+                <div class="pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Hopfield Attractor Dynamics</span>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1 flex justify-between">
+                                <span>Inverse Temperature (&beta;)</span> <span id="beta-val" class="text-blue-600 dark:text-blue-400 font-mono font-bold">8.0</span>
+                            </label>
+                            <input type="range" id="hopfield-beta" min="0.5" max="20" step="0.5" value="8.0" class="w-full accent-blue-600" oninput="document.getElementById('beta-val').innerText=this.value">
+                            <div class="flex justify-between text-[9px] text-slate-400">
+                                <span>Diffuse (&beta;=0.5)</span>
+                                <span>Sharp Attractor (&beta;=20.0)</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1 flex justify-between">
+                                <span>Top-K Attractor Basins</span> <span id="topk-val" class="text-blue-600 dark:text-blue-400 font-mono font-bold">5</span>
+                            </label>
+                            <input type="range" id="top-k" min="1" max="15" step="1" value="5" class="w-full accent-blue-600" oninput="document.getElementById('topk-val').innerText=this.value">
+                        </div>
+                        <div class="pt-2 border-t border-slate-200 dark:border-slate-800">
+                            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Answer Style</label>
+                            <select id="answer-style-select" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs">
+                                <option value="conversational" selected>Conversational (Grounded Citations)</option>
+                                <option value="detailed">Exhaustive &amp; Academic</option>
+                                <option value="executive">Executive Summary</option>
+                                <option value="concise">Concise 2-Mark Exam Mode</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
         </aside>
 
         <!-- Main Workspace Container -->
-        <main class="flex-1 flex flex-col relative overflow-hidden bg-white">
+        <main class="flex-1 flex flex-col relative overflow-hidden bg-white dark:bg-slate-900 transition-colors">
 
-            <!-- VIEW 1: CHAT & RAG -->
+            <!-- ============================================================= -->
+            <!-- VIEW 1: CHAT & RAG WORKSPACE -->
+            <!-- ============================================================= -->
             <div id="view-chat" class="flex-1 flex flex-col overflow-hidden">
-                <div id="chat-scroll-container" class="flex-1 overflow-y-auto px-4 py-6 pb-36 chat-scroll">
-                    <div id="welcome-state" class="max-w-2xl mx-auto text-center py-12">
-                        <h2 class="text-2xl font-black text-slate-800 tracking-tight mb-2">Multimodal Hopfield Intelligence</h2>
-                        <p class="text-xs text-slate-500 max-w-md mx-auto mb-6">Continuous energy attractor retrieval grounded in PDF layouts, tables, diagrams, and cross-document knowledge graph memory.</p>
-                        <div class="grid grid-cols-2 gap-2 text-left">
-                            <button onclick="setQueryAndSearch('Explain Yet Another Resource Negotiator (YARN) architecture')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition">
-                                <span class="font-semibold block text-slate-800">What is YARN architecture?</span>
-                                <span class="text-[11px] text-slate-400 block mt-0.5">Explore cluster resource management workloads</span>
+                <!-- Scrollable Chat Feed -->
+                <div id="chat-scroll-container" class="flex-1 overflow-y-auto px-4 py-6 pb-40 scroll-smooth">
+                    <!-- Welcome Hero State -->
+                    <div id="welcome-state" class="max-w-3xl mx-auto py-10 px-4 text-center space-y-6">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-semibold shadow-xs">
+                            <span class="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400 animate-pulse"></span>
+                            <span>Modern Hopfield Associative Memory Engine</span>
+                        </div>
+                        
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-900 dark:text-white tracking-tight sm:text-3xl">
+                                Multimodal Research &amp; Synthesis Assistant
+                            </h2>
+                            <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-xl mx-auto mt-2 leading-relaxed">
+                                Continuous attractor dynamics minimizing thermodynamic energy landscapes. Upload documents, extract multimodal slides, and query with verifiable inline citations.
+                            </p>
+                        </div>
+
+                        <!-- 4 High-Impact Quick Prompts -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left max-w-2xl mx-auto pt-1">
+                            <button onclick="setQueryAndSearch('What is generative AI and how does it differ from traditional AI?')" class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50/40 dark:hover:bg-slate-800/60 bg-white dark:bg-slate-900 shadow-xs transition group">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="p-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">💡</span>
+                                    <span class="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400">What is Generative AI?</span>
+                                </div>
+                                <span class="text-[11px] text-slate-400 block truncate">Definition, content creation on request, and autonomous goals</span>
                             </button>
-                            <button onclick="setQueryAndSearch('How does continuous modern Hopfield memory minimize energy?')" class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 text-xs text-slate-700 transition">
-                                <span class="font-semibold block text-slate-800">Continuous Hopfield Dynamics</span>
-                                <span class="text-[11px] text-slate-400 block mt-0.5">Exponential attention attractor basins</span>
+
+                            <button onclick="setQueryAndSearch('Explain Yet Another Resource Negotiator (YARN) architecture and daemons')" class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50/40 dark:hover:bg-slate-800/60 bg-white dark:bg-slate-900 shadow-xs transition group">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">⚡</span>
+                                    <span class="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400">YARN Architecture</span>
+                                </div>
+                                <span class="text-[11px] text-slate-400 block truncate">ResourceManager, NodeManager, and ApplicationMaster workloads</span>
+                            </button>
+
+                            <button onclick="setQueryAndSearch('How does continuous modern Hopfield memory minimize energy?')" class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50/40 dark:hover:bg-slate-800/60 bg-white dark:bg-slate-900 shadow-xs transition group">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform">🧠</span>
+                                    <span class="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400">Continuous Hopfield Memory</span>
+                                </div>
+                                <span class="text-[11px] text-slate-400 block truncate">Exponential capacity, softmax attention, and attractor relaxation</span>
+                            </button>
+
+                            <button onclick="setQueryAndSearch('Summarize key findings and tables from the uploaded documents')" class="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50/40 dark:hover:bg-slate-800/60 bg-white dark:bg-slate-900 shadow-xs transition group">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="p-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform">📑</span>
+                                    <span class="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400">Document Synthesis</span>
+                                </div>
+                                <span class="text-[11px] text-slate-400 block truncate">Synthesize core patterns, structural tables, and cross-references</span>
                             </button>
                         </div>
                     </div>
-                    <div id="chat-history" class="max-w-4xl mx-auto space-y-6 hidden"></div>
+
+                    <!-- Messages Feed -->
+                    <div id="chat-history" class="max-w-3xl mx-auto space-y-5 hidden"></div>
                 </div>
 
-                <!-- Floating Chat Input Bar -->
-                <div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white via-white/95 to-transparent z-10">
-                    <div class="max-w-4xl mx-auto">
-                        <div class="shadow-lg rounded-2xl border border-slate-200 bg-white flex items-end p-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
-                            <button onclick="document.getElementById('file-upload').click()" class="p-2 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-slate-100 transition">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                <!-- Floating Bottom Composer Bar -->
+                <div class="absolute bottom-4 left-4 right-4 max-w-3xl mx-auto z-20">
+                    <!-- Quick Pill Recommendation Chips -->
+                    <div id="composer-chips" class="flex items-center gap-1.5 mb-2 overflow-x-auto py-0.5 no-scrollbar">
+                        <button onclick="setQueryAndSearch('What are the key concepts in this document?')" class="text-[11px] px-2.5 py-1 rounded-full bg-white/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap shadow-2xs backdrop-blur-md transition">
+                            ✨ Key Concepts
+                        </button>
+                        <button onclick="setQueryAndSearch('Compare the theoretical advantages vs traditional retrieval')" class="text-[11px] px-2.5 py-1 rounded-full bg-white/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap shadow-2xs backdrop-blur-md transition">
+                            ⚖️ Compare Advantages
+                        </button>
+                        <button onclick="setQueryAndSearch('Extract and format all tabular or quantitative data')" class="text-[11px] px-2.5 py-1 rounded-full bg-white/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap shadow-2xs backdrop-blur-md transition">
+                            📊 Extract Tables
+                        </button>
+                        <button onclick="clearCurrentChatMessages()" class="text-[11px] px-2.5 py-1 rounded-full bg-rose-50/80 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-100 whitespace-nowrap shadow-2xs backdrop-blur-md transition ml-auto">
+                            🗑️ Clear Chat
+                        </button>
+                    </div>
+
+                    <!-- Input Box Card -->
+                    <div class="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-300/80 dark:border-slate-700 p-2 shadow-xl focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                        <div class="flex items-end gap-2">
+                            <!-- Voice Input Button -->
+                            <button id="voice-btn" onclick="toggleVoiceInput()" class="p-2 rounded-xl text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex-shrink-0" title="Click to dictate question (Voice input)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
                             </button>
-                            <textarea id="query-input" rows="1" placeholder="Ask questions across uploaded documents, tables, or diagrams..." class="w-full px-3 py-2 outline-none text-slate-800 text-sm bg-transparent resize-none max-h-32" onkeydown="handleInputKey(event)"></textarea>
-                            <button id="send-button" onclick="sendQuery()" class="p-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl text-white transition flex items-center justify-center h-10 w-10 flex-shrink-0">
+
+                            <!-- Expanding Textarea -->
+                            <textarea id="query-input" rows="1" placeholder="Ask questions grounded in documents and associative memory..." class="flex-1 max-h-36 bg-transparent text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none resize-none py-1.5 leading-relaxed font-sans" onkeydown="handleQueryKeydown(event)" oninput="autoResizeTextarea(this)"></textarea>
+
+                            <!-- Send / Stop Button -->
+                            <button id="send-btn" onclick="sendQuery()" class="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs transition flex-shrink-0 disabled:opacity-50">
                                 <svg id="send-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-                                <div class="spinner" id="search-spinner"></div>
+                                <div id="search-spinner" class="spinner" style="width: 16px; height: 16px; border-width: 2px; border-left-color: white;"></div>
                             </button>
+                        </div>
+
+                        <!-- Composer Footer Info -->
+                        <div class="flex items-center justify-between pt-1.5 px-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400">
+                            <div class="flex items-center gap-2">
+                                <span class="hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer" onclick="openLLMModal()">
+                                    ⚡ Engine: <strong id="composer-model-indicator" class="text-slate-600 dark:text-slate-300 font-mono">Local Llama (Ollama)</strong>
+                                </span>
+                                <span>&bull;</span>
+                                <span id="composer-chunks-count">Ready</span>
+                            </div>
+                            <div class="hidden sm:block">
+                                <kbd class="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-[9px] font-mono">↵ Send</kbd>
+                                <span class="mx-1">or</span>
+                                <kbd class="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-[9px] font-mono">Shift+↵ New Line</kbd>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
+            <!-- ============================================================= -->
             <!-- VIEW 2: VISUAL DOCUMENT READER -->
+            <!-- ============================================================= -->
             <div id="view-reader" class="flex-1 flex flex-col p-4 overflow-hidden hidden">
-                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
                     <div class="flex items-center gap-3">
-                        <h2 class="text-base font-bold text-slate-800">Visual Document Reader</h2>
-                        <select id="reader-doc-select" onchange="loadReaderDocument(this.value)" class="text-xs border border-slate-300 rounded-lg p-1.5 bg-white font-medium text-slate-700">
+                        <select id="reader-doc-select" onchange="loadReaderDocument(this.value)" class="text-xs border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium">
                             <option value="">Select Document...</option>
                         </select>
+                        <div class="flex items-center space-x-1">
+                            <button onclick="prevReaderPage()" class="p-1.5 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-xs text-slate-600 dark:text-slate-300">◀</button>
+                            <span id="reader-page-indicator" class="text-xs font-mono font-bold px-2 text-slate-700 dark:text-slate-300">Page 1</span>
+                            <button onclick="nextReaderPage()" class="p-1.5 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-xs text-slate-600 dark:text-slate-300">▶</button>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2 text-xs">
-                        <button onclick="prevReaderPage()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg font-semibold">&larr; Prev</button>
-                        <span id="reader-page-indicator" class="font-mono text-slate-600">Page 1 of 1</span>
-                        <button onclick="nextReaderPage()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg font-semibold">Next &rarr;</button>
+                    <div class="flex items-center gap-2">
+                        <button onclick="switchMainWorkspace('chat')" class="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline">← Back to Chat</button>
                     </div>
                 </div>
 
-                <!-- Side-by-Side Canvas + Extracted Structure -->
-                <div class="flex-1 flex gap-4 pt-4 overflow-hidden">
-                    <!-- Left: Rendered Visual Preview -->
-                    <div class="w-1/2 bg-slate-100 rounded-2xl border border-slate-200 flex flex-col items-center justify-center p-4 overflow-auto">
-                        <div id="reader-image-wrap" class="max-w-full max-h-full flex items-center justify-center">
-                            <span class="text-xs text-slate-400">Select a document to inspect rendered page layout.</span>
+                <!-- Split View: Visual Preview on Left, Extracted Intelligence on Right -->
+                <div class="flex-1 flex gap-4 pt-3 overflow-hidden">
+                    <div class="w-1/2 bg-slate-100 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-center p-4 overflow-auto">
+                        <div id="reader-image-wrap" class="max-h-full flex items-center justify-center">
+                            <div class="text-center p-8 text-slate-400 text-xs">
+                                Select a document above to inspect its visual slides and extracted diagrams.
+                            </div>
                         </div>
                     </div>
-                    <!-- Right: Extracted Facts, Tables & Page Summary -->
-                    <div class="w-1/2 flex flex-col overflow-y-auto space-y-4 pr-2">
-                        <div class="bg-blue-50/60 border border-blue-200 rounded-xl p-3">
-                            <h3 class="text-xs font-bold text-blue-900 mb-1">AI Page Summary</h3>
-                            <p id="reader-ai-summary" class="text-xs text-blue-800">No page selected.</p>
-                            <div id="reader-key-concepts" class="flex flex-wrap gap-1 mt-2"></div>
-                        </div>
 
-                        <div>
-                            <h3 class="text-xs font-bold text-slate-700 mb-2">Detected Tables on Page</h3>
-                            <div id="reader-tables-list" class="space-y-2">
-                                <div class="text-xs text-slate-400 italic">No tables on this page.</div>
-                            </div>
-                        </div>
-
-                        <div class="flex-1">
-                            <h3 class="text-xs font-bold text-slate-700 mb-2">Extracted Page Text &amp; Headings</h3>
-                            <div id="reader-extracted-text" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700 font-mono whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
-                                No page content available.
-                            </div>
+                    <div class="w-1/2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col overflow-hidden">
+                        <h3 class="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-2">Multimodal Page Intelligence</h3>
+                        <div id="reader-elements-container" class="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+                            <div class="text-slate-400 text-center py-8">Select a document to view page structural elements and tables.</div>
                         </div>
                     </div>
                 </div>
             </div>
 
+            <!-- ============================================================= -->
             <!-- VIEW 3: AI VISUAL STUDIO -->
+            <!-- ============================================================= -->
             <div id="view-studio" class="flex-1 flex flex-col p-4 overflow-hidden hidden">
-                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
                     <div>
-                        <h2 class="text-base font-bold text-slate-800">AI Visual Studio</h2>
+                        <h2 class="text-base font-bold text-slate-800 dark:text-white">AI Visual Studio</h2>
                         <p class="text-xs text-slate-400">Generate strictly grounded diagrams, mind maps, and interactive numerical charts.</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <select id="studio-type-select" class="text-xs border border-slate-300 rounded-lg p-1.5 bg-white font-medium">
+                        <select id="studio-type-select" class="text-xs border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium">
                             <option value="mindmap">Mind Map (Mermaid)</option>
                             <option value="flowchart">Workflow Flowchart (Mermaid)</option>
                             <option value="architecture">System Architecture (Mermaid)</option>
@@ -262,115 +624,270 @@
                             <option value="line">Line Trend (Plotly)</option>
                             <option value="pie">Distribution Pie (Plotly)</option>
                         </select>
-                        <button onclick="generateStudioViz()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs">Generate</button>
+                        <button onclick="generateStudioViz()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition">Generate</button>
                     </div>
                 </div>
 
                 <div class="pt-3 pb-2">
-                    <input type="text" id="studio-prompt-input" placeholder="e.g. Generate a mind map of operating systems or bar chart comparing workloads..." class="w-full text-xs p-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500">
+                    <input type="text" id="studio-prompt-input" placeholder="e.g. Generate a mind map of operating systems or bar chart comparing workloads..." class="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500">
                 </div>
 
-                <!-- Studio Output Canvas -->
-                <div class="flex-1 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col p-4 overflow-auto">
-                    <div id="studio-loading" class="hidden text-center py-12 text-xs text-indigo-600 font-semibold">Generating verified visualization...</div>
-                    <div id="studio-notice" class="hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800"></div>
+                <div class="flex-1 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col p-4 overflow-auto">
+                    <div id="studio-loading" class="hidden text-center py-12 text-xs text-indigo-600 dark:text-indigo-400 font-semibold animate-pulse">Generating verified visualization...</div>
+                    <div id="studio-notice" class="hidden mb-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 text-xs text-amber-800 dark:text-amber-200"></div>
                     <div id="studio-render-container" class="flex-1 flex items-center justify-center overflow-auto">
                         <span class="text-xs text-slate-400">Enter a prompt above and click Generate to build diagrams or interactive charts.</span>
                     </div>
                 </div>
             </div>
 
+            <!-- ============================================================= -->
             <!-- VIEW 4: KNOWLEDGE GRAPH EXPLORER -->
+            <!-- ============================================================= -->
             <div id="view-kg" class="flex-1 flex flex-col p-4 overflow-hidden hidden">
-                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
                     <div>
-                        <h2 class="text-base font-bold text-slate-800">Knowledge Graph Explorer</h2>
+                        <h2 class="text-base font-bold text-slate-800 dark:text-white">Knowledge Graph Explorer</h2>
                         <p class="text-xs text-slate-400">Level 4 Multi-Relational Knowledge Network grounded across documents and pages.</p>
                     </div>
-                    <button onclick="loadKnowledgeGraph()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold">Refresh Graph</button>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="kg-search-input" oninput="filterKGNodes(this.value)" placeholder="Search node in graph..." class="text-xs border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
+                        <select id="kg-layout-select" onchange="changeKGLayout(this.value)" class="text-xs border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
+                            <option value="cose">Force-Directed (Cose)</option>
+                            <option value="concentric">Concentric</option>
+                            <option value="circle">Circle</option>
+                            <option value="breadthfirst">Hierarchical Tree</option>
+                        </select>
+                        <button onclick="loadKnowledgeGraph()" class="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition">Refresh</button>
+                    </div>
                 </div>
                 <div class="flex-1 flex gap-4 pt-3 overflow-hidden">
                     <div id="cy-container" class="flex-1 bg-slate-900 rounded-2xl border border-slate-800"></div>
-                    <div class="w-64 bg-slate-50 border border-slate-200 rounded-2xl p-3 flex flex-col text-xs">
-                        <h3 class="font-bold text-slate-700 mb-2">Node Inspector</h3>
-                        <div id="kg-node-details" class="text-slate-500">Click any entity or document node to inspect relationships and provenance.</div>
+                    <div class="w-72 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 flex flex-col text-xs">
+                        <h3 class="font-bold text-slate-700 dark:text-slate-200 mb-2">Node Inspector</h3>
+                        <div id="kg-node-details" class="text-slate-500 dark:text-slate-400 leading-relaxed">Click any entity or document node in the canvas to inspect relations and source provenance.</div>
                     </div>
                 </div>
             </div>
 
+            <!-- ============================================================= -->
             <!-- VIEW 5: STUDY ASSISTANT -->
+            <!-- ============================================================= -->
             <div id="view-study" class="flex-1 flex flex-col p-4 overflow-hidden hidden">
-                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
                     <div>
-                        <h2 class="text-base font-bold text-slate-800">AI Study Workspace</h2>
+                        <h2 class="text-base font-bold text-slate-800 dark:text-white">AI Study Workspace</h2>
                         <p class="text-xs text-slate-400">Active recall flashcards and pedagogical multiple-choice assessments.</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <input type="text" id="study-topic-input" placeholder="Topic or Document Subject..." class="text-xs border border-slate-300 rounded-lg p-1.5 bg-white">
-                        <button onclick="loadStudyDeck()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold">Build Study Deck</button>
+                        <input type="text" id="study-topic-input" placeholder="Topic or Document Subject..." class="text-xs border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 px-2.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
+                        <button onclick="loadStudyDeck()" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs transition">Build Study Deck</button>
                     </div>
                 </div>
 
                 <div class="flex-1 flex gap-4 pt-4 overflow-y-auto">
-                    <!-- Left: Flashcards Deck -->
+                    <!-- Left: Flashcards Deck with 3D Flip -->
                     <div class="w-1/2 flex flex-col space-y-3">
-                        <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Active Recall Flashcards (Click to Flip)</h3>
-                        <div id="study-flashcards-list" class="space-y-3 overflow-y-auto">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Active Recall Flashcards</h3>
+                            <span id="flashcard-count-indicator" class="text-[10px] text-slate-400">Click card to flip</span>
+                        </div>
+                        <div id="study-flashcards-list" class="space-y-3 overflow-y-auto pr-1">
                             <div class="text-xs text-slate-400 text-center py-8">Generate a study deck above to drill flashcards.</div>
                         </div>
                     </div>
-                    <!-- Right: Multiple Choice Assessment -->
-                    <div class="w-1/2 flex flex-col space-y-3 border-l border-slate-200 pl-4">
-                        <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Assessment Quiz with Explanations</h3>
-                        <div id="study-mcqs-list" class="space-y-4 overflow-y-auto">
+                    <!-- Right: Multiple Choice Assessment with Score Tracker -->
+                    <div class="w-1/2 flex flex-col space-y-3 border-l border-slate-200 dark:border-slate-800 pl-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Assessment Quiz</h3>
+                            <span id="quiz-score-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">Score: 0 / 0</span>
+                        </div>
+                        <div id="study-mcqs-list" class="space-y-4 overflow-y-auto pr-1">
                             <div class="text-xs text-slate-400 text-center py-8">Questions and distractor rationales will appear here.</div>
                         </div>
                     </div>
                 </div>
             </div>
 
+            <!-- ============================================================= -->
             <!-- VIEW 6: MEMORY ANALYTICS & BENCHMARK -->
-            <div id="view-analytics" class="flex-1 flex flex-col p-4 overflow-y-auto hidden">
-                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+            <!-- ============================================================= -->
+            <div id="view-analytics" class="flex-1 flex flex-col p-4 overflow-y-auto hidden space-y-4">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
                     <div>
-                        <h2 class="text-base font-bold text-slate-800">5-Level Memory Diagnostics &amp; Benchmark</h2>
+                        <h2 class="text-base font-bold text-slate-800 dark:text-white">5-Level Memory Diagnostics &amp; Benchmark</h2>
                         <p class="text-xs text-slate-400">Thermodynamic energy landscape monitoring and standard retrieval benchmarks.</p>
                     </div>
-                    <button onclick="runLiveBenchmark()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs">Run Benchmark</button>
+                    <button onclick="runLiveBenchmark()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span>Run Live Benchmark</span>
+                    </button>
                 </div>
 
-                <!-- Stats Cards -->
-                <div class="grid grid-cols-5 gap-3 my-4">
-                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                        <span class="text-[10px] uppercase font-bold text-slate-400">Level 1: Raw Chunks</span>
-                        <div id="stat-l1" class="text-xl font-black text-slate-800 mt-1">0</div>
+                <!-- 5-Level Memory Hierarchy Cards -->
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div class="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 shadow-2xs">
+                        <span class="text-[10px] uppercase font-bold text-slate-400 block">Level 1: Raw Chunks</span>
+                        <div id="stat-l1" class="text-2xl font-black text-slate-800 dark:text-slate-100 mt-1">0</div>
                     </div>
-                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                        <span class="text-[10px] uppercase font-bold text-blue-500">Level 2: Embeddings</span>
-                        <div id="stat-l2" class="text-xl font-black text-blue-900 mt-1">0</div>
+                    <div class="bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-2xl p-3 shadow-2xs">
+                        <span class="text-[10px] uppercase font-bold text-blue-500 dark:text-blue-400 block">Level 2: Embeddings</span>
+                        <div id="stat-l2" class="text-2xl font-black text-blue-900 dark:text-blue-200 mt-1">0</div>
                     </div>
-                    <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
-                        <span class="text-[10px] uppercase font-bold text-indigo-500">Level 3: Hopfield &beta;</span>
-                        <div id="stat-l3" class="text-xl font-black text-indigo-900 mt-1">8.0</div>
+                    <div class="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900 rounded-2xl p-3 shadow-2xs">
+                        <span class="text-[10px] uppercase font-bold text-indigo-500 dark:text-indigo-400 block">Level 3: Hopfield &beta;</span>
+                        <div id="stat-l3" class="text-2xl font-black text-indigo-900 dark:text-indigo-200 mt-1">8.0</div>
                     </div>
-                    <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                        <span class="text-[10px] uppercase font-bold text-emerald-500">Level 4: KG Nodes</span>
-                        <div id="stat-l4" class="text-xl font-black text-emerald-900 mt-1">0</div>
+                    <div class="bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-2xl p-3 shadow-2xs">
+                        <span class="text-[10px] uppercase font-bold text-emerald-500 dark:text-emerald-400 block">Level 4: KG Nodes</span>
+                        <div id="stat-l4" class="text-2xl font-black text-emerald-900 dark:text-emerald-200 mt-1">0</div>
                     </div>
-                    <div class="bg-purple-50 border border-purple-200 rounded-xl p-3">
-                        <span class="text-[10px] uppercase font-bold text-purple-500">Level 5: Episodic</span>
-                        <div id="stat-l5" class="text-xl font-black text-purple-900 mt-1">0</div>
+                    <div class="bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900 rounded-2xl p-3 shadow-2xs">
+                        <span class="text-[10px] uppercase font-bold text-purple-500 dark:text-purple-400 block">Level 5: Episodic</span>
+                        <div id="stat-l5" class="text-2xl font-black text-purple-900 dark:text-purple-200 mt-1">0</div>
                     </div>
                 </div>
 
-                <div class="mt-4 bg-slate-900 text-white rounded-2xl p-4 font-mono text-xs">
-                    <h3 class="text-emerald-400 font-bold mb-2">Live Benchmark Results:</h3>
-                    <pre id="benchmark-output" class="whitespace-pre-wrap leading-relaxed text-slate-300">Click "Run Benchmark" to evaluate Recall@k, MRR, NDCG@5, and Attractor Energy Basin stability.</pre>
+                <!-- Live Benchmark Output Viewport -->
+                <div class="bg-slate-900 text-white rounded-2xl p-4 font-mono text-xs border border-slate-800 shadow-md">
+                    <h3 class="text-emerald-400 font-bold mb-2 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span>Hopfield Convergence &amp; Standard Retrieval Benchmark:</span>
+                    </h3>
+                    <div id="benchmark-output" class="leading-relaxed text-slate-300">
+                        Click "Run Live Benchmark" above to evaluate Recall@1, Recall@5, NDCG@5, Mean Latency, and Attractor Energy Basin stability.
+                    </div>
+                </div>
+
+                <!-- Interactive Convergence Plotly Container -->
+                <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+                    <h3 class="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-2">Thermodynamic Energy Landscape Relaxation Curve</h3>
+                    <div id="energy-chart-container" class="w-full h-64 flex items-center justify-center text-xs text-slate-400">
+                        Run a search query or benchmark to visualize the Hopfield energy minimization trajectory.
+                    </div>
                 </div>
             </div>
 
         </main>
     </div>
+
+    <!-- ===================================================================== -->
+    <!-- LLM CONFIGURATION MODAL (SESSION SCOPED) -->
+    <!-- ===================================================================== -->
+    <div id="llm-config-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-white">LLM Synthesis Engine &amp; API Key</h3>
+                        <p class="text-[11px] text-slate-300">Choose local Ollama or high-speed Cloud LLM for answer generation</p>
+                    </div>
+                </div>
+                <button onclick="closeLLMModal()" class="text-slate-400 hover:text-white transition p-1 rounded-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 space-y-4 text-xs">
+                <!-- Mode Toggle Cards -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div id="modal-card-local" onclick="setModalMode('local')" class="border-2 rounded-2xl p-3 cursor-pointer transition border-blue-500 bg-blue-50/50 dark:bg-blue-950/40">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-bold text-slate-800 dark:text-slate-100">Local Llama</span>
+                            <span class="w-2.5 h-2.5 rounded-full bg-blue-600" id="modal-dot-local"></span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">Ollama running locally on CPU/GPU. No API key or internet required.</p>
+                    </div>
+                    <div id="modal-card-cloud" onclick="setModalMode('cloud')" class="border-2 rounded-2xl p-3 cursor-pointer transition border-slate-200 dark:border-slate-800 hover:border-slate-300">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-bold text-slate-800 dark:text-slate-100">Cloud LLM</span>
+                            <span class="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700" id="modal-dot-cloud"></span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">Groq (Llama-3.3 70B), OpenAI (GPT-4o), or Gemini. Ultra-fast.</p>
+                    </div>
+                </div>
+
+                <!-- Cloud Option Fields -->
+                <div id="modal-cloud-fields" class="space-y-3 pt-1 hidden">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Provider Preset</label>
+                        <select id="modal-cloud-provider" onchange="onModalPresetChange()" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium">
+                            <option value="groq" selected>Groq (Ultra-Fast Llama-3.3 70B)</option>
+                            <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
+                            <option value="gemini">Google Gemini (Gemini 1.5 Flash)</option>
+                            <option value="custom">Custom OpenAI-Compatible API</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">API Key (Session-Only Memory)</label>
+                        <div class="relative">
+                            <input type="password" id="modal-api-key" placeholder="gsk_..." class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 pr-8 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs focus:border-blue-500 outline-none">
+                            <button type="button" onclick="togglePasswordVisibility('modal-api-key')" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">👁️</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Model Name</label>
+                            <input type="text" id="modal-model-name" value="llama-3.3-70b-versatile" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Base URL</label>
+                            <input type="text" id="modal-base-url" value="https://api.groq.com/openai/v1" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs">
+                        </div>
+                    </div>
+
+                    <div class="p-3 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900 rounded-2xl text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed flex items-start gap-2">
+                        <span class="text-base">🔒</span>
+                        <span>
+                            <strong>Ephemeral Session Memory:</strong> Your API key is stored exclusively in volatile browser memory (<code class="bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-blue-200 dark:border-blue-900 text-[10px]">sessionStorage</code>). It is never saved to disk, never logged, and will be destroyed upon closing this tab.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Local Llama Info Fields -->
+                <div id="modal-local-fields" class="space-y-2 pt-1 text-slate-600 dark:text-slate-300">
+                    <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1.5 leading-relaxed">
+                        <div class="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-100">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span>Local Ollama Service Detected</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                            Local inference uses your installed <strong class="text-slate-700 dark:text-slate-200">llama3.2</strong> model running at <code class="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-[10px]">http://localhost:11434</code>.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Status Feedback Box -->
+                <div id="modal-status-box" class="hidden p-2.5 rounded-xl border text-[11px] font-medium"></div>
+
+                <!-- Modal Actions -->
+                <div class="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <button onclick="clearLLMSession()" class="text-rose-600 dark:text-rose-400 hover:underline font-semibold text-xs">
+                        Reset to Local Default
+                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="testLLMFromModal()" class="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold transition text-xs flex items-center gap-1.5">
+                            <span id="modal-test-spinner" class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></span>
+                            <span>Test Connection</span>
+                        </button>
+                        <button onclick="saveLLMFromModal()" class="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition text-xs shadow-xs">
+                            Save for Session
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <!-- Application Script -->
     <script>
@@ -381,17 +898,529 @@
         let currentReaderDoc = null;
         let currentReaderPage = 1;
         let cyInstance = null;
+        let speechRecognitionInstance = null;
+        let currentSpeechSynth = null;
+        let currentUtterance = null;
+        let quizAnswersState = {};
 
         mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
 
-        window.addEventListener('DOMContentLoaded', async () => {
-            await checkStatus();
-            await loadChats();
-            await refreshDocumentsList();
-            await loadMultimodalDocs();
-            await refreshMemoryStats();
-            setInterval(checkStatus, 5000);
-        });
+        // =====================================================================
+        // THEME (DARK / LIGHT MODE)
+        // =====================================================================
+        function initTheme() {
+            const savedTheme = localStorage.getItem('hopfield_theme');
+            if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+                updateThemeToggleIcon(true);
+            } else {
+                document.documentElement.classList.remove('dark');
+                updateThemeToggleIcon(false);
+            }
+        }
+
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('hopfield_theme', isDark ? 'dark' : 'light');
+            updateThemeToggleIcon(isDark);
+            showToast(isDark ? "Dark theme activated" : "Light theme activated", "info");
+        }
+
+        function updateThemeToggleIcon(isDark) {
+            const icon = document.getElementById('theme-toggle-icon');
+            if (icon) icon.innerText = isDark ? '☀️' : '🌙';
+        }
+
+        // =====================================================================
+        // TOAST NOTIFICATION SYSTEM
+        // =====================================================================
+        function showToast(message, type = 'info', duration = 3000) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            
+            let bgClass = "bg-slate-900 text-white border-slate-700";
+            let icon = "ℹ️";
+            if (type === 'success') {
+                bgClass = "bg-emerald-900 text-white border-emerald-700";
+                icon = "✓";
+            } else if (type === 'error') {
+                bgClass = "bg-rose-900 text-white border-rose-700";
+                icon = "✕";
+            }
+
+            toast.className = `pointer-events-auto px-4 py-2.5 rounded-2xl shadow-xl border text-xs font-semibold flex items-center gap-2 transform transition-all duration-300 opacity-0 translate-y-2 ${bgClass}`;
+            toast.innerHTML = `<span>${icon}</span><span>${escapeHtml(message)}</span>`;
+            container.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('opacity-0', 'translate-y-2');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
+        }
+
+        // =====================================================================
+        // SESSION LLM CONFIGURATION (IN-MEMORY PERSISTENCE ONLY)
+        // =====================================================================
+        const SESSION_LLM_KEY = 'hopfield_session_llm';
+
+        const PROVIDER_PRESETS = {
+            groq: {
+                name: 'Groq',
+                base_url: 'https://api.groq.com/openai/v1',
+                model: 'llama-3.3-70b-versatile',
+                placeholder: 'gsk_...'
+            },
+            openai: {
+                name: 'OpenAI',
+                base_url: 'https://api.openai.com/v1',
+                model: 'gpt-4o-mini',
+                placeholder: 'sk-...'
+            },
+            gemini: {
+                name: 'Google Gemini',
+                base_url: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+                model: 'gemini-1.5-flash',
+                placeholder: 'AIza...'
+            },
+            custom: {
+                name: 'Custom',
+                base_url: 'http://localhost:8080/v1',
+                model: 'default',
+                placeholder: 'API Key (if required)...'
+            }
+        };
+
+        function getSessionLLM() {
+            try {
+                const raw = sessionStorage.getItem(SESSION_LLM_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function setSessionLLM(config) {
+            sessionStorage.setItem(SESSION_LLM_KEY, JSON.stringify(config));
+            updateLLMUI();
+            syncLLMInputsFromSession();
+            showToast("LLM session configuration updated", "success");
+        }
+
+        function clearLLMSession() {
+            sessionStorage.removeItem(SESSION_LLM_KEY);
+            const mKey = document.getElementById('modal-api-key');
+            if (mKey) mKey.value = '';
+            const sKey = document.getElementById('sb-api-key');
+            if (sKey) sKey.value = '';
+            setModalMode('local');
+            onSidebarModeChange('local');
+            updateLLMUI();
+            closeLLMModal();
+            checkStatus();
+            showToast("Reset to local Ollama inference", "info");
+        }
+
+        function openLLMModal() {
+            syncLLMInputsFromSession();
+            document.getElementById('llm-config-modal').classList.remove('hidden');
+        }
+
+        function closeLLMModal() {
+            document.getElementById('llm-config-modal').classList.add('hidden');
+            const box = document.getElementById('modal-status-box');
+            if (box) box.classList.add('hidden');
+        }
+
+        function setModalMode(mode) {
+            const cardLocal = document.getElementById('modal-card-local');
+            const cardCloud = document.getElementById('modal-card-cloud');
+            const dotLocal = document.getElementById('modal-dot-local');
+            const dotCloud = document.getElementById('modal-dot-cloud');
+            const cloudFields = document.getElementById('modal-cloud-fields');
+            const localFields = document.getElementById('modal-local-fields');
+
+            if (mode === 'cloud') {
+                if (cardCloud) cardCloud.className = "border-2 rounded-2xl p-3 cursor-pointer transition border-blue-500 bg-blue-50/50 dark:bg-blue-950/40";
+                if (cardLocal) cardLocal.className = "border-2 rounded-2xl p-3 cursor-pointer transition border-slate-200 dark:border-slate-800 hover:border-slate-300";
+                if (dotCloud) dotCloud.className = "w-2.5 h-2.5 rounded-full bg-blue-600";
+                if (dotLocal) dotLocal.className = "w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700";
+                if (cloudFields) cloudFields.classList.remove('hidden');
+                if (localFields) localFields.classList.add('hidden');
+            } else {
+                if (cardLocal) cardLocal.className = "border-2 rounded-2xl p-3 cursor-pointer transition border-blue-500 bg-blue-50/50 dark:bg-blue-950/40";
+                if (cardCloud) cardCloud.className = "border-2 rounded-2xl p-3 cursor-pointer transition border-slate-200 dark:border-slate-800 hover:border-slate-300";
+                if (dotLocal) dotLocal.className = "w-2.5 h-2.5 rounded-full bg-blue-600";
+                if (dotCloud) dotCloud.className = "w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700";
+                if (localFields) localFields.classList.remove('hidden');
+                if (cloudFields) cloudFields.classList.add('hidden');
+            }
+        }
+
+        function onModalPresetChange() {
+            const p = document.getElementById('modal-cloud-provider').value;
+            const preset = PROVIDER_PRESETS[p] || PROVIDER_PRESETS.groq;
+            document.getElementById('modal-base-url').value = preset.base_url;
+            document.getElementById('modal-model-name').value = preset.model;
+            document.getElementById('modal-api-key').placeholder = preset.placeholder;
+        }
+
+        function onSidebarModeChange(mode) {
+            const cloudFields = document.getElementById('sb-cloud-fields');
+            const localFields = document.getElementById('sb-local-fields');
+            const lblLocal = document.getElementById('sb-lbl-mode-local');
+            const lblCloud = document.getElementById('sb-lbl-mode-cloud');
+
+            if (mode === 'cloud') {
+                if (lblCloud) lblCloud.className = "flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-400 shadow-xs font-bold";
+                if (lblLocal) lblLocal.className = "flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white";
+                if (cloudFields) cloudFields.classList.remove('hidden');
+                if (localFields) localFields.classList.add('hidden');
+            } else {
+                if (lblLocal) lblLocal.className = "flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-400 shadow-xs font-bold";
+                if (lblCloud) lblCloud.className = "flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white";
+                if (localFields) localFields.classList.remove('hidden');
+                if (cloudFields) cloudFields.classList.add('hidden');
+            }
+        }
+
+        function onSidebarPresetChange() {
+            const p = document.getElementById('sb-cloud-provider').value;
+            const preset = PROVIDER_PRESETS[p] || PROVIDER_PRESETS.groq;
+            document.getElementById('sb-model-name').value = preset.model;
+            document.getElementById('sb-api-key').placeholder = preset.placeholder;
+        }
+
+        function togglePasswordVisibility(inputId) {
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.type = input.type === 'password' ? 'text' : 'password';
+            }
+        }
+
+        async function testLLMFromModal() {
+            const isCloud = !document.getElementById('modal-cloud-fields').classList.contains('hidden');
+            const statusBox = document.getElementById('modal-status-box');
+            const spinner = document.getElementById('modal-test-spinner');
+
+            if (spinner) spinner.style.display = 'inline-block';
+            if (statusBox) {
+                statusBox.classList.remove('hidden');
+                statusBox.className = "p-2.5 rounded-xl border text-[11px] font-medium bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300";
+                statusBox.innerText = "Testing connection...";
+            }
+
+            const reqData = isCloud ? {
+                provider: document.getElementById('modal-cloud-provider').value,
+                model: document.getElementById('modal-model-name').value.trim(),
+                base_url: document.getElementById('modal-base-url').value.trim(),
+                api_key: document.getElementById('modal-api-key').value.trim()
+            } : {
+                provider: 'ollama',
+                model: 'llama3.2',
+                base_url: 'http://localhost:11434/v1'
+            };
+
+            try {
+                const res = await fetch('/api/llm/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reqData)
+                });
+                const data = await res.json();
+                if (statusBox) {
+                    if (data.success) {
+                        statusBox.className = "p-2.5 rounded-xl border text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200";
+                        statusBox.innerText = "✓ " + data.message;
+                    } else {
+                        statusBox.className = "p-2.5 rounded-xl border text-[11px] font-medium bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200";
+                        statusBox.innerText = "✕ " + data.message;
+                    }
+                }
+            } catch (e) {
+                if (statusBox) {
+                    statusBox.className = "p-2.5 rounded-xl border text-[11px] font-medium bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200";
+                    statusBox.innerText = "Connection failed: " + e.message;
+                }
+            } finally {
+                if (spinner) spinner.style.display = 'none';
+            }
+        }
+
+        async function testLLMFromSidebar() {
+            const isCloud = !document.getElementById('sb-cloud-fields').classList.contains('hidden');
+            const statusEl = isCloud ? document.getElementById('sb-test-status') : document.getElementById('sb-local-status');
+            if (statusEl) {
+                statusEl.classList.remove('hidden');
+                statusEl.className = "text-[10px] font-medium text-slate-500 animate-pulse";
+                statusEl.innerText = "Testing...";
+            }
+
+            const reqData = isCloud ? {
+                provider: document.getElementById('sb-cloud-provider').value,
+                model: document.getElementById('sb-model-name').value.trim(),
+                base_url: PROVIDER_PRESETS[document.getElementById('sb-cloud-provider').value].base_url,
+                api_key: document.getElementById('sb-api-key').value.trim()
+            } : {
+                provider: 'ollama',
+                model: 'llama3.2',
+                base_url: 'http://localhost:11434/v1'
+            };
+
+            try {
+                const res = await fetch('/api/llm/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reqData)
+                });
+                const data = await res.json();
+                if (statusEl) {
+                    if (data.success) {
+                        statusEl.className = "text-[10px] font-medium text-emerald-600 dark:text-emerald-400";
+                        statusEl.innerText = "✓ Reachable: " + data.message;
+                    } else {
+                        statusEl.className = "text-[10px] font-medium text-rose-600 dark:text-rose-400";
+                        statusEl.innerText = "✕ " + data.message;
+                    }
+                }
+            } catch (e) {
+                if (statusEl) {
+                    statusEl.className = "text-[10px] font-medium text-rose-600 dark:text-rose-400";
+                    statusEl.innerText = "✕ " + e.message;
+                }
+            }
+        }
+
+        function saveLLMFromModal() {
+            const isCloud = !document.getElementById('modal-cloud-fields').classList.contains('hidden');
+            if (isCloud) {
+                const apiKey = document.getElementById('modal-api-key').value.trim();
+                if (!apiKey) {
+                    alert('Please enter an API Key to use Cloud LLM.');
+                    return;
+                }
+                const p = document.getElementById('modal-cloud-provider').value;
+                const cfg = {
+                    mode: 'cloud',
+                    provider: p,
+                    model: document.getElementById('modal-model-name').value.trim(),
+                    base_url: document.getElementById('modal-base-url').value.trim(),
+                    api_key: apiKey
+                };
+                setSessionLLM(cfg);
+            } else {
+                const cfg = {
+                    mode: 'local',
+                    provider: 'ollama',
+                    model: 'llama3.2',
+                    base_url: 'http://localhost:11434/v1'
+                };
+                setSessionLLM(cfg);
+            }
+            closeLLMModal();
+        }
+
+        function saveLLMFromSidebar() {
+            const isCloud = !document.getElementById('sb-cloud-fields').classList.contains('hidden');
+            if (isCloud) {
+                const apiKey = document.getElementById('sb-api-key').value.trim();
+                if (!apiKey) {
+                    alert('Please enter an API Key to use Cloud LLM.');
+                    return;
+                }
+                const p = document.getElementById('sb-cloud-provider').value;
+                const preset = PROVIDER_PRESETS[p] || PROVIDER_PRESETS.groq;
+                const cfg = {
+                    mode: 'cloud',
+                    provider: p,
+                    model: document.getElementById('sb-model-name').value.trim() || preset.model,
+                    base_url: preset.base_url,
+                    api_key: apiKey
+                };
+                setSessionLLM(cfg);
+            } else {
+                const cfg = {
+                    mode: 'local',
+                    provider: 'ollama',
+                    model: 'llama3.2',
+                    base_url: 'http://localhost:11434/v1'
+                };
+                setSessionLLM(cfg);
+            }
+            const statusEl = isCloud ? document.getElementById('sb-test-status') : document.getElementById('sb-local-status');
+            if (statusEl) {
+                statusEl.classList.remove('hidden');
+                statusEl.className = "text-[10px] font-medium text-emerald-600 dark:text-emerald-400";
+                statusEl.innerText = "✓ Saved for active session";
+            }
+        }
+
+        function syncLLMInputsFromSession() {
+            const session = getSessionLLM();
+            if (session && session.mode === 'cloud') {
+                setModalMode('cloud');
+                onSidebarModeChange('cloud');
+                if (session.provider) {
+                    const mProv = document.getElementById('modal-cloud-provider');
+                    if (mProv) mProv.value = session.provider;
+                    const sProv = document.getElementById('sb-cloud-provider');
+                    if (sProv) sProv.value = session.provider;
+                }
+                if (session.model) {
+                    const mMod = document.getElementById('modal-model-name');
+                    if (mMod) mMod.value = session.model;
+                    const sMod = document.getElementById('sb-model-name');
+                    if (sMod) sMod.value = session.model;
+                }
+                if (session.base_url) {
+                    const mUrl = document.getElementById('modal-base-url');
+                    if (mUrl) mUrl.value = session.base_url;
+                }
+                if (session.api_key) {
+                    const mKey = document.getElementById('modal-api-key');
+                    if (mKey) mKey.value = session.api_key;
+                    const sKey = document.getElementById('sb-api-key');
+                    if (sKey) sKey.value = session.api_key;
+                }
+            } else {
+                setModalMode('local');
+                onSidebarModeChange('local');
+            }
+        }
+
+        function updateLLMUI() {
+            const session = getSessionLLM();
+            const llmPill = document.getElementById('llm-status-pill');
+            const sbBadge = document.getElementById('sb-llm-badge');
+            const compIndicator = document.getElementById('composer-model-indicator');
+
+            if (session && session.mode === 'cloud' && session.api_key) {
+                const provName = session.provider ? session.provider.toUpperCase() : 'CLOUD';
+                const modelName = session.model || '';
+                if (llmPill) {
+                    llmPill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 cursor-pointer shadow-xs hover:bg-indigo-200 transition flex items-center gap-1.5";
+                    llmPill.innerHTML = `<span class="w-2 h-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span><span>${provName} (${modelName})</span><span class="bg-indigo-200/80 dark:bg-indigo-900 text-[9px] px-1 rounded font-semibold">Session</span>`;
+                    llmPill.title = "Cloud LLM active in session memory. Click to configure or clear.";
+                }
+                if (sbBadge) {
+                    sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800";
+                    sbBadge.innerText = `${provName} (Session)`;
+                }
+                if (compIndicator) {
+                    compIndicator.innerText = `${provName} (${modelName})`;
+                }
+            } else {
+                if (sbBadge) {
+                    sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300";
+                    sbBadge.innerText = "Local Llama";
+                }
+                if (compIndicator) {
+                    compIndicator.innerText = "Local Llama (Ollama llama3.2)";
+                }
+            }
+        }
+
+        // =====================================================================
+        // VOICE INPUT (SPEECH-TO-TEXT)
+        // =====================================================================
+        function toggleVoiceInput() {
+            const btn = document.getElementById('voice-btn');
+            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRec) {
+                alert('Speech Recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.');
+                return;
+            }
+
+            if (speechRecognitionInstance) {
+                speechRecognitionInstance.stop();
+                speechRecognitionInstance = null;
+                btn.classList.remove('recording-pulse', 'text-rose-600', 'bg-rose-50');
+                showToast("Voice dictation stopped", "info");
+                return;
+            }
+
+            try {
+                speechRecognitionInstance = new SpeechRec();
+                speechRecognitionInstance.continuous = false;
+                speechRecognitionInstance.interimResults = false;
+                speechRecognitionInstance.lang = 'en-US';
+
+                speechRecognitionInstance.onstart = () => {
+                    btn.classList.add('recording-pulse', 'text-rose-600', 'bg-rose-50');
+                    showToast("Listening... speak your question", "info");
+                };
+
+                speechRecognitionInstance.onresult = (event) => {
+                    const text = event.results[0][0].transcript;
+                    const input = document.getElementById('query-input');
+                    if (input) {
+                        input.value = text;
+                        autoResizeTextarea(input);
+                    }
+                    showToast(`Dictated: "${text.slice(0, 30)}..."`, "success");
+                };
+
+                speechRecognitionInstance.onerror = (e) => {
+                    showToast(`Voice input error: ${e.error}`, "error");
+                    btn.classList.remove('recording-pulse', 'text-rose-600', 'bg-rose-50');
+                    speechRecognitionInstance = null;
+                };
+
+                speechRecognitionInstance.onend = () => {
+                    btn.classList.remove('recording-pulse', 'text-rose-600', 'bg-rose-50');
+                    speechRecognitionInstance = null;
+                };
+
+                speechRecognitionInstance.start();
+            } catch (err) {
+                showToast(`Unable to start microphone: ${err.message}`, "error");
+            }
+        }
+
+        // =====================================================================
+        // TEXT-TO-SPEECH (READ ALOUD)
+        // =====================================================================
+        function toggleSpeakMessage(btn) {
+            if (!('speechSynthesis' in window)) {
+                alert('Speech synthesis is not supported in this browser.');
+                return;
+            }
+
+            if (window.speechSynthesis.speaking) {
+                window.speechSynthesis.cancel();
+                btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg> <span>Speak</span>`;
+                return;
+            }
+
+            const rawText = decodeURIComponent(btn.getAttribute('data-content') || '');
+            if (!rawText) return;
+
+            // Strip citations like [E1] and markdown syntax
+            const cleanText = rawText
+                .replace(/\[E\d+\]/g, '')
+                .replace(/[#*`_~>]/g, '')
+                .replace(/\n+/g, ' ');
+
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+
+            btn.innerHTML = `<svg class="w-3.5 h-3.5 text-rose-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg> <span class="text-rose-500 font-bold">Stop</span>`;
+
+            utterance.onend = () => {
+                btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg> <span>Speak</span>`;
+            };
+
+            utterance.onerror = () => {
+                btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg> <span>Speak</span>`;
+            };
+
+            window.speechSynthesis.speak(utterance);
+        }
 
         // =====================================================================
         // WORKSPACE TAB NAVIGATION
@@ -401,10 +1430,10 @@
                 const btn = document.getElementById(`nav-btn-${v}`);
                 const panel = document.getElementById(`view-${v}`);
                 if (v === view) {
-                    btn.className = "px-3 py-1.5 rounded-lg bg-white shadow-xs text-blue-700 flex items-center gap-1.5 font-bold";
+                    btn.className = "px-3 py-1.5 rounded-lg bg-white dark:bg-slate-700 shadow-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5 font-bold transition";
                     panel.classList.remove('hidden');
                 } else {
-                    btn.className = "px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 flex items-center gap-1.5 font-semibold";
+                    btn.className = "px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60 flex items-center gap-1.5 font-semibold transition";
                     panel.classList.add('hidden');
                 }
             });
@@ -417,18 +1446,31 @@
                 const btn = document.getElementById(`tab-btn-${t}`);
                 const content = document.getElementById(`tab-content-${t}`);
                 if (t === tab) {
-                    btn.className = "flex-1 py-1 px-2 rounded-lg bg-white shadow-xs text-blue-700 flex items-center justify-center gap-1 border border-slate-200";
+                    btn.className = "flex-1 py-1.5 px-2 rounded-lg bg-white dark:bg-slate-800 shadow-xs text-blue-600 dark:text-blue-400 flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-700 transition font-bold";
                     content.classList.remove('hidden');
                 } else {
-                    btn.className = "flex-1 py-1 px-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1";
+                    btn.className = "flex-1 py-1.5 px-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center gap-1 transition font-medium";
                     content.classList.add('hidden');
                 }
             });
         }
 
         // =====================================================================
-        // CHAT & RAG ENGINE
+        // STATUS & LIFECYCLE
         // =====================================================================
+        window.addEventListener('DOMContentLoaded', async () => {
+            initTheme();
+            setupDropZone();
+            syncLLMInputsFromSession();
+            updateLLMUI();
+            await checkStatus();
+            await loadChats();
+            await refreshDocumentsList();
+            await loadMultimodalDocs();
+            await refreshMemoryStats();
+            setInterval(checkStatus, 5000);
+        });
+
         async function checkStatus() {
             try {
                 const res = await fetch('/api/status');
@@ -436,24 +1478,43 @@
                     const data = await res.json();
                     const badge = document.getElementById('pipeline-badge');
                     if (data.ready) {
-                        badge.className = "text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800";
+                        badge.className = "text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800";
                         badge.innerText = `${data.chunks} Chunks Ready`;
+                    }
+                    const session = getSessionLLM();
+                    if (session && session.mode === 'cloud' && session.api_key) {
+                        updateLLMUI();
+                    } else {
+                        const llmPill = document.getElementById('llm-status-pill');
+                        if (llmPill && data.llm) {
+                            if (data.llm.available) {
+                                llmPill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 cursor-pointer hover:bg-emerald-200 transition";
+                                llmPill.innerHTML = `● ${data.llm.provider.toUpperCase()} (${data.llm.model})`;
+                                llmPill.title = "Local LLM active & reachable. Click to configure.";
+                            } else {
+                                llmPill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 cursor-pointer hover:bg-amber-200 transition";
+                                llmPill.innerHTML = `⚠️ No Local LLM (Click for Cloud Key)`;
+                                llmPill.title = "Local Ollama unreachable. Click to connect Groq/OpenAI/Gemini.";
+                            }
+                        }
                     }
                 }
             } catch (e) {}
         }
 
+        // =====================================================================
+        // CHAT MANAGEMENT
+        // =====================================================================
         async function loadChats() {
             try {
                 const res = await fetch('/api/chats');
                 if (res.ok) {
                     const data = await res.json();
                     chatSessions = data.chats || [];
-                    renderChatsList();
                     if (chatSessions.length > 0 && !activeChatId) {
-                        selectChat(chatSessions[0].id);
-                    } else if (!activeChatId) {
-                        createNewChat();
+                        await selectChat(chatSessions[0].id);
+                    } else {
+                        renderChatsList();
                     }
                 }
             } catch (e) {}
@@ -461,18 +1522,32 @@
 
         function renderChatsList() {
             const listEl = document.getElementById('chats-list');
-            if (chatSessions.length === 0) {
-                listEl.innerHTML = `<div class="text-center py-6 text-slate-400 text-xs">No active chats.</div>`;
+            const filter = (document.getElementById('chat-search-input')?.value || '').toLowerCase();
+            const visible = chatSessions.filter(c => (c.title || 'Untitled Session').toLowerCase().includes(filter));
+
+            if (visible.length === 0) {
+                listEl.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs">No matching conversations.</div>`;
                 return;
             }
-            listEl.innerHTML = chatSessions.map(c => `
-                <div class="p-2 rounded-lg cursor-pointer text-xs ${c.id === activeChatId ? 'bg-blue-50 text-blue-800 font-bold border border-blue-200' : 'hover:bg-slate-100 text-slate-700'}" onclick="selectChat('${c.id}')">
-                    <div class="truncate">${c.title || 'Conversation'}</div>
+
+            listEl.innerHTML = visible.map(c => `
+                <div onclick="selectChat('${c.id}')" class="group p-2.5 rounded-2xl cursor-pointer text-xs flex justify-between items-center transition ${c.id === activeChatId ? 'bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-bold' : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-transparent'}">
+                    <div class="flex items-center gap-2 truncate pr-2">
+                        <svg class="w-3.5 h-3.5 flex-shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                        <span class="truncate block">${escapeHtml(c.title || 'New Session')}</span>
+                    </div>
+                    <button onclick="event.stopPropagation(); deleteChatSession('${c.id}')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 p-1 rounded transition flex-shrink-0" title="Delete conversation">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
                 </div>
             `).join('');
         }
 
-        function createNewChat() {
+        function filterChats() {
+            renderChatsList();
+        }
+
+        async function createNewChat() {
             const id = 'chat_' + Date.now();
             activeChatId = id;
             chatSessions.unshift({ id, title: 'New Conversation', messages: [] });
@@ -480,18 +1555,33 @@
             document.getElementById('chat-history').innerHTML = '';
             document.getElementById('chat-history').classList.add('hidden');
             document.getElementById('welcome-state').classList.remove('hidden');
+            showToast("New chat session started", "info");
         }
 
-        function selectChat(id) {
+        async function selectChat(id) {
             activeChatId = id;
+            let sess = chatSessions.find(c => c.id === id);
+            if (sess && !sess.messages) {
+                try {
+                    const res = await fetch(`/api/chats/${id}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.chat && data.chat.messages) {
+                            sess.messages = data.chat.messages;
+                        }
+                    }
+                } catch (e) {}
+            }
+            if (sess && !sess.messages) sess.messages = [];
             renderChatsList();
-            const sess = chatSessions.find(c => c.id === id);
+
             const history = document.getElementById('chat-history');
             const welcome = document.getElementById('welcome-state');
             if (sess && sess.messages && sess.messages.length > 0) {
                 welcome.classList.add('hidden');
                 history.classList.remove('hidden');
                 history.innerHTML = sess.messages.map(m => renderMessageBubble(m)).join('');
+                document.getElementById('chat-scroll-container').scrollTop = document.getElementById('chat-scroll-container').scrollHeight;
             } else {
                 history.innerHTML = '';
                 history.classList.add('hidden');
@@ -499,15 +1589,238 @@
             }
         }
 
+        async function deleteChatSession(id) {
+            try {
+                await fetch(`/api/chats/${id}`, { method: 'DELETE' });
+                chatSessions = chatSessions.filter(c => c.id !== id);
+                if (activeChatId === id) {
+                    if (chatSessions.length > 0) {
+                        selectChat(chatSessions[0].id);
+                    } else {
+                        createNewChat();
+                    }
+                } else {
+                    renderChatsList();
+                }
+                showToast("Chat session deleted", "info");
+            } catch (e) {}
+        }
+
+        function clearCurrentChatMessages() {
+            const sess = chatSessions.find(c => c.id === activeChatId);
+            if (sess) {
+                sess.messages = [];
+                renderChatsList();
+            }
+            const history = document.getElementById('chat-history');
+            history.innerHTML = '';
+            history.classList.add('hidden');
+            document.getElementById('welcome-state').classList.remove('hidden');
+            showToast("Cleared messages in active session", "info");
+        }
+
+        function exportCurrentChatMarkdown() {
+            const sess = chatSessions.find(c => c.id === activeChatId);
+            if (!sess || !sess.messages || sess.messages.length === 0) {
+                alert('No messages to export in current session.');
+                return;
+            }
+            let md = `# ${sess.title || 'Conversation'}\n\n`;
+            md += `*Exported from Hopfield Multimodal Intelligence Platform*\n\n---\n\n`;
+            sess.messages.forEach(m => {
+                const role = m.role === 'user' ? '### 👤 User' : '### 🧠 Hopfield Assistant';
+                md += `${role}\n\n${m.content}\n\n---\n\n`;
+            });
+            const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(sess.title || 'chat').replace(/[^a-zA-Z0-9_-]/g, '_')}.md`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast("Exported chat to Markdown", "success");
+        }
+
+        // =====================================================================
+        // RENDERING & MARKDOWN
+        // =====================================================================
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function renderMarkdown(text) {
+            if (!text) return '';
+            if (typeof marked !== 'undefined' && marked.parse) {
+                try {
+                    let parsed = marked.parse(text);
+                    parsed = parsed.replace(/\[E(\d+)\]/g, (match, num) => {
+                        return `<span class="inline-flex items-center px-1.5 py-0.2 rounded font-bold bg-blue-100 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[10px] font-mono shadow-2xs hover:scale-105 transition-transform cursor-pointer" title="Evidence Citation E${num}">E${num}</span>`;
+                    });
+                    return parsed;
+                } catch (e) {}
+            }
+            // Fallback safe formatter
+            let safe = escapeHtml(text);
+            safe = safe.replace(/### (.*?)\n/g, '<h3 class="text-sm font-bold text-slate-800 dark:text-white mt-2 mb-1">$1</h3>');
+            safe = safe.replace(/## (.*?)\n/g, '<h2 class="text-base font-bold text-slate-900 dark:text-white mt-3 mb-1">$1</h2>');
+            safe = safe.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-slate-900 dark:text-white">$1</strong>');
+            safe = safe.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>');
+            safe = safe.replace(/`([^`]+)`/g, '<code class="bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 px-1 py-0.5 rounded font-mono text-[11px]">$1</code>');
+            safe = safe.replace(/\[E(\d+)\]/g, '<span class="inline-flex items-center px-1.5 py-0.2 rounded font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[10px] font-mono">E$1</span>');
+            safe = safe.replace(/\n- (.*?)(?=\n|$)/g, '<li class="ml-4 list-disc">$1</li>');
+            safe = safe.replace(/\n/g, '<br>');
+            return safe;
+        }
+
+        function copyMessageText(btn) {
+            const content = decodeURIComponent(btn.getAttribute('data-content') || '');
+            if (!content) return;
+            navigator.clipboard.writeText(content).then(() => {
+                const orig = btn.innerHTML;
+                btn.innerHTML = `<span class="text-emerald-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Copied</span>`;
+                showToast("Copied to clipboard", "success");
+                setTimeout(() => { btn.innerHTML = orig; }, 2000);
+            });
+        }
+
+        function autoResizeTextarea(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+        }
+
+        function viewInReader(docSource, page) {
+            switchMainWorkspace('reader');
+            const doc = multimodalDocs.find(d => d.filename === docSource || d.doc_id === docSource);
+            if (doc) {
+                const sel = document.getElementById('reader-doc-select');
+                if (sel) sel.value = doc.doc_id;
+                currentReaderDoc = doc;
+                currentReaderPage = page || 1;
+                renderCurrentReaderPage();
+            }
+        }
+
+        function renderEvidenceTray(m) {
+            if (!m.evidence || m.evidence.length === 0) return '';
+            return `
+                <details class="group/tray text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
+                    <summary class="cursor-pointer text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-semibold flex items-center justify-between select-none py-1.5 px-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+                        <span class="flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                            <span>Hopfield Evidence Attractors (${m.evidence.length} grounding passages)</span>
+                        </span>
+                        <span class="text-[10px] text-slate-400 group-open/tray:rotate-180 transition-transform">▼</span>
+                    </summary>
+                    <div class="mt-2.5 space-y-2 max-h-64 overflow-y-auto pr-1">
+                        ${m.evidence.map((c, idx) => `
+                            <div class="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 text-xs space-y-1.5">
+                                <div class="flex items-center justify-between flex-wrap gap-1">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-950 px-2 py-0.5 rounded-lg text-[10px] font-mono">[${c.citation_id || 'E' + (idx+1)}]</span>
+                                        <span class="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-xs">${escapeHtml(c.source || 'Document')} ${c.page_number ? 'p.' + c.page_number : ''}</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-[10px] font-mono ${c.is_core_attractor ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800' : 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800'} px-2 py-0.5 rounded-lg font-semibold">
+                                            ${c.role || (c.is_core_attractor ? 'Core Attractor' : 'Associative Bridge')} • Sim: ${(c.score || 0).toFixed(3)}
+                                        </span>
+                                        <button onclick="viewInReader('${escapeHtml(c.source)}', ${c.page_number || 1})" class="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-semibold" title="Jump to page in Reader">
+                                            📖 Reader
+                                        </button>
+                                    </div>
+                                </div>
+                                <p class="text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed text-[11px]">${escapeHtml(c.text)}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                </details>
+            `;
+        }
+
         function renderMessageBubble(m) {
             const isUser = m.role === 'user';
+            if (isUser) {
+                return `
+                    <div class="flex gap-3 justify-end items-end group">
+                        <div class="flex flex-col items-end max-w-2xl">
+                            <div class="p-4 rounded-3xl rounded-br-xs bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 text-white text-xs leading-relaxed shadow-md font-medium">
+                                <div class="whitespace-pre-wrap">${escapeHtml(m.content)}</div>
+                            </div>
+                            <span class="text-[10px] text-slate-400 mt-1 mr-2">You</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const ga = m.grounded_answer || {};
+            const provUsed = ga.provider_used || (m.llm_provider || 'ollama');
+            const modelUsed = ga.model_name || (provUsed === 'ollama' ? 'llama3.2' : '');
+            const modelBadge = provUsed ? `<span class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] px-2 py-0.5 rounded-full font-mono border border-slate-200 dark:border-slate-700">${provUsed.toUpperCase()}${modelUsed ? ' (' + modelUsed + ')' : ''}</span>` : '';
+            
+            const confVal = m.confidence !== undefined ? m.confidence : ga.confidence;
+            const confBadge = confVal !== undefined ? `<span class="bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-semibold">Confidence: ${(confVal * 100).toFixed(0)}%</span>` : '';
+            
+            const lat = m.latencies || {};
+            const latencyStr = lat.total_ms ? `<span class="text-[10px] text-slate-400 font-mono">⚡ ${(lat.total_ms).toFixed(0)}ms</span>` : '';
+
+            const encodedContent = encodeURIComponent(m.content || '');
+
             return `
-                <div class="flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}">
-                    <div class="max-w-3xl p-3.5 rounded-2xl ${isUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none border border-slate-200'} text-xs leading-relaxed">
-                        <div class="whitespace-pre-wrap">${m.content}</div>
+                <div class="flex gap-3 justify-start items-start group">
+                    <!-- AI Avatar Badge -->
+                    <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-cyan-500 text-white flex items-center justify-center font-black text-xs shadow-sm flex-shrink-0 mt-1">
+                        HAM
+                    </div>
+
+                    <div class="flex flex-col max-w-2xl w-full">
+                        <div class="assistant-message-card p-5 rounded-3xl rounded-tl-xs bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 text-slate-800 dark:text-slate-100 text-xs shadow-md space-y-3 transition-colors">
+                            <!-- Assistant Header -->
+                            <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-slate-800 dark:text-slate-100 text-xs">Hopfield Multimodal AI</span>
+                                    ${modelBadge}
+                                    ${confBadge}
+                                </div>
+                                <div>${latencyStr}</div>
+                            </div>
+
+                            <!-- Markdown Body -->
+                            <div class="markdown-body leading-relaxed text-xs">
+                                ${renderMarkdown(m.content)}
+                            </div>
+
+                            <!-- Expandable Evidence Attractors Tray -->
+                            ${renderEvidenceTray(m)}
+
+                            <!-- Actions Footer -->
+                            <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400">
+                                <div class="flex items-center gap-3">
+                                    <button data-content="${encodedContent}" onclick="copyMessageText(this)" class="hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1 transition">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                        <span>Copy</span>
+                                    </button>
+                                    <button data-content="${encodedContent}" onclick="toggleSpeakMessage(this)" class="hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1 transition">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+                                        <span>Speak</span>
+                                    </button>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="exportCurrentChatMarkdown()" class="hover:text-slate-700 dark:hover:text-slate-200 transition" title="Export entire conversation to Markdown">
+                                        Export MD
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
+        }
+
+        function handleQueryKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendQuery();
+            }
         }
 
         function setQueryAndSearch(q) {
@@ -515,61 +1828,96 @@
             sendQuery();
         }
 
-        function handleInputKey(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendQuery();
-            }
-        }
-
         async function sendQuery() {
+            if (isSearching) return;
             const input = document.getElementById('query-input');
             const q = input.value.trim();
-            if (!q || isSearching) return;
+            if (!q) return;
+
+            input.value = '';
+            autoResizeTextarea(input);
+
             isSearching = true;
+            document.getElementById('send-icon').classList.add('hidden');
+            document.getElementById('search-spinner').style.display = 'block';
 
             const welcome = document.getElementById('welcome-state');
             const history = document.getElementById('chat-history');
             welcome.classList.add('hidden');
             history.classList.remove('hidden');
 
-            // Append User Message
-            const userMsg = { role: 'user', content: q };
-            history.insertAdjacentHTML('beforeend', renderMessageBubble(userMsg));
-            input.value = '';
-
-            const sess = chatSessions.find(c => c.id === activeChatId);
-            if (sess) {
-                sess.messages.push(userMsg);
-                if (sess.title === 'New Conversation') sess.title = q.slice(0, 30);
-                renderChatsList();
-            }
-
-            // Spinner
-            document.getElementById('send-icon').classList.add('hidden');
-            document.getElementById('search-spinner').style.display = 'block';
-
             try {
+                if (!activeChatId) {
+                    activeChatId = 'chat_' + Date.now();
+                    chatSessions.unshift({ id: activeChatId, title: q.slice(0, 30), messages: [] });
+                }
+
+                let sess = chatSessions.find(c => c.id === activeChatId);
+                if (sess && !sess.messages) sess.messages = [];
+
+                const userMsg = { role: 'user', content: q, timestamp: Date.now() };
+                history.insertAdjacentHTML('beforeend', renderMessageBubble(userMsg));
+                if (sess && sess.messages) sess.messages.push(userMsg);
+
+                if (sess && sess.messages && sess.messages.length <= 2) {
+                    sess.title = q.slice(0, 30);
+                }
+                renderChatsList();
+                document.getElementById('chat-scroll-container').scrollTop = document.getElementById('chat-scroll-container').scrollHeight;
+
                 const beta = parseFloat(document.getElementById('hopfield-beta').value) || 8.0;
                 const top_k = parseInt(document.getElementById('top-k').value) || 5;
                 const style = document.getElementById('answer-style-select').value;
 
+                const payload = {
+                    query: q,
+                    hopfield_beta: beta,
+                    top_k: top_k,
+                    answer_style: style,
+                    chat_id: activeChatId
+                };
+
+                const sessionLLM = getSessionLLM();
+                if (sessionLLM && sessionLLM.mode === 'cloud' && sessionLLM.api_key) {
+                    payload.llm_provider = sessionLLM.provider;
+                    payload.llm_model = sessionLLM.model;
+                    payload.llm_base_url = sessionLLM.base_url;
+                    payload.llm_api_key = sessionLLM.api_key;
+                } else if (sessionLLM && sessionLLM.mode === 'local') {
+                    payload.llm_provider = 'ollama';
+                    if (sessionLLM.model) payload.llm_model = sessionLLM.model;
+                    if (sessionLLM.base_url) payload.llm_base_url = sessionLLM.base_url;
+                }
+
                 const res = await fetch('/api/search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        query: q,
-                        hopfield_beta: beta,
-                        top_k: top_k,
-                        answer_style: style,
-                        chat_id: activeChatId
-                    })
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
-                const botContent = data.answer || "No response received.";
-                const botMsg = { role: 'assistant', content: botContent };
+                let botContent = data.answer || "No response received.";
+                if (!res.ok) {
+                    botContent = `Error (${res.status}): ${data.detail || data.message || 'Request failed.'}`;
+                } else if (data.grounded_answer && data.grounded_answer.fallback_occurred) {
+                    botContent += "\n\n> ⚠️ *Extracted via Offline Grounded Fallback (LLM unavailable). Click 'LLM Engine' in the top bar to connect Groq, OpenAI, or Gemini for fluent generative synthesis.*";
+                }
+                const botMsg = {
+                    role: 'assistant',
+                    content: botContent,
+                    confidence: data.confidence,
+                    evidence: data.evidence || [],
+                    grounded_answer: data.grounded_answer,
+                    associative_diagnostics: data.associative_diagnostics,
+                    latencies: data.latencies,
+                    timestamp: Date.now()
+                };
                 history.insertAdjacentHTML('beforeend', renderMessageBubble(botMsg));
-                if (sess) sess.messages.push(botMsg);
+                if (sess && sess.messages) sess.messages.push(botMsg);
+                
+                // Plot Energy Trajectory if available
+                if (data.associative_diagnostics && data.associative_diagnostics.energy_trajectory) {
+                    renderEnergyChart(data.associative_diagnostics.energy_trajectory);
+                }
             } catch (err) {
                 history.insertAdjacentHTML('beforeend', renderMessageBubble({ role: 'assistant', content: 'Error: ' + err.message }));
             } finally {
@@ -583,12 +1931,40 @@
         // =====================================================================
         // FILE UPLOAD & DOCUMENTS
         // =====================================================================
+        function setupDropZone() {
+            const dropZone = document.getElementById('drop-zone');
+            if (!dropZone) return;
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.add('drag-active');
+                });
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.remove('drag-active');
+                });
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    uploadFile({ files: files });
+                }
+            });
+        }
+
         async function uploadFile(input) {
             const file = input.files[0];
             if (!file) return;
 
             const status = document.getElementById('upload-status');
-            status.style.display = 'block';
+            status.classList.remove('hidden');
             status.innerText = `Ingesting ${file.name}...`;
 
             const formData = new FormData();
@@ -599,14 +1975,18 @@
                 const data = await res.json();
                 if (res.ok) {
                     status.innerText = `Successfully indexed: ${file.name}`;
+                    showToast(`Indexed ${file.name} successfully`, "success");
                     await refreshDocumentsList();
                     await loadMultimodalDocs();
                     await refreshMemoryStats();
+                    setTimeout(() => status.classList.add('hidden'), 4000);
                 } else {
                     status.innerText = `Upload failed: ${data.detail || 'Unknown error'}`;
+                    showToast(`Upload failed: ${data.detail}`, "error");
                 }
             } catch (e) {
                 status.innerText = `Error: ${e.message}`;
+                showToast(`Error: ${e.message}`, "error");
             }
         }
 
@@ -617,17 +1997,67 @@
                     const data = await res.json();
                     const docs = data.documents || [];
                     document.getElementById('docs-count-badge').innerText = docs.length;
-                    const listEl = document.getElementById('documents-list');
-                    if (docs.length === 0) {
-                        listEl.innerHTML = `<div class="text-center py-6 text-slate-400 text-xs">No documents uploaded.</div>`;
-                    } else {
-                        listEl.innerHTML = docs.map(d => `
-                            <div class="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs flex justify-between items-center">
-                                <span class="truncate font-semibold text-slate-700">${d.source}</span>
-                                <span class="text-[10px] text-slate-400">${d.chunks} chunks</span>
+                    const compCount = document.getElementById('composer-chunks-count');
+                    if (compCount) compCount.innerText = `${data.total_chunks || docs.reduce((acc, d) => acc + d.chunks, 0)} chunks active`;
+                    
+                    renderDocsListUI(docs);
+                }
+            } catch (e) {}
+        }
+
+        function filterDocuments() {
+            refreshDocumentsList();
+        }
+
+        function renderDocsListUI(docs) {
+            const listEl = document.getElementById('documents-list');
+            const filter = (document.getElementById('doc-search-input')?.value || '').toLowerCase();
+            const visible = docs.filter(d => d.source.toLowerCase().includes(filter));
+
+            if (visible.length === 0) {
+                listEl.innerHTML = `<div class="text-center py-6 text-slate-400 text-xs">No documents uploaded.</div>`;
+                return;
+            }
+
+            listEl.innerHTML = visible.map(d => {
+                const ext = d.source.split('.').pop().toLowerCase();
+                let icon = "📄";
+                if (ext === 'pdf') icon = "📕";
+                else if (ext === 'pptx' || ext === 'ppt') icon = "📙";
+                else if (ext === 'docx' || ext === 'doc') icon = "📘";
+                else if (ext === 'xlsx' || ext === 'csv') icon = "📊";
+                return `
+                    <div class="group p-2.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 hover:border-slate-300 rounded-2xl text-xs flex justify-between items-center transition shadow-2xs">
+                        <div class="flex items-center gap-2 truncate pr-2">
+                            <span class="text-base flex-shrink-0">${icon}</span>
+                            <div class="truncate">
+                                <span class="truncate font-semibold text-slate-800 dark:text-slate-100 block">${escapeHtml(d.source)}</span>
+                                <span class="text-[10px] text-slate-400 block">${d.chunks} chunks &bull; ${Math.round((d.characters || 0)/1000)}k chars</span>
                             </div>
-                        `).join('');
-                    }
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <button onclick="viewInReader('${encodeURIComponent(d.source)}', 1)" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-600 p-1 rounded transition flex-shrink-0" title="Open in Visual Reader">
+                                📖
+                            </button>
+                            <button onclick="removeDocumentSource('${encodeURIComponent(d.source)}')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 p-1 rounded transition flex-shrink-0" title="Delete document from memory">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function removeDocumentSource(srcEncoded) {
+            const src = decodeURIComponent(srcEncoded);
+            if (!confirm(`Delete "${src}" from Hopfield memory?`)) return;
+            try {
+                const res = await fetch(`/api/documents/${encodeURIComponent(src)}`, { method: 'DELETE' });
+                if (res.ok) {
+                    showToast(`Deleted ${src}`, "info");
+                    await refreshDocumentsList();
+                    await loadMultimodalDocs();
+                    await refreshMemoryStats();
                 }
             } catch (e) {}
         }
@@ -682,48 +2112,34 @@
                 if (res.ok) {
                     const data = await res.json();
 
-                    // 1. Render Preview Image or Placeholder
+                    // Render Preview Image or Placeholder
                     const imgWrap = document.getElementById('reader-image-wrap');
                     if (data.image_base64) {
-                        imgWrap.innerHTML = `<img src="data:image/png;base64,${data.image_base64}" class="rounded-xl shadow-sm border border-slate-300 max-h-[70vh] object-contain">`;
+                        imgWrap.innerHTML = `<img src="data:image/png;base64,${data.image_base64}" class="rounded-xl shadow-md border border-slate-300 dark:border-slate-700 max-h-[70vh] object-contain">`;
                     } else {
                         imgWrap.innerHTML = `
-                            <div class="text-center p-8 bg-white border border-slate-200 rounded-xl shadow-xs">
+                            <div class="text-center p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs">
                                 <div class="text-3xl mb-2">📄</div>
-                                <div class="font-bold text-slate-700">${currentReaderDoc.filename}</div>
+                                <div class="font-bold text-slate-800 dark:text-slate-100">${currentReaderDoc.filename}</div>
                                 <div class="text-[11px] text-slate-400 mt-1">Page ${pageNum} &bull; ${data.elements ? data.elements.length : 0} extracted elements</div>
                             </div>
                         `;
                     }
 
-                    // 2. Summary & Concepts
-                    document.getElementById('reader-ai-summary').innerText = data.ai_summary || "Native document layout extracted.";
-                    const conceptsWrap = document.getElementById('reader-key-concepts');
-                    conceptsWrap.innerHTML = (data.key_concepts || []).map(c => `<span class="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded-full font-medium">${c}</span>`).join('');
-
-                    // 3. Tables
-                    const tablesWrap = document.getElementById('reader-tables-list');
-                    const tblElems = (data.elements || []).filter(e => e.element_type === 'table');
-                    if (tblElems.length === 0) {
-                        tablesWrap.innerHTML = `<div class="text-xs text-slate-400 italic">No tables on this page.</div>`;
+                    // Render Structural Elements & Tables
+                    const elContainer = document.getElementById('reader-elements-container');
+                    if (!data.elements || data.elements.length === 0) {
+                        elContainer.innerHTML = `<div class="text-xs text-slate-400 text-center py-6">No specific tables or headings extracted on this page.</div>`;
                     } else {
-                        tablesWrap.innerHTML = tblElems.map(t => `
-                            <div class="bg-white border border-slate-200 rounded-xl p-2.5 text-xs">
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="font-bold text-slate-700">Table: ${t.element_id}</span>
-                                    <a href="/api/documents/${docId}/tables/${t.element_id}/csv" class="text-indigo-600 hover:underline font-semibold text-[11px]" download>Download CSV</a>
-                                </div>
-                                <pre class="text-[10px] bg-slate-50 p-1.5 rounded overflow-x-auto text-slate-600">${t.content}</pre>
+                        elContainer.innerHTML = data.elements.map(el => `
+                            <div class="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs space-y-1">
+                                <span class="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 font-mono">${el.type || 'Text Element'}</span>
+                                <div class="text-slate-700 dark:text-slate-300">${escapeHtml(el.content || '')}</div>
                             </div>
                         `).join('');
                     }
-
-                    // 4. Extracted Text
-                    document.getElementById('reader-extracted-text').innerText = data.text_content || "No text on this page.";
                 }
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) {}
         }
 
         // =====================================================================
@@ -732,7 +2148,10 @@
         async function generateStudioViz() {
             const prompt = document.getElementById('studio-prompt-input').value.trim();
             const vizType = document.getElementById('studio-type-select').value;
-            if (!prompt) return;
+            if (!prompt) {
+                showToast("Please enter a prompt for Visual Studio", "error");
+                return;
+            }
 
             const loading = document.getElementById('studio-loading');
             const notice = document.getElementById('studio-notice');
@@ -764,17 +2183,18 @@
                     container.innerHTML = `<div id="${pid}" class="w-full h-96"></div>`;
                     Plotly.newPlot(pid, data.content.data, data.content.layout, { responsive: true });
                 } else {
-                    container.innerHTML = `<pre class="text-xs font-mono p-4 bg-white rounded-xl border border-slate-200">${JSON.stringify(data.content, null, 2)}</pre>`;
+                    container.innerHTML = `<pre class="text-xs font-mono p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">${JSON.stringify(data.content, null, 2)}</pre>`;
                 }
+                showToast("Visualization created", "success");
             } catch (e) {
-                container.innerHTML = `<div class="text-red-500 text-xs">Error generating visualization: ${e.message}</div>`;
+                container.innerHTML = `<div class="text-xs text-rose-600">Failed to render visualization: ${e.message}</div>`;
             } finally {
                 loading.classList.add('hidden');
             }
         }
 
         // =====================================================================
-        // KNOWLEDGE GRAPH
+        // KNOWLEDGE GRAPH EXPLORER
         // =====================================================================
         async function loadKnowledgeGraph() {
             try {
@@ -782,6 +2202,8 @@
                 if (res.ok) {
                     const data = await res.json();
                     const cyContainer = document.getElementById('cy-container');
+                    const layoutType = document.getElementById('kg-layout-select')?.value || 'cose';
+
                     cyInstance = cytoscape({
                         container: cyContainer,
                         elements: data.elements,
@@ -795,35 +2217,43 @@
                                     'font-size': '10px',
                                     'text-valign': 'center',
                                     'text-halign': 'center',
-                                    'width': '50px',
-                                    'height': '50px'
+                                    'width': '55px',
+                                    'height': '55px',
+                                    'font-family': 'Plus Jakarta Sans',
+                                    'font-weight': 'bold',
+                                    'border-width': '2px',
+                                    'border-color': '#ffffff'
                                 }
                             },
                             {
                                 selector: 'edge',
                                 style: {
-                                    'width': 1.5,
+                                    'width': 2,
                                     'line-color': '#475569',
                                     'target-arrow-color': '#475569',
                                     'target-arrow-shape': 'triangle',
                                     'curve-style': 'bezier',
                                     'label': 'data(label)',
-                                    'font-size': '8px',
-                                    'color': '#94a3b8'
+                                    'color': '#94a3b8',
+                                    'font-size': '9px'
                                 }
                             }
                         ],
-                        layout: { name: 'cose', animate: false }
+                        layout: { name: layoutType, animate: true }
                     });
 
-                    cyInstance.on('tap', 'node', function(evt){
+                    cyInstance.on('tap', 'node', function(evt) {
                         const node = evt.target;
                         const d = node.data();
                         document.getElementById('kg-node-details').innerHTML = `
-                            <div class="space-y-1.5">
-                                <div class="font-bold text-slate-800">${d.label}</div>
-                                <div class="text-[11px] text-slate-400">Type: <span class="text-slate-700">${d.type}</span></div>
-                                <div class="text-[11px] text-slate-400">Page: <span class="text-slate-700">${d.page || 1}</span></div>
+                            <div class="space-y-2">
+                                <div class="font-bold text-sm text-slate-800 dark:text-slate-100">${d.label || d.id}</div>
+                                <div class="text-[11px] text-blue-600 dark:text-blue-400 font-mono">Type: ${d.type || 'Entity'}</div>
+                                ${d.source ? `<div class="text-[11px] text-slate-400">Provenance: ${d.source}</div>` : ''}
+                                ${d.description ? `<p class="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">${d.description}</p>` : ''}
+                                <div class="pt-2 border-t border-slate-200 dark:border-slate-800 text-[10px] text-slate-400">
+                                    Degree Centrality: ${node.degree()} connections
+                                </div>
                             </div>
                         `;
                     });
@@ -831,12 +2261,38 @@
             } catch (e) {}
         }
 
+        function filterKGNodes(query) {
+            if (!cyInstance) return;
+            const q = (query || '').toLowerCase().trim();
+            if (!q) {
+                cyInstance.elements().style('opacity', 1);
+                return;
+            }
+            cyInstance.batch(() => {
+                cyInstance.nodes().forEach(node => {
+                    const label = (node.data('label') || node.data('id') || '').toLowerCase();
+                    if (label.includes(q)) {
+                        node.style('opacity', 1);
+                        node.connectedEdges().style('opacity', 1);
+                    } else {
+                        node.style('opacity', 0.15);
+                    }
+                });
+            });
+        }
+
+        function changeKGLayout(layoutName) {
+            if (!cyInstance) return;
+            cyInstance.layout({ name: layoutName, animate: true }).run();
+        }
+
         // =====================================================================
-        // AI STUDY ASSISTANT
+        // AI STUDY ASSISTANT (FLASHCARDS + MCQS)
         // =====================================================================
         async function loadStudyDeck() {
             const topic = document.getElementById('study-topic-input').value.trim() || "General Knowledge";
             try {
+                showToast("Generating pedagogical study deck...", "info");
                 const res = await fetch('/api/study/deck', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -844,61 +2300,91 @@
                 });
                 const data = await res.json();
 
-                // 1. Render Flashcards
+                // 1. Render Flashcards with 3D Flip
                 const fcWrap = document.getElementById('study-flashcards-list');
+                const countInd = document.getElementById('flashcard-count-indicator');
                 if (!data.flashcards || data.flashcards.length === 0) {
                     fcWrap.innerHTML = `<div class="text-xs text-slate-400 text-center py-8">No flashcards found.</div>`;
+                    if (countInd) countInd.innerText = "0 cards";
                 } else {
+                    if (countInd) countInd.innerText = `${data.flashcards.length} cards (Click to flip)`;
                     fcWrap.innerHTML = data.flashcards.map((f, i) => `
-                        <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs cursor-pointer hover:border-blue-300 transition" onclick="this.classList.toggle('border-blue-500'); this.querySelector('.answer-box').classList.toggle('hidden')">
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="text-[10px] uppercase font-bold text-blue-600">Card ${i+1} &bull; ${f.concept}</span>
-                                <span class="text-[10px] text-slate-400">${f.source_citation} p.${f.page_number}</span>
-                            </div>
-                            <div class="text-xs font-bold text-slate-800 mb-2">${f.front_question}</div>
-                            <div class="answer-box hidden mt-2 pt-2 border-t border-slate-100 text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl">
-                                <strong>Answer:</strong> ${f.back_answer}
+                        <div class="flashcard-scene h-40 cursor-pointer" onclick="this.querySelector('.flashcard-inner').classList.toggle('flashcard-flipped')">
+                            <div class="flashcard-inner relative w-full h-full rounded-2xl shadow-xs border border-slate-200 dark:border-slate-800">
+                                <!-- FRONT -->
+                                <div class="flashcard-front absolute inset-0 bg-white dark:bg-slate-900 p-4 rounded-2xl flex flex-col justify-between">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400">Card ${i+1} &bull; ${escapeHtml(f.concept || '')}</span>
+                                        <span class="text-[10px] text-slate-400">${escapeHtml(f.source_citation || 'Doc')}</span>
+                                    </div>
+                                    <div class="text-xs font-bold text-slate-800 dark:text-slate-100 my-auto">${escapeHtml(f.front_question)}</div>
+                                    <div class="text-[10px] text-slate-400 text-right">🔄 Tap to reveal answer</div>
+                                </div>
+                                <!-- BACK -->
+                                <div class="flashcard-back absolute inset-0 bg-blue-50 dark:bg-slate-900 border border-blue-200 dark:border-blue-900 p-4 rounded-2xl flex flex-col justify-between">
+                                    <span class="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">Answer &bull; Grounded Knowledge</span>
+                                    <div class="text-xs text-slate-700 dark:text-slate-200 my-auto leading-relaxed">${escapeHtml(f.back_answer)}</div>
+                                    <div class="text-[10px] text-slate-400 text-right">🔄 Tap to flip back</div>
+                                </div>
                             </div>
                         </div>
                     `).join('');
                 }
 
-                // 2. Render MCQs
+                // 2. Render Assessment Questions
                 const mcqWrap = document.getElementById('study-mcqs-list');
-                if (!data.questions || data.questions.length === 0) {
+                const scoreBadge = document.getElementById('quiz-score-badge');
+                quizAnswersState = { correct: 0, total: (data.assessment_questions || []).length };
+                if (scoreBadge) scoreBadge.innerText = `Score: 0 / ${quizAnswersState.total}`;
+
+                if (!data.assessment_questions || data.assessment_questions.length === 0) {
                     mcqWrap.innerHTML = `<div class="text-xs text-slate-400 text-center py-8">No questions generated.</div>`;
                 } else {
-                    mcqWrap.innerHTML = data.questions.map((q, idx) => `
-                        <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-                            <div class="text-xs font-bold text-slate-800 mb-2">${idx+1}. ${q.question}</div>
-                            <div class="space-y-1.5">
-                                ${q.options.map((opt, optIdx) => `
-                                    <button onclick="revealMcqAnswer(this, ${optIdx === q.correct_option_index}, '${q.explanation}')" class="w-full text-left p-2 rounded-xl border border-slate-200 text-xs text-slate-700 hover:bg-slate-50 transition">
-                                        ${opt}
+                    mcqWrap.innerHTML = data.assessment_questions.map((q, i) => `
+                        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-2 text-xs" id="mcq-card-${i}">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="font-bold text-slate-800 dark:text-slate-100">Q${i+1}. ${escapeHtml(q.question)}</span>
+                                <span class="text-[10px] font-mono text-slate-400">${escapeHtml(q.source_citation || '')}</span>
+                            </div>
+                            <div class="space-y-1.5 pt-1">
+                                ${q.options.map(opt => `
+                                    <button onclick="handleMCQSelection(this, '${escapeHtml(opt.key)}', '${escapeHtml(q.correct_answer)}', '${escapeHtml(opt.explanation || '')}', ${i})" class="w-full text-left p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-400 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+                                        <strong class="font-mono text-blue-600 dark:text-blue-400 mr-1">${opt.key}.</strong> ${escapeHtml(opt.text)}
                                     </button>
                                 `).join('')}
                             </div>
-                            <div class="mcq-feedback hidden mt-2 text-xs p-2 rounded-xl"></div>
+                            <div class="mcq-feedback hidden mt-2 text-xs p-2.5 rounded-xl"></div>
                         </div>
                     `).join('');
                 }
+                showToast("Study deck built successfully", "success");
             } catch (e) {
-                console.error(e);
+                showToast("Failed to load study deck: " + e.message, "error");
             }
         }
 
-        function revealMcqAnswer(btn, isCorrect, explanation) {
-            const parent = btn.parentElement;
-            const feedback = parent.parentElement.querySelector('.mcq-feedback');
+        function handleMCQSelection(btn, key, correctKey, explanation, qIdx) {
+            const card = btn.closest('#mcq-card-' + qIdx);
+            const feedback = card.querySelector('.mcq-feedback');
             feedback.classList.remove('hidden');
-            if (isCorrect) {
-                btn.className = "w-full text-left p-2 rounded-xl border border-emerald-500 bg-emerald-50 text-xs text-emerald-800 font-bold";
-                feedback.className = "mcq-feedback mt-2 text-xs p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800";
-                feedback.innerHTML = `<strong>Correct!</strong> ${explanation}`;
+
+            // Disable all buttons in this question
+            card.querySelectorAll('button').forEach(b => b.disabled = true);
+
+            if (key === correctKey) {
+                btn.className = "w-full text-left p-2 rounded-xl border border-emerald-500 bg-emerald-50 dark:bg-emerald-950/60 text-xs text-emerald-800 dark:text-emerald-200 font-semibold";
+                feedback.className = "mcq-feedback mt-2 text-xs p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200";
+                feedback.innerHTML = `<strong>✓ Correct!</strong> ${explanation}`;
+                quizAnswersState.correct++;
             } else {
-                btn.className = "w-full text-left p-2 rounded-xl border border-rose-500 bg-rose-50 text-xs text-rose-800";
-                feedback.className = "mcq-feedback mt-2 text-xs p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800";
-                feedback.innerHTML = `<strong>Incorrect.</strong> ${explanation}`;
+                btn.className = "w-full text-left p-2 rounded-xl border border-rose-500 bg-rose-50 dark:bg-rose-950/60 text-xs text-rose-800 dark:text-rose-200 font-semibold";
+                feedback.className = "mcq-feedback mt-2 text-xs p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200";
+                feedback.innerHTML = `<strong>✕ Incorrect. Correct answer is ${correctKey}.</strong> ${explanation}`;
+            }
+
+            const scoreBadge = document.getElementById('quiz-score-badge');
+            if (scoreBadge) {
+                scoreBadge.innerText = `Score: ${quizAnswersState.correct} / ${quizAnswersState.total}`;
             }
         }
 
@@ -919,14 +2405,75 @@
             } catch (e) {}
         }
 
+        function renderEnergyChart(trajectory) {
+            if (!trajectory || trajectory.length === 0) return;
+            const container = document.getElementById('energy-chart-container');
+            if (!container) return;
+
+            const x = trajectory.map((_, i) => `Step ${i}`);
+            const y = trajectory;
+
+            const trace = {
+                x: x,
+                y: y,
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { color: '#3b82f6', width: 3 },
+                marker: { color: '#6366f1', size: 8 }
+            };
+
+            const isDark = document.documentElement.classList.contains('dark');
+            const layout = {
+                title: { text: 'Hopfield Energy Landscape Convergence', font: { size: 12, color: isDark ? '#f8fafc' : '#1e293b' } },
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                xaxis: { color: isDark ? '#94a3b8' : '#64748b' },
+                yaxis: { title: 'Energy (E)', color: isDark ? '#94a3b8' : '#64748b' },
+                margin: { t: 30, b: 30, l: 40, r: 20 }
+            };
+
+            Plotly.newPlot('energy-chart-container', [trace], layout, { responsive: true, displayModeBar: false });
+        }
+
         async function runLiveBenchmark() {
             const out = document.getElementById('benchmark-output');
-            out.innerText = "Running Hopfield continuous retrieval benchmark across test manifolds...";
+            out.innerHTML = `
+                <div class="flex items-center gap-2 py-6 justify-center text-slate-400">
+                    <div class="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Evaluating Hopfield associative convergence, Recall@k, and energy landscapes...</span>
+                </div>
+            `;
             try {
                 const res = await fetch('/api/memory/benchmark');
                 if (res.ok) {
                     const data = await res.json();
-                    out.innerText = JSON.stringify(data, null, 2);
+                    out.innerHTML = `
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                                <div class="bg-slate-800/80 p-3 rounded-2xl border border-slate-700">
+                                    <span class="text-[10px] text-slate-400 uppercase font-bold block">Recall@1</span>
+                                    <span class="text-2xl font-black text-emerald-400">${(data.recall_at_1 * 100).toFixed(0)}%</span>
+                                </div>
+                                <div class="bg-slate-800/80 p-3 rounded-2xl border border-slate-700">
+                                    <span class="text-[10px] text-slate-400 uppercase font-bold block">Recall@5</span>
+                                    <span class="text-2xl font-black text-emerald-400">${(data.recall_at_5 * 100).toFixed(0)}%</span>
+                                </div>
+                                <div class="bg-slate-800/80 p-3 rounded-2xl border border-slate-700">
+                                    <span class="text-[10px] text-slate-400 uppercase font-bold block">NDCG@5</span>
+                                    <span class="text-2xl font-black text-cyan-400">${(data.ndcg_at_5).toFixed(3)}</span>
+                                </div>
+                                <div class="bg-slate-800/80 p-3 rounded-2xl border border-slate-700">
+                                    <span class="text-[10px] text-slate-400 uppercase font-bold block">Mean Latency</span>
+                                    <span class="text-2xl font-black text-amber-400">${(data.avg_latency_ms).toFixed(1)}ms</span>
+                                </div>
+                            </div>
+                            <div class="bg-slate-800/50 p-3 rounded-2xl border border-slate-700 text-slate-300 text-[11px] flex justify-between items-center font-mono">
+                                <span>Thermodynamic Attractor Energy: <strong class="text-indigo-400">${(data.mean_attractor_energy || 0).toFixed(4)}</strong></span>
+                                <span>MRR Score: <strong class="text-emerald-400">${(data.mean_reciprocal_rank_mrr || 1.0).toFixed(3)}</strong></span>
+                            </div>
+                        </div>
+                    `;
+                    showToast("Live benchmark completed successfully", "success");
                     await refreshMemoryStats();
                 } else {
                     out.innerText = "Benchmark execution failed.";

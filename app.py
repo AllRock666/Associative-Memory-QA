@@ -5,11 +5,13 @@ import streamlit as st
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+from core.multimodal_reader import MultimodalDocumentReader
+
 # ---------------------------------------------------------
 # PAGE CONFIG & CSS
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Hopfield Search",
+    page_title="Hopfield Search - Multimodal Associative Memory",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -17,7 +19,6 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Clean Minimalist Theme */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
     
     html, body, [class*="css"]  {
@@ -28,19 +29,16 @@ st.markdown("""
         padding-bottom: 2rem;
     }
     
-    /* Clean metrics */
     div[data-testid="stMetricValue"] {
         font-family: 'JetBrains Mono', monospace;
         font-size: 1.5rem;
     }
     
-    /* Subtle expanders */
     .streamlit-expanderHeader {
         font-weight: 500;
         color: #4B5563;
     }
     
-    /* Document tags */
     .doc-tag {
         display: inline-block;
         padding: 0.25rem 0.75rem;
@@ -51,6 +49,16 @@ st.markdown("""
         margin-right: 0.5rem;
         margin-bottom: 0.5rem;
         border: 1px solid #E5E7EB;
+    }
+
+    .banner-box {
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        background-color: #EFF6FF;
+        border: 1px solid #BFDBFE;
+        color: #1E40AF;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -65,6 +73,8 @@ def init_state():
         st.session_state.pipeline = None
     if "docs_loaded" not in st.session_state:
         st.session_state.docs_loaded = False
+    if "multimodal_reader" not in st.session_state:
+        st.session_state.multimodal_reader = MultimodalDocumentReader()
 
 init_state()
 
@@ -75,6 +85,7 @@ def get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_
     from core.pipeline import HopfieldQAPipeline, PipelineConfig
     
     if st.session_state.pipeline is None:
+        proj_path = "models/projection_squad.pt" if use_projection and os.path.exists("models/projection_squad.pt") else None
         config = PipelineConfig(
             embedding_model=embedding_model,
             chunk_size=chunk_size,
@@ -82,10 +93,14 @@ def get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_
             hopfield_beta=hopfield_beta,
             top_k=top_k,
             use_fusion=True,
+            use_projection=use_projection,
+            projection_path=proj_path,
+            llm_provider=os.environ.get("LLM_PROVIDER", "ollama").lower().strip(),
+            llm_base_url=os.environ.get("LLM_BASE_URL", "http://localhost:11434/v1").strip(),
+            llm_model=os.environ.get("LLM_MODEL", "llama3.2").strip(),
+            llm_api_key=os.environ.get("LLM_API_KEY", "").strip() or None,
         )
         config.energy_type = energy_type
-        config.use_projection = use_projection
-        config.projection_path = "models/projection_squad.pt" if use_projection else None
         st.session_state.pipeline = HopfieldQAPipeline(config)
     else:
         p = st.session_state.pipeline
@@ -104,7 +119,12 @@ def get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_
 # ---------------------------------------------------------
 with st.sidebar:
     st.title("🧠 Hopfield Search")
-    st.markdown("Neural Associative Memory QA")
+    st.markdown("Neural Associative Memory & Multimodal QA")
+
+    st.markdown(
+        '<div class="banner-box">✨ <b>Modern Multimodal UI:</b> Run <code>python api.py</code> and open <a href="http://localhost:8000" target="_blank">http://localhost:8000</a> for Visual Studio Diagrams, AI Flashcards & Knowledge Graphs.</div>',
+        unsafe_allow_html=True
+    )
     st.divider()
     
     st.subheader("1. System Configuration")
@@ -115,25 +135,36 @@ with st.sidebar:
         hopfield_beta = st.slider("Temperature (Beta)", 0.1, 20.0, 8.0, 0.5)
         chunk_size = st.slider("Chunk Size", 128, 1024, 512, 64)
         chunk_overlap = st.slider("Chunk Overlap", 0, 256, 64, 16)
-        top_k = st.slider("Retrieve Top-K", 1, 15, 3)
+        top_k = st.slider("Retrieve Top-K", 1, 15, 5)
 
     pipeline = get_pipeline(embedding_model, chunk_size, chunk_overlap, hopfield_beta, top_k, energy_type, use_projection)
 
-    st.subheader("2. Knowledge Base")
+    st.subheader("2. Multimodal Knowledge Base")
     
-    # Document Upload
-    uploaded_files = st.file_uploader("Upload Documents (PDF, TXT)", type=["txt", "pdf", "md"], accept_multiple_files=True)
+    # Document Upload Supporting Multimodal Files
+    supported_types = ["txt", "pdf", "md", "docx", "pptx", "xlsx", "csv", "png", "jpg", "jpeg", "webp"]
+    uploaded_files = st.file_uploader(
+        "Upload Documents (PDF, DOCX, PPTX, XLSX, CSV, Images, TXT)",
+        type=supported_types,
+        accept_multiple_files=True
+    )
     if st.button("Ingest Files", use_container_width=True) and uploaded_files:
-        from utils.file_utils import extract_text_from_file
-        with st.spinner("Processing documents..."):
+        reader = st.session_state.multimodal_reader
+        with st.spinner("Parsing multimodal documents..."):
             for f in uploaded_files:
                 try:
-                    text, source = extract_text_from_file(f, f.name)
-                    pipeline.add_document(text, source=source)
+                    file_bytes = f.read()
+                    parsed = reader.parse_file(file_bytes, f.name)
+                    doc_text = parsed.full_text
+                    if not doc_text or not doc_text.strip():
+                        from utils.file_utils import extract_text_from_file
+                        f.seek(0)
+                        doc_text, _ = extract_text_from_file(f, f.name)
+                    pipeline.add_document(doc_text, source=f.name)
                 except Exception as e:
                     st.error(f"Failed to process {f.name}: {e}")
             st.session_state.docs_loaded = True
-            st.success("Documents added to Hopfield Memory!")
+            st.success("Documents successfully ingested into Hopfield Associative Memory!")
             st.rerun()
 
     # Custom Text
@@ -163,10 +194,16 @@ with st.sidebar:
 # ---------------------------------------------------------
 # MAIN INTERFACE (Chat)
 # ---------------------------------------------------------
+st.info(
+    "💡 **Full Multimodal Knowledge Suite**: The production web application includes "
+    "interactive Visual Studio diagrams, AI flashcard decks, hierarchical memory diagnostics, "
+    "and knowledge graph explorers. Start `python api.py` to access it at [http://localhost:8000](http://localhost:8000)."
+)
+
 if not st.session_state.docs_loaded:
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; color: #6B7280;'>Welcome to Hopfield Search</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #9CA3AF;'>To get started, please upload some documents or paste text in the sidebar.</p>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #4B5563;'>Continuous Modern Hopfield Associative QA</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #9CA3AF;'>Upload documents (PDF, DOCX, PPTX, XLSX, CSV, Images) in the sidebar to begin associative exploration.</p>", unsafe_allow_html=True)
 else:
     # Display chat history
     for msg in st.session_state.messages:
@@ -175,37 +212,54 @@ else:
             if "results" in msg:
                 with st.expander("🔍 View Hopfield Retrieval Details"):
                     for idx, chunk in enumerate(msg["results"]):
-                        st.markdown(f"**Rank {idx+1}** | Source: `{chunk.source}` | Attn: `{chunk.hopfield_attention:.4f}`")
-                        st.caption(f"_{chunk.text}_")
+                        sim = getattr(chunk, 'similarity_score', getattr(chunk, 'hopfield_attention', 0.0))
+                        src = getattr(chunk, 'source', 'Document')
+                        txt = getattr(chunk, 'text', '')
+                        st.markdown(f"**Rank {idx+1}** | Source: `{src}` | Score: `{float(sim):.4f}`")
+                        st.caption(f"_{txt}_")
                         st.divider()
 
     # Chat Input
     if prompt := st.chat_input("Ask a question about your documents..."):
-        # User message
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Assistant response
         with st.chat_message("assistant"):
-            with st.spinner("Converging energy state..."):
+            with st.spinner("Converging continuous energy state & synthesizing answer..."):
                 start_t = time.time()
-                result = pipeline.generate_answer(prompt)
+                try:
+                    res = pipeline.query(
+                        raw_query=prompt,
+                        top_k=top_k,
+                        retriever_mode="hopfield",
+                        answer_style="conversational"
+                    )
+                    ans_text = res.answer.answer if hasattr(res.answer, 'answer') else str(res.answer)
+                    confidence = getattr(res.answer, 'confidence', 1.0)
+                    retrieved_chunks = res.evidence_collection.chunks if (res.evidence_collection and res.evidence_collection.chunks) else res.retrieved_chunks
+                except Exception:
+                    # Fallback to extractive answer generation
+                    legacy_res = pipeline.generate_answer(prompt)
+                    ans_text = legacy_res.answer.answer
+                    confidence = legacy_res.answer.confidence
+                    retrieved_chunks = legacy_res.retrieved_chunks
+
                 elapsed = (time.time() - start_t) * 1000
-                
-                ans_text = result.answer.answer
-                
-                response_md = f"{ans_text}\n\n*Confidence: {result.answer.confidence:.2f} | Time: {elapsed:.0f}ms*"
+                response_md = f"{ans_text}\n\n*Confidence: {confidence:.2f} | Time: {elapsed:.0f}ms*"
                 st.markdown(response_md)
                 
                 with st.expander("🔍 View Hopfield Retrieval Details"):
-                    for idx, chunk in enumerate(result.retrieved_chunks):
-                        st.markdown(f"**Rank {idx+1}** | Source: `{chunk.source}` | Attn: `{chunk.hopfield_attention:.4f}`")
-                        st.caption(f"_{chunk.text}_")
+                    for idx, chunk in enumerate(retrieved_chunks):
+                        sim = getattr(chunk, 'similarity_score', getattr(chunk, 'hopfield_attention', 0.0))
+                        src = getattr(chunk, 'source', 'Document')
+                        txt = getattr(chunk, 'text', '')
+                        st.markdown(f"**Rank {idx+1}** | Source: `{src}` | Score: `{float(sim):.4f}`")
+                        st.caption(f"_{txt}_")
                         st.divider()
                         
         st.session_state.messages.append({
             "role": "assistant", 
             "content": response_md,
-            "results": result.retrieved_chunks
+            "results": retrieved_chunks
         })

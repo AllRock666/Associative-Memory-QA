@@ -108,7 +108,7 @@ class HopfieldRetriever(nn.Module):
             
             # Residual connection (Standard in Transformer/Modern Hopfield)
             if self.residual:
-                state = F.normalize(query + retrieved, p=2, dim=-1)
+                state = F.normalize(state + retrieved, p=2, dim=-1)
             else:
                 state = retrieved
             

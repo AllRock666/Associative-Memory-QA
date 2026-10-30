@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
 import uvicorn
 import os
 import io
@@ -21,7 +22,6 @@ import base64
 import csv
 from fastapi.responses import Response
 
-app = FastAPI(title="Hopfield QA API")
 
 pipeline = None
 chat_manager = ChatManager("data")
@@ -40,6 +40,12 @@ class VisualStudioRequest(BaseModel):
 class StudyDeckRequest(BaseModel):
     topic: Optional[str] = "General Knowledge"
     doc_id: Optional[str] = None
+
+class LLMVerifyRequest(BaseModel):
+    provider: str = "ollama"
+    model: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
 
 class SearchRequest(BaseModel):
     query: str
@@ -71,10 +77,12 @@ class CreateChatRequest(BaseModel):
 class UpdateChatRequest(BaseModel):
     title: str
 
-@app.on_event("startup")
-def startup_event():
+def init_app_state():
     global pipeline, hierarchical_memory
+    if pipeline is not None:
+        return
     proj_path = "models/projection_squad.pt" if os.path.exists("models/projection_squad.pt") else None
+    llm_env = LLMConfig.from_env()
     config = PipelineConfig(
         embedding_model="all-MiniLM-L6-v2",
         chunk_size=512,
@@ -86,10 +94,25 @@ def startup_event():
         projection_path=proj_path,
         use_associative_engine=True,
         web_search_provider=os.environ.get("WEB_SEARCH_PROVIDER", "composite"),
+        llm_provider=llm_env.provider,
+        llm_base_url=llm_env.base_url,
+        llm_model=llm_env.model,
+        llm_api_key=llm_env.api_key,
     )
     pipeline = HopfieldQAPipeline(config)
     hierarchical_memory = HierarchicalHopfieldMemory(embedding_dim=pipeline.embedder.embedding_dim)
     pipeline.hierarchical_memory = hierarchical_memory
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_app_state()
+    yield
+
+app = FastAPI(title="Hopfield QA API", lifespan=lifespan)
+
+def startup_event():
+    """Backwards compatibility alias for tests and direct callers."""
+    init_app_state()
 
 @app.get("/api/status")
 def get_status():
@@ -123,6 +146,117 @@ def get_status():
         "llm": llm_status,
     }
 
+@app.post("/api/llm/verify")
+def verify_llm_connection(req: LLMVerifyRequest):
+    """
+    Ephemerally verify connectivity and credentials for an LLM provider.
+    Never persists or logs the API key to disk.
+    """
+    provider_name = (req.provider or "ollama").lower().strip()
+    
+    if provider_name == "groq":
+        base_url = (req.base_url or "https://api.groq.com/openai/v1").strip()
+        model = (req.model or "llama-3.3-70b-versatile").strip()
+    elif provider_name == "openai":
+        base_url = (req.base_url or "https://api.openai.com/v1").strip()
+        model = (req.model or "gpt-4o-mini").strip()
+    elif provider_name == "gemini":
+        base_url = (req.base_url or "https://generativelanguage.googleapis.com/v1beta/openai/").strip()
+        model = (req.model or "gemini-1.5-flash").strip()
+    elif provider_name == "ollama":
+        base_url = (req.base_url or "http://localhost:11434/v1").strip()
+        model = (req.model or "llama3.2").strip()
+    else:
+        base_url = (req.base_url or "https://api.openai.com/v1").strip()
+        model = (req.model or "gpt-4o-mini").strip()
+
+    if provider_name == "ollama":
+        root_url = base_url.replace("/v1", "").rstrip("/")
+        tags_url = f"{root_url}/api/tags"
+        try:
+            import httpx
+            with httpx.Client(timeout=httpx.Timeout(4.0, connect=2.0)) as client:
+                resp = client.get(tags_url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m.get("name", "") for m in data.get("models", [])]
+                    model_names_str = ", ".join(models[:4]) if models else "none downloaded yet"
+                    return {
+                        "success": True,
+                        "provider": "ollama",
+                        "model": model,
+                        "message": f"Connected to local Ollama successfully! Found models: {model_names_str}."
+                    }
+                return {
+                    "success": False,
+                    "provider": "ollama",
+                    "message": f"Ollama returned HTTP status {resp.status_code}."
+                }
+        except Exception as e:
+            return {
+                "success": False,
+                "provider": "ollama",
+                "message": f"Could not connect to Ollama at {root_url}: {str(e)}. Make sure Ollama is installed and running."
+            }
+
+    api_key = (req.api_key or "").strip()
+    if not api_key:
+        return {
+            "success": False,
+            "provider": provider_name,
+            "message": "API Key is required for external cloud LLM providers."
+        }
+
+    try:
+        import httpx
+        url = base_url.rstrip("/") + "/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        test_payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": "Respond with OK"}],
+            "max_tokens": 5,
+            "temperature": 0.0
+        }
+        with httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+            resp = client.post(url, json=test_payload, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                reply = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                return {
+                    "success": True,
+                    "provider": provider_name,
+                    "model": model,
+                    "message": f"Verified successfully with {provider_name.upper()} ({model})! Live response: '{reply}'."
+                }
+            elif resp.status_code in (401, 403):
+                return {
+                    "success": False,
+                    "provider": provider_name,
+                    "message": f"Authentication failed (HTTP {resp.status_code}): Invalid API key or unauthorized."
+                }
+            elif resp.status_code == 404:
+                return {
+                    "success": False,
+                    "provider": provider_name,
+                    "message": f"HTTP 404: Model '{model}' not found or endpoint URL '{url}' is invalid."
+                }
+            else:
+                err_text = resp.text[:200]
+                return {
+                    "success": False,
+                    "provider": provider_name,
+                    "message": f"Provider returned HTTP {resp.status_code}: {err_text}"
+                }
+    except Exception as e:
+        return {
+            "success": False,
+            "provider": provider_name,
+            "message": f"Connection error reaching {base_url}: {str(e)}"
+        }
+
 @app.post("/api/search")
 def search(req: SearchRequest):
     global pipeline
@@ -150,6 +284,23 @@ def search(req: SearchRequest):
         p_name = req.llm_provider.lower().strip()
         ovr_cfg = LLMConfig.from_env()
         ovr_cfg.provider = p_name
+        if p_name == "groq" and not req.llm_base_url:
+            ovr_cfg.base_url = "https://api.groq.com/openai/v1"
+            if not req.llm_model:
+                ovr_cfg.model = "llama-3.3-70b-versatile"
+        elif p_name == "openai" and not req.llm_base_url:
+            ovr_cfg.base_url = "https://api.openai.com/v1"
+            if not req.llm_model:
+                ovr_cfg.model = "gpt-4o-mini"
+        elif p_name == "gemini" and not req.llm_base_url:
+            ovr_cfg.base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+            if not req.llm_model:
+                ovr_cfg.model = "gemini-1.5-flash"
+        elif p_name == "ollama" and not req.llm_base_url:
+            ovr_cfg.base_url = "http://localhost:11434/v1"
+            if not req.llm_model:
+                ovr_cfg.model = "llama3.2"
+
         if req.llm_model:
             ovr_cfg.model = req.llm_model
         if req.llm_base_url:
@@ -427,13 +578,13 @@ def remove_document(source: str):
     }
 
 @app.post("/api/upload")
-async def upload_document(file: UploadFile = File(...)):
+def upload_document(file: UploadFile = File(...)):
     global pipeline, hierarchical_memory, multimodal_store
     if not pipeline:
         raise HTTPException(status_code=500, detail="Pipeline not initialized")
         
     MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB limit
-    content = await file.read()
+    content = file.file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=413,
