@@ -100,7 +100,9 @@ class MultimodalDocument:
                     })
 
             # 2. Chunk text flow
-            text_elems = [e for e in page.elements if e.element_type in ("text", "heading")]
+            text_elems = [e for e in page.elements if e.element_type in ("text", "heading") and e.content and e.content.strip()]
+            if not text_elems:
+                text_elems = [e for e in page.elements if e.element_type == "image" and e.content and e.content.strip()]
             if text_elems:
                 combined_page_text = "\n\n".join(e.content for e in text_elems if e.content.strip())
                 if len(combined_page_text) <= max_chunk_size:
@@ -604,7 +606,7 @@ class MultimodalDocumentReader:
         )
 
     def _parse_image(self, file_bytes: bytes, filename: str, doc_id: str) -> MultimodalDocument:
-        """Processes an image file via PIL and VisionProvider."""
+        """Processes an image file via PIL and VisionProvider (with local OCR)."""
         from PIL import Image
         img = Image.open(io.BytesIO(file_bytes))
         w, h = img.size
@@ -612,10 +614,9 @@ class MultimodalDocumentReader:
 
         analysis = self.vision_provider.analyze_image(file_bytes)
         desc = analysis.summary or f"Image '{filename}' ({w}x{h}, {img_format})"
-        if analysis.extracted_text:
-            desc += f"\n\nExtracted Text:\n{analysis.extracted_text}"
-
-        elem = ExtractedElement(
+        
+        elements: List[ExtractedElement] = []
+        img_elem = ExtractedElement(
             element_id=f"{doc_id}_img",
             element_type="image",
             content=desc,
@@ -623,10 +624,34 @@ class MultimodalDocumentReader:
             doc_id=doc_id,
             metadata={"width": w, "height": h, "format": img_format}
         )
+        elements.append(img_elem)
+
+        page_text = desc
+        if analysis.extracted_text:
+            page_text = f"Extracted Text from {filename}:\n\n{analysis.extracted_text}\n\nVisual Summary: {analysis.summary}"
+            ocr_elem = ExtractedElement(
+                element_id=f"{doc_id}_ocr",
+                element_type="text",
+                content=analysis.extracted_text,
+                page_number=1,
+                doc_id=doc_id,
+                metadata={"ocr_engine": analysis.provider_used}
+            )
+            elements.append(ocr_elem)
+        else:
+            text_elem = ExtractedElement(
+                element_id=f"{doc_id}_summary",
+                element_type="text",
+                content=desc,
+                page_number=1,
+                doc_id=doc_id
+            )
+            elements.append(text_elem)
+
         page = DocumentPage(
             page_number=1,
-            text_content=desc,
-            elements=[elem],
+            text_content=page_text,
+            elements=elements,
             has_images=True,
             page_image_bytes=file_bytes,
             ai_summary=analysis.summary,
@@ -638,10 +663,10 @@ class MultimodalDocumentReader:
             file_type="image",
             total_pages=1,
             pages=[page],
-            full_text=desc,
+            full_text=page_text,
             tables=analysis.detected_tables,
             diagrams=analysis.detected_diagrams,
-            metadata={"title": filename, "source": filename, "width": w, "height": h}
+            metadata={"title": filename, "source": filename, "width": w, "height": h, "ocr_extracted": bool(analysis.extracted_text)}
         )
 
     def _parse_text(self, file_bytes: bytes, filename: str, doc_id: str, is_markdown: bool = False) -> MultimodalDocument:

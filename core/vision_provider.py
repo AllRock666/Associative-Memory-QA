@@ -67,11 +67,95 @@ class BaseVisionProvider(ABC):
         pass
 
 
+class LocalOCREngine:
+    """
+    Local Neural OCR engine powered by RapidOCR (ONNX Runtime).
+    Runs entirely offline on CPU without requiring external OS binaries (like Tesseract).
+    Extracts text boxes, recognized text lines, confidence scores, and layout ordering.
+    """
+    _engine = None
+    _initialized = False
+
+    @classmethod
+    def get_engine(cls):
+        if not cls._initialized:
+            cls._initialized = True
+            try:
+                from rapidocr_onnxruntime import RapidOCR
+                cls._engine = RapidOCR()
+                logger.info("RapidOCR local neural engine initialized successfully.")
+            except Exception as e:
+                logger.warning(f"RapidOCR initialization notice: {e}")
+                cls._engine = None
+        return cls._engine
+
+    @classmethod
+    def extract_text(cls, image_input: Union[bytes, io.BytesIO]) -> Dict[str, Any]:
+        """
+        Extracts text from image bytes or BytesIO using RapidOCR.
+        Returns:
+            {
+                "text": str,
+                "lines": List[Dict[str, Any]],
+                "confidence": float,
+                "engine": str,
+                "success": bool
+            }
+        """
+        if isinstance(image_input, io.BytesIO):
+            image_bytes = image_input.getvalue()
+        else:
+            image_bytes = image_input
+
+        engine = cls.get_engine()
+        if engine is not None:
+            try:
+                result, _ = engine(image_bytes)
+                if result:
+                    lines = []
+                    text_parts = []
+                    total_score = 0.0
+                    for item in result:
+                        box, text, score = item[0], item[1], float(item[2])
+                        clean_text = str(text).strip()
+                        if clean_text:
+                            text_parts.append(clean_text)
+                            lines.append({"text": clean_text, "score": score, "box": box})
+                            total_score += score
+                    avg_score = (total_score / len(lines)) if lines else 0.0
+                    full_text = "\n".join(text_parts)
+                    return {
+                        "text": full_text,
+                        "lines": lines,
+                        "confidence": avg_score,
+                        "engine": "rapidocr",
+                        "success": True
+                    }
+                else:
+                    return {
+                        "text": "",
+                        "lines": [],
+                        "confidence": 0.0,
+                        "engine": "rapidocr",
+                        "success": True
+                    }
+            except Exception as e:
+                logger.warning(f"RapidOCR extraction error: {e}")
+
+        return {
+            "text": "",
+            "lines": [],
+            "confidence": 0.0,
+            "engine": "none",
+            "success": False
+        }
+
+
 class LocalFallbackVisionProvider(BaseVisionProvider):
     """
-    Offline fallback provider.
-    Uses heuristic image inspection, PIL properties, and rule-based extraction.
-    Guarantees that document processing continues seamlessly without an external API key.
+    Offline fallback provider with Local Neural OCR.
+    Uses RapidOCR for deep learning based text recognition, PIL properties, and rule-based extraction.
+    Guarantees that document and image processing continues seamlessly without an external API key.
     """
     def __init__(self):
         self.provider_name = "local_fallback"
@@ -83,12 +167,34 @@ class LocalFallbackVisionProvider(BaseVisionProvider):
             w, h = img.size
             format_name = img.format or "Image"
             mode = img.mode
-            desc = f"{format_name} image ({w}x{h}, {mode})"
+
+            # Run OCR to detect any embedded text in the image
+            ocr_res = LocalOCREngine.extract_text(image_bytes)
+            extracted_text = ocr_res.get("text", "")
+            
+            # Key concepts extraction from extracted text + format
+            concepts = [format_name.lower(), "visual_element"]
+            if extracted_text:
+                import re
+                words = [w.lower() for w in re.findall(r"\b[A-Za-z]{3,}\b", extracted_text)]
+                stopwords = {"the", "and", "for", "are", "with", "from", "that", "this", "was", "were", "have", "has", "had", "not", "but"}
+                filtered = [w for w in words if w not in stopwords]
+                from collections import Counter
+                top_words = [item[0] for item in Counter(filtered).most_common(6)]
+                concepts.extend(top_words)
+
+            if extracted_text:
+                num_lines = len(ocr_res.get("lines", []))
+                conf = ocr_res.get("confidence", 0.0) * 100
+                summary = f"Processed {format_name} image ({w}x{h}). Extracted {num_lines} text lines via OCR (avg confidence {conf:.1f}%)."
+            else:
+                summary = f"Processed visual asset: {format_name} image ({w}x{h}, {mode})"
+
             return VisionAnalysisResult(
-                summary=f"Processed visual asset: {desc}",
-                extracted_text="",
-                key_concepts=[format_name.lower(), "visual_element"],
-                provider_used=self.provider_name,
+                summary=summary,
+                extracted_text=extracted_text,
+                key_concepts=list(dict.fromkeys(concepts)),
+                provider_used=f"{self.provider_name}_{ocr_res.get('engine', 'none')}",
                 success=True
             )
         except Exception as e:
@@ -100,7 +206,12 @@ class LocalFallbackVisionProvider(BaseVisionProvider):
             )
 
     def analyze_pdf_page(self, page_image_bytes: bytes, page_number: int, prompt: Optional[str] = None, **kwargs) -> VisionAnalysisResult:
-        return self.analyze_image(page_image_bytes, prompt=prompt)
+        res = self.analyze_image(page_image_bytes, prompt=prompt)
+        if res.extracted_text:
+            res.summary = f"Page {page_number} visual/OCR scan: extracted {len(res.extracted_text.splitlines())} lines of text."
+        else:
+            res.summary = f"Page {page_number} visual inspection: rendered page image ({res.summary})."
+        return res
 
     def extract_tables(self, image_bytes: bytes) -> List[Dict[str, Any]]:
         return []
