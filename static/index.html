@@ -270,13 +270,13 @@
 
         <!-- Right Quick Controls -->
         <div class="flex items-center space-x-2 text-xs">
-            <!-- LLM Engine Configuration Pill -->
-            <button onclick="openLLMModal()" id="llm-settings-btn" class="px-2.5 py-1.5 rounded-xl text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 font-semibold flex items-center gap-1.5 transition text-xs shadow-xs" title="Select Local Llama or Cloud LLM (API Key)">
+            <!-- Model Settings Button & Status Pill -->
+            <button onclick="openLLMModal()" id="llm-settings-btn" class="px-2.5 py-1.5 rounded-xl text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 font-semibold flex items-center gap-1.5 transition text-xs shadow-xs" title="Configure AI Model & Inference Provider">
                 <svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                <span>LLM Engine</span>
+                <span>Model Settings</span>
             </button>
-            <div id="llm-status-pill" onclick="openLLMModal()" class="text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-blue-400 dark:hover:border-blue-400 transition" title="Click to configure LLM synthesis engine">
-                LLM Ready
+            <div id="llm-status-pill" onclick="openLLMModal()" class="text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-blue-400 dark:hover:border-blue-400 transition" title="Click to view or change Model Settings">
+                Model Ready
             </div>
 
             <!-- Dark / Light Theme Toggle -->
@@ -307,7 +307,7 @@
                     <span id="docs-count-badge" class="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] px-1.5 py-0.2 rounded-full font-bold">0</span>
                 </button>
                 <button id="tab-btn-settings" onclick="switchSidebarTab('settings')" class="flex-1 py-1.5 px-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center gap-1 transition">
-                    <span>Engine Config</span>
+                    <span>Model Settings</span>
                 </button>
             </div>
 
@@ -349,65 +349,51 @@
 
             <!-- TAB CONTENT 3: SETTINGS -->
             <div id="tab-content-settings" class="flex-1 p-3 overflow-y-auto space-y-4 text-xs hidden">
-                <!-- Sidebar LLM Engine Box -->
+                <!-- Sidebar Model Settings Box -->
                 <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
                     <div class="flex items-center justify-between">
-                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Synthesis Engine</span>
-                        <span id="sb-llm-badge" class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">Local Llama</span>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Model &amp; Provider</span>
+                        <span id="sb-llm-badge" class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">Local Ollama</span>
                     </div>
 
-                    <!-- Local vs Cloud selector -->
-                    <div class="grid grid-cols-2 gap-1 bg-slate-200/60 dark:bg-slate-900 p-0.5 rounded-xl text-[11px] font-semibold">
-                        <label id="sb-lbl-mode-local" class="flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-400 shadow-xs font-bold">
-                            <input type="radio" name="sb_mode" value="local" class="hidden" checked onchange="onSidebarModeChange('local')">
-                            <span>Local Llama</span>
-                        </label>
-                        <label id="sb-lbl-mode-cloud" class="flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
-                            <input type="radio" name="sb_mode" value="cloud" class="hidden" onchange="onSidebarModeChange('cloud')">
-                            <span>Cloud API</span>
-                        </label>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Select Inference Model</label>
+                        <select id="sb-provider-select" onchange="onSidebarProviderSelectChange(this.value)" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs font-medium">
+                            <option value="ollama" selected>Local Ollama (llama3.2)</option>
+                            <option value="groq">Groq (Ultra-Fast Llama-3.3 70B)</option>
+                            <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
+                            <option value="gemini">Google Gemini (1.5 Flash)</option>
+                            <option value="custom">Custom OpenAI-Compatible</option>
+                            <option value="offline">Offline Grounded (100% Private)</option>
+                        </select>
                     </div>
 
-                    <!-- Cloud fields -->
-                    <div id="sb-cloud-fields" class="space-y-2 pt-1 hidden">
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">Provider Preset</label>
-                            <select id="sb-cloud-provider" onchange="onSidebarPresetChange()" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs">
-                                <option value="groq" selected>Groq (Ultra-Fast Llama-3.3)</option>
-                                <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
-                                <option value="gemini">Google Gemini (1.5 Flash)</option>
-                                <option value="custom">Custom OpenAI-Compatible</option>
-                            </select>
-                        </div>
-                        <div>
+                    <!-- Dynamic Provider Fields -->
+                    <div id="sb-dynamic-fields" class="space-y-2 pt-1">
+                        <div id="sb-api-key-group" class="hidden">
                             <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">API Key (Session Only)</label>
                             <div class="relative">
-                                <input type="password" id="sb-api-key" placeholder="gsk_..." class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 pr-7 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs focus:border-blue-500 outline-none">
+                                <input type="password" id="sb-api-key" placeholder="API Key..." class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 pr-7 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs focus:border-blue-500 outline-none">
                                 <button type="button" onclick="togglePasswordVisibility('sb-api-key')" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">👁️</button>
                             </div>
                         </div>
-                        <div>
+                        <div id="sb-model-name-group">
                             <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">Model Name</label>
-                            <input type="text" id="sb-model-name" value="llama-3.3-70b-versatile" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs">
+                            <input type="text" id="sb-model-name" value="llama3.2" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs">
                         </div>
-                        <div class="text-[10px] text-slate-500 dark:text-slate-400 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900 rounded-xl p-2 leading-relaxed">
-                            🔒 <strong>Session Memory:</strong> Key is held purely in volatile browser memory (<code class="text-[9px] bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-blue-200 dark:border-blue-900">sessionStorage</code>) and cleared when tab closes.
+                        <div id="sb-base-url-group">
+                            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">Base URL</label>
+                            <input type="text" id="sb-base-url" value="http://localhost:11434/v1" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs">
+                        </div>
+                        <div id="sb-offline-info" class="hidden p-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-[10px] text-emerald-800 dark:text-emerald-300">
+                            🛡️ <strong>100% Private Offline Mode:</strong> Zero API calls or network egress. Deterministic Hopfield associative memory extraction.
                         </div>
                         <div class="flex gap-1.5 pt-1">
-                            <button onclick="testLLMFromSidebar()" class="flex-1 py-1.5 px-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold rounded-lg text-[11px] transition">Test</button>
-                            <button onclick="saveLLMFromSidebar()" class="flex-1 py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-[11px] transition">Save</button>
-                            <button onclick="clearLLMSession()" class="py-1.5 px-2 bg-rose-50 dark:bg-rose-950 hover:bg-rose-100 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-900 font-semibold rounded-lg text-[11px] transition" title="Clear API Key from memory">Clear</button>
+                            <button onclick="testCurrentModel()" class="flex-1 py-1.5 px-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold rounded-lg text-[11px] transition">Test</button>
+                            <button onclick="saveCurrentModelFromSidebar()" class="flex-1 py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-[11px] transition">Save</button>
+                            <button onclick="clearLLMSession()" class="py-1.5 px-2 bg-rose-50 dark:bg-rose-950 hover:bg-rose-100 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-900 font-semibold rounded-lg text-[11px] transition" title="Reset to Local Default">Reset</button>
                         </div>
                         <div id="sb-test-status" class="text-[10px] font-medium hidden"></div>
-                    </div>
-
-                    <!-- Local info -->
-                    <div id="sb-local-fields" class="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
-                        Running local Ollama inference (<code class="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-[9px]">http://localhost:11434</code>) with <strong class="text-slate-700 dark:text-slate-200">llama3.2</strong>. Zero API keys required.
-                        <div class="mt-2 flex gap-1.5">
-                            <button onclick="testLLMFromSidebar()" class="py-1 px-2.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold rounded-lg text-[11px] transition">Check Ollama</button>
-                        </div>
-                        <div id="sb-local-status" class="text-[10px] font-medium mt-1.5 hidden"></div>
                     </div>
                 </div>
 
@@ -549,9 +535,14 @@
                         <!-- Composer Footer Info -->
                         <div class="flex items-center justify-between pt-1.5 px-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400">
                             <div class="flex items-center gap-2">
-                                <span class="hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer" onclick="openLLMModal()">
-                                    ⚡ Engine: <strong id="composer-model-indicator" class="text-slate-600 dark:text-slate-300 font-mono">Local Llama (Ollama)</strong>
+                                <span class="hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer flex items-center gap-1" onclick="openLLMModal()">
+                                    <span>🤖 Model:</span> <strong id="composer-model-indicator" class="text-slate-600 dark:text-slate-300 font-mono">Local Ollama (llama3.2)</strong>
                                 </span>
+                                <span>&bull;</span>
+                                <button type="button" id="web-search-toggle-btn" onclick="toggleWebSearch()" class="px-2 py-0.5 rounded-full border text-[10px] font-semibold transition flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:opacity-90" title="Click to toggle live web search augmentation">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" id="web-search-dot"></span>
+                                    <span id="web-search-label">🌐 Web Search: ON</span>
+                                </button>
                                 <span>&bull;</span>
                                 <span id="composer-chunks-count">Ready</span>
                             </div>
@@ -772,7 +763,7 @@
     </div>
 
     <!-- ===================================================================== -->
-    <!-- LLM CONFIGURATION MODAL (SESSION SCOPED) -->
+    <!-- MODEL SETTINGS & INFERENCE MODAL -->
     <!-- ===================================================================== -->
     <div id="llm-config-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
         <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all">
@@ -780,11 +771,11 @@
             <div class="px-6 py-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white flex items-center justify-between">
                 <div class="flex items-center gap-2.5">
                     <div class="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     </div>
                     <div>
-                        <h3 class="text-sm font-bold text-white">LLM Synthesis Engine &amp; API Key</h3>
-                        <p class="text-[11px] text-slate-300">Choose local Ollama or high-speed Cloud LLM for answer generation</p>
+                        <h3 class="text-sm font-bold text-white">Model &amp; Inference Settings</h3>
+                        <p class="text-[11px] text-slate-300">Select model provider, configure API credentials, and tune parameters</p>
                     </div>
                 </div>
                 <button onclick="closeLLMModal()" class="text-slate-400 hover:text-white transition p-1 rounded-lg">
@@ -794,73 +785,115 @@
 
             <!-- Modal Body -->
             <div class="p-6 space-y-4 text-xs">
-                <!-- Mode Toggle Cards -->
-                <div class="grid grid-cols-2 gap-3">
-                    <div id="modal-card-local" onclick="setModalMode('local')" class="border-2 rounded-2xl p-3 cursor-pointer transition border-blue-500 bg-blue-50/50 dark:bg-blue-950/40">
-                        <div class="flex items-center justify-between mb-1">
-                            <span class="font-bold text-slate-800 dark:text-slate-100">Local Llama</span>
-                            <span class="w-2.5 h-2.5 rounded-full bg-blue-600" id="modal-dot-local"></span>
-                        </div>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">Ollama running locally on CPU/GPU. No API key or internet required.</p>
-                    </div>
-                    <div id="modal-card-cloud" onclick="setModalMode('cloud')" class="border-2 rounded-2xl p-3 cursor-pointer transition border-slate-200 dark:border-slate-800 hover:border-slate-300">
-                        <div class="flex items-center justify-between mb-1">
-                            <span class="font-bold text-slate-800 dark:text-slate-100">Cloud LLM</span>
-                            <span class="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700" id="modal-dot-cloud"></span>
-                        </div>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">Groq (Llama-3.3 70B), OpenAI (GPT-4o), or Gemini. Ultra-fast.</p>
+                <!-- Provider Selection Cards (6 options in 3x2 grid) -->
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Choose Inference Provider</label>
+                    <div class="grid grid-cols-3 gap-2" id="modal-provider-cards">
+                        <button type="button" onclick="selectModalProvider('ollama')" id="card-prov-ollama" class="p-2.5 rounded-xl border-2 text-left transition border-blue-500 bg-blue-50/50 dark:bg-blue-950/40">
+                            <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
+                                <span>🦙 Ollama</span>
+                                <span class="w-2 h-2 rounded-full bg-blue-600" id="dot-prov-ollama"></span>
+                            </div>
+                            <span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">Local CPU/GPU</span>
+                        </button>
+                        <button type="button" onclick="selectModalProvider('groq')" id="card-prov-groq" class="p-2.5 rounded-xl border-2 text-left transition border-slate-200 dark:border-slate-800 hover:border-slate-300">
+                            <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
+                                <span>⚡ Groq</span>
+                                <span class="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700" id="dot-prov-groq"></span>
+                            </div>
+                            <span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">Llama-3.3 70B</span>
+                        </button>
+                        <button type="button" onclick="selectModalProvider('openai')" id="card-prov-openai" class="p-2.5 rounded-xl border-2 text-left transition border-slate-200 dark:border-slate-800 hover:border-slate-300">
+                            <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
+                                <span>🧠 OpenAI</span>
+                                <span class="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700" id="dot-prov-openai"></span>
+                            </div>
+                            <span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">GPT-4o mini</span>
+                        </button>
+                        <button type="button" onclick="selectModalProvider('gemini')" id="card-prov-gemini" class="p-2.5 rounded-xl border-2 text-left transition border-slate-200 dark:border-slate-800 hover:border-slate-300">
+                            <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
+                                <span>💎 Gemini</span>
+                                <span class="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700" id="dot-prov-gemini"></span>
+                            </div>
+                            <span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">1.5 Flash</span>
+                        </button>
+                        <button type="button" onclick="selectModalProvider('custom')" id="card-prov-custom" class="p-2.5 rounded-xl border-2 text-left transition border-slate-200 dark:border-slate-800 hover:border-slate-300">
+                            <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
+                                <span>🔌 Custom</span>
+                                <span class="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700" id="dot-prov-custom"></span>
+                            </div>
+                            <span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">OpenAI URL</span>
+                        </button>
+                        <button type="button" onclick="selectModalProvider('offline')" id="card-prov-offline" class="p-2.5 rounded-xl border-2 text-left transition border-slate-200 dark:border-slate-800 hover:border-slate-300">
+                            <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
+                                <span>🛡️ Offline</span>
+                                <span class="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700" id="dot-prov-offline"></span>
+                            </div>
+                            <span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">100% Private</span>
+                        </button>
                     </div>
                 </div>
 
-                <!-- Cloud Option Fields -->
-                <div id="modal-cloud-fields" class="space-y-3 pt-1 hidden">
-                    <div>
-                        <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Provider Preset</label>
-                        <select id="modal-cloud-provider" onchange="onModalPresetChange()" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium">
-                            <option value="groq" selected>Groq (Ultra-Fast Llama-3.3 70B)</option>
-                            <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
-                            <option value="gemini">Google Gemini (Gemini 1.5 Flash)</option>
-                            <option value="custom">Custom OpenAI-Compatible API</option>
-                        </select>
-                    </div>
-
-                    <div>
+                <!-- Provider Fields -->
+                <div id="modal-provider-fields" class="space-y-3 pt-1">
+                    <div id="modal-api-key-container" class="hidden">
                         <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">API Key (Session-Only Memory)</label>
                         <div class="relative">
-                            <input type="password" id="modal-api-key" placeholder="gsk_..." class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 pr-8 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs focus:border-blue-500 outline-none">
+                            <input type="password" id="modal-api-key" placeholder="API Key..." class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 pr-8 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs focus:border-blue-500 outline-none">
                             <button type="button" onclick="togglePasswordVisibility('modal-api-key')" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">👁️</button>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-2">
-                        <div>
+                    <div class="grid grid-cols-2 gap-2" id="modal-model-url-grid">
+                        <div id="modal-model-group">
                             <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Model Name</label>
-                            <input type="text" id="modal-model-name" value="llama-3.3-70b-versatile" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs">
+                            <input type="text" id="modal-model-name" value="llama3.2" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs">
                         </div>
-                        <div>
+                        <div id="modal-url-group">
                             <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Base URL</label>
-                            <input type="text" id="modal-base-url" value="https://api.groq.com/openai/v1" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs">
+                            <input type="text" id="modal-base-url" value="http://localhost:11434/v1" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono text-xs">
                         </div>
                     </div>
 
-                    <div class="p-3 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900 rounded-2xl text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed flex items-start gap-2">
+                    <div id="modal-offline-notice" class="hidden p-3 bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-900 rounded-2xl text-[11px] text-emerald-700 dark:text-emerald-300 leading-relaxed flex items-start gap-2">
+                        <span class="text-base">🛡️</span>
+                        <span>
+                            <strong>Offline Grounded Mode:</strong> No outbound network traffic or external API calls. Extracted answers and mind maps are derived deterministically from Hopfield attractor dynamics and indexed evidence.
+                        </span>
+                    </div>
+
+                    <div id="modal-session-security-notice" class="p-3 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900 rounded-2xl text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed flex items-start gap-2">
                         <span class="text-base">🔒</span>
                         <span>
-                            <strong>Ephemeral Session Memory:</strong> Your API key is stored exclusively in volatile browser memory (<code class="bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-blue-200 dark:border-blue-900 text-[10px]">sessionStorage</code>). It is never saved to disk, never logged, and will be destroyed upon closing this tab.
+                            <strong>Ephemeral Session Memory:</strong> Credentials remain strictly in browser <code class="bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-blue-200 dark:border-blue-900 text-[10px]">sessionStorage</code>. Never written to disk or logs, destroyed when the browser tab closes.
                         </span>
                     </div>
                 </div>
 
-                <!-- Local Llama Info Fields -->
-                <div id="modal-local-fields" class="space-y-2 pt-1 text-slate-600 dark:text-slate-300">
-                    <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1.5 leading-relaxed">
-                        <div class="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-100">
-                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                            <span>Local Ollama Service Detected</span>
+                <!-- Hyperparameters (Temperature & Max Tokens) -->
+                <div class="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Generation Tuning</span>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1 flex justify-between">
+                                <span>Temperature</span> <span id="modal-temp-val" class="text-blue-600 dark:text-blue-400 font-mono font-bold">0.2</span>
+                            </label>
+                            <input type="range" id="modal-temp-slider" min="0.0" max="1.0" step="0.05" value="0.2" class="w-full accent-blue-600" oninput="document.getElementById('modal-temp-val').innerText=this.value">
+                            <div class="flex justify-between text-[9px] text-slate-400">
+                                <span>Factual (0.0)</span>
+                                <span>Creative (1.0)</span>
+                            </div>
                         </div>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400">
-                            Local inference uses your installed <strong class="text-slate-700 dark:text-slate-200">llama3.2</strong> model running at <code class="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-[10px]">http://localhost:11434</code>.
-                        </p>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1 flex justify-between">
+                                <span>Max Tokens</span> <span id="modal-tokens-val" class="text-blue-600 dark:text-blue-400 font-mono font-bold">2048</span>
+                            </label>
+                            <input type="range" id="modal-tokens-slider" min="256" max="8192" step="256" value="2048" class="w-full accent-blue-600" oninput="document.getElementById('modal-tokens-val').innerText=this.value">
+                            <div class="flex justify-between text-[9px] text-slate-400">
+                                <span>256</span>
+                                <span>8192</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -873,12 +906,12 @@
                         Reset to Local Default
                     </button>
                     <div class="flex gap-2">
-                        <button onclick="testLLMFromModal()" class="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold transition text-xs flex items-center gap-1.5">
+                        <button onclick="testModalModel()" class="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold transition text-xs flex items-center gap-1.5">
                             <span id="modal-test-spinner" class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></span>
                             <span>Test Connection</span>
                         </button>
-                        <button onclick="saveLLMFromModal()" class="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition text-xs shadow-xs">
-                            Save for Session
+                        <button onclick="saveModalModelSettings()" class="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition text-xs shadow-xs">
+                            Save Settings
                         </button>
                     </div>
                 </div>
@@ -964,34 +997,54 @@
         }
 
         // =====================================================================
-        // SESSION LLM CONFIGURATION (IN-MEMORY PERSISTENCE ONLY)
+        // SESSION MODEL CONFIGURATION & WEB SEARCH STATE
         // =====================================================================
         const SESSION_LLM_KEY = 'hopfield_session_llm';
+        let currentModalProvider = 'ollama';
+        let isWebSearchEnabled = true;
 
         const PROVIDER_PRESETS = {
+            ollama: {
+                name: 'Local Ollama',
+                mode: 'local',
+                base_url: 'http://localhost:11434/v1',
+                model: 'llama3.2',
+                placeholder: 'No API key needed (running locally)'
+            },
             groq: {
                 name: 'Groq',
+                mode: 'cloud',
                 base_url: 'https://api.groq.com/openai/v1',
                 model: 'llama-3.3-70b-versatile',
                 placeholder: 'gsk_...'
             },
             openai: {
                 name: 'OpenAI',
+                mode: 'cloud',
                 base_url: 'https://api.openai.com/v1',
                 model: 'gpt-4o-mini',
                 placeholder: 'sk-...'
             },
             gemini: {
                 name: 'Google Gemini',
+                mode: 'cloud',
                 base_url: 'https://generativelanguage.googleapis.com/v1beta/openai/',
                 model: 'gemini-1.5-flash',
                 placeholder: 'AIza...'
             },
             custom: {
-                name: 'Custom',
+                name: 'Custom Endpoint',
+                mode: 'cloud',
                 base_url: 'http://localhost:8080/v1',
                 model: 'default',
                 placeholder: 'API Key (if required)...'
+            },
+            offline: {
+                name: 'Offline Grounded Mode',
+                mode: 'offline',
+                base_url: '',
+                model: 'deterministic_extractor',
+                placeholder: 'No API key required (offline deterministic)'
             }
         };
 
@@ -1008,7 +1061,7 @@
             sessionStorage.setItem(SESSION_LLM_KEY, JSON.stringify(config));
             updateLLMUI();
             syncLLMInputsFromSession();
-            showToast("LLM session configuration updated", "success");
+            showToast("Model settings saved for session", "success");
         }
 
         function clearLLMSession() {
@@ -1017,12 +1070,12 @@
             if (mKey) mKey.value = '';
             const sKey = document.getElementById('sb-api-key');
             if (sKey) sKey.value = '';
-            setModalMode('local');
-            onSidebarModeChange('local');
+            selectModalProvider('ollama');
+            onSidebarProviderSelectChange('ollama');
             updateLLMUI();
             closeLLMModal();
             checkStatus();
-            showToast("Reset to local Ollama inference", "info");
+            showToast("Reset to default Local Ollama model", "info");
         }
 
         function openLLMModal() {
@@ -1036,63 +1089,86 @@
             if (box) box.classList.add('hidden');
         }
 
-        function setModalMode(mode) {
-            const cardLocal = document.getElementById('modal-card-local');
-            const cardCloud = document.getElementById('modal-card-cloud');
-            const dotLocal = document.getElementById('modal-dot-local');
-            const dotCloud = document.getElementById('modal-dot-cloud');
-            const cloudFields = document.getElementById('modal-cloud-fields');
-            const localFields = document.getElementById('modal-local-fields');
+        function selectModalProvider(prov) {
+            currentModalProvider = prov;
+            const providers = ['ollama', 'groq', 'openai', 'gemini', 'custom', 'offline'];
+            providers.forEach(p => {
+                const card = document.getElementById('card-prov-' + p);
+                const dot = document.getElementById('dot-prov-' + p);
+                if (card && dot) {
+                    if (p === prov) {
+                        card.className = "p-2.5 rounded-xl border-2 text-left transition border-blue-500 bg-blue-50/50 dark:bg-blue-950/40";
+                        dot.className = "w-2 h-2 rounded-full bg-blue-600";
+                    } else {
+                        card.className = "p-2.5 rounded-xl border-2 text-left transition border-slate-200 dark:border-slate-800 hover:border-slate-300";
+                        dot.className = "w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700";
+                    }
+                }
+            });
 
-            if (mode === 'cloud') {
-                if (cardCloud) cardCloud.className = "border-2 rounded-2xl p-3 cursor-pointer transition border-blue-500 bg-blue-50/50 dark:bg-blue-950/40";
-                if (cardLocal) cardLocal.className = "border-2 rounded-2xl p-3 cursor-pointer transition border-slate-200 dark:border-slate-800 hover:border-slate-300";
-                if (dotCloud) dotCloud.className = "w-2.5 h-2.5 rounded-full bg-blue-600";
-                if (dotLocal) dotLocal.className = "w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700";
-                if (cloudFields) cloudFields.classList.remove('hidden');
-                if (localFields) localFields.classList.add('hidden');
+            const preset = PROVIDER_PRESETS[prov] || PROVIDER_PRESETS.ollama;
+            const keyCont = document.getElementById('modal-api-key-container');
+            const modelUrlGrid = document.getElementById('modal-model-url-grid');
+            const offlineNotice = document.getElementById('modal-offline-notice');
+            const secNotice = document.getElementById('modal-session-security-notice');
+
+            const keyInput = document.getElementById('modal-api-key');
+            const modelInput = document.getElementById('modal-model-name');
+            const urlInput = document.getElementById('modal-base-url');
+
+            if (modelInput) modelInput.value = preset.model;
+            if (urlInput) urlInput.value = preset.base_url;
+            if (keyInput) keyInput.placeholder = preset.placeholder;
+
+            if (prov === 'offline') {
+                if (keyCont) keyCont.classList.add('hidden');
+                if (modelUrlGrid) modelUrlGrid.classList.add('hidden');
+                if (offlineNotice) offlineNotice.classList.remove('hidden');
+                if (secNotice) secNotice.classList.add('hidden');
+            } else if (prov === 'ollama') {
+                if (keyCont) keyCont.classList.add('hidden');
+                if (modelUrlGrid) modelUrlGrid.classList.remove('hidden');
+                if (offlineNotice) offlineNotice.classList.add('hidden');
+                if (secNotice) secNotice.classList.remove('hidden');
             } else {
-                if (cardLocal) cardLocal.className = "border-2 rounded-2xl p-3 cursor-pointer transition border-blue-500 bg-blue-50/50 dark:bg-blue-950/40";
-                if (cardCloud) cardCloud.className = "border-2 rounded-2xl p-3 cursor-pointer transition border-slate-200 dark:border-slate-800 hover:border-slate-300";
-                if (dotLocal) dotLocal.className = "w-2.5 h-2.5 rounded-full bg-blue-600";
-                if (dotCloud) dotCloud.className = "w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700";
-                if (localFields) localFields.classList.remove('hidden');
-                if (cloudFields) cloudFields.classList.add('hidden');
+                if (keyCont) keyCont.classList.remove('hidden');
+                if (modelUrlGrid) modelUrlGrid.classList.remove('hidden');
+                if (offlineNotice) offlineNotice.classList.add('hidden');
+                if (secNotice) secNotice.classList.remove('hidden');
             }
         }
 
-        function onModalPresetChange() {
-            const p = document.getElementById('modal-cloud-provider').value;
-            const preset = PROVIDER_PRESETS[p] || PROVIDER_PRESETS.groq;
-            document.getElementById('modal-base-url').value = preset.base_url;
-            document.getElementById('modal-model-name').value = preset.model;
-            document.getElementById('modal-api-key').placeholder = preset.placeholder;
-        }
+        function onSidebarProviderSelectChange(prov) {
+            const preset = PROVIDER_PRESETS[prov] || PROVIDER_PRESETS.ollama;
+            const keyGroup = document.getElementById('sb-api-key-group');
+            const modelGroup = document.getElementById('sb-model-name-group');
+            const urlGroup = document.getElementById('sb-base-url-group');
+            const offlineInfo = document.getElementById('sb-offline-info');
 
-        function onSidebarModeChange(mode) {
-            const cloudFields = document.getElementById('sb-cloud-fields');
-            const localFields = document.getElementById('sb-local-fields');
-            const lblLocal = document.getElementById('sb-lbl-mode-local');
-            const lblCloud = document.getElementById('sb-lbl-mode-cloud');
+            const keyInput = document.getElementById('sb-api-key');
+            const modelInput = document.getElementById('sb-model-name');
+            const urlInput = document.getElementById('sb-base-url');
 
-            if (mode === 'cloud') {
-                if (lblCloud) lblCloud.className = "flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-400 shadow-xs font-bold";
-                if (lblLocal) lblLocal.className = "flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white";
-                if (cloudFields) cloudFields.classList.remove('hidden');
-                if (localFields) localFields.classList.add('hidden');
+            if (modelInput) modelInput.value = preset.model;
+            if (urlInput) urlInput.value = preset.base_url;
+            if (keyInput) keyInput.placeholder = preset.placeholder;
+
+            if (prov === 'offline') {
+                if (keyGroup) keyGroup.classList.add('hidden');
+                if (modelGroup) modelGroup.classList.add('hidden');
+                if (urlGroup) urlGroup.classList.add('hidden');
+                if (offlineInfo) offlineInfo.classList.remove('hidden');
+            } else if (prov === 'ollama') {
+                if (keyGroup) keyGroup.classList.add('hidden');
+                if (modelGroup) modelGroup.classList.remove('hidden');
+                if (urlGroup) urlGroup.classList.remove('hidden');
+                if (offlineInfo) offlineInfo.classList.add('hidden');
             } else {
-                if (lblLocal) lblLocal.className = "flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-400 shadow-xs font-bold";
-                if (lblCloud) lblCloud.className = "flex items-center justify-center gap-1 py-1 px-2 rounded-lg cursor-pointer transition select-none text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white";
-                if (localFields) localFields.classList.remove('hidden');
-                if (cloudFields) cloudFields.classList.add('hidden');
+                if (keyGroup) keyGroup.classList.remove('hidden');
+                if (modelGroup) modelGroup.classList.remove('hidden');
+                if (urlGroup) urlGroup.classList.remove('hidden');
+                if (offlineInfo) offlineInfo.classList.add('hidden');
             }
-        }
-
-        function onSidebarPresetChange() {
-            const p = document.getElementById('sb-cloud-provider').value;
-            const preset = PROVIDER_PRESETS[p] || PROVIDER_PRESETS.groq;
-            document.getElementById('sb-model-name').value = preset.model;
-            document.getElementById('sb-api-key').placeholder = preset.placeholder;
         }
 
         function togglePasswordVisibility(inputId) {
@@ -1102,8 +1178,8 @@
             }
         }
 
-        async function testLLMFromModal() {
-            const isCloud = !document.getElementById('modal-cloud-fields').classList.contains('hidden');
+        async function testModalModel() {
+            const prov = currentModalProvider;
             const statusBox = document.getElementById('modal-status-box');
             const spinner = document.getElementById('modal-test-spinner');
 
@@ -1111,18 +1187,14 @@
             if (statusBox) {
                 statusBox.classList.remove('hidden');
                 statusBox.className = "p-2.5 rounded-xl border text-[11px] font-medium bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300";
-                statusBox.innerText = "Testing connection...";
+                statusBox.innerText = "Verifying model configuration...";
             }
 
-            const reqData = isCloud ? {
-                provider: document.getElementById('modal-cloud-provider').value,
-                model: document.getElementById('modal-model-name').value.trim(),
-                base_url: document.getElementById('modal-base-url').value.trim(),
-                api_key: document.getElementById('modal-api-key').value.trim()
-            } : {
-                provider: 'ollama',
-                model: 'llama3.2',
-                base_url: 'http://localhost:11434/v1'
+            const reqData = {
+                provider: prov,
+                model: (document.getElementById('modal-model-name')?.value || '').trim(),
+                base_url: (document.getElementById('modal-base-url')?.value || '').trim(),
+                api_key: (document.getElementById('modal-api-key')?.value || '').trim()
             };
 
             try {
@@ -1144,31 +1216,28 @@
             } catch (e) {
                 if (statusBox) {
                     statusBox.className = "p-2.5 rounded-xl border text-[11px] font-medium bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200";
-                    statusBox.innerText = "Connection failed: " + e.message;
+                    statusBox.innerText = "Connection check failed: " + e.message;
                 }
             } finally {
                 if (spinner) spinner.style.display = 'none';
             }
         }
 
-        async function testLLMFromSidebar() {
-            const isCloud = !document.getElementById('sb-cloud-fields').classList.contains('hidden');
-            const statusEl = isCloud ? document.getElementById('sb-test-status') : document.getElementById('sb-local-status');
+        async function testCurrentModel() {
+            const selectEl = document.getElementById('sb-provider-select');
+            const prov = selectEl ? selectEl.value : 'ollama';
+            const statusEl = document.getElementById('sb-test-status');
             if (statusEl) {
                 statusEl.classList.remove('hidden');
                 statusEl.className = "text-[10px] font-medium text-slate-500 animate-pulse";
-                statusEl.innerText = "Testing...";
+                statusEl.innerText = "Verifying...";
             }
 
-            const reqData = isCloud ? {
-                provider: document.getElementById('sb-cloud-provider').value,
-                model: document.getElementById('sb-model-name').value.trim(),
-                base_url: PROVIDER_PRESETS[document.getElementById('sb-cloud-provider').value].base_url,
-                api_key: document.getElementById('sb-api-key').value.trim()
-            } : {
-                provider: 'ollama',
-                model: 'llama3.2',
-                base_url: 'http://localhost:11434/v1'
+            const reqData = {
+                provider: prov,
+                model: (document.getElementById('sb-model-name')?.value || '').trim(),
+                base_url: (document.getElementById('sb-base-url')?.value || '').trim(),
+                api_key: (document.getElementById('sb-api-key')?.value || '').trim()
             };
 
             try {
@@ -1181,7 +1250,7 @@
                 if (statusEl) {
                     if (data.success) {
                         statusEl.className = "text-[10px] font-medium text-emerald-600 dark:text-emerald-400";
-                        statusEl.innerText = "✓ Reachable: " + data.message;
+                        statusEl.innerText = "✓ " + data.message;
                     } else {
                         statusEl.className = "text-[10px] font-medium text-rose-600 dark:text-rose-400";
                         statusEl.innerText = "✕ " + data.message;
@@ -1195,81 +1264,68 @@
             }
         }
 
-        function saveLLMFromModal() {
-            const isCloud = !document.getElementById('modal-cloud-fields').classList.contains('hidden');
-            if (isCloud) {
-                const apiKey = document.getElementById('modal-api-key').value.trim();
-                if (!apiKey) {
-                    alert('Please enter an API Key to use Cloud LLM.');
-                    return;
-                }
-                const p = document.getElementById('modal-cloud-provider').value;
-                const cfg = {
-                    mode: 'cloud',
-                    provider: p,
-                    model: document.getElementById('modal-model-name').value.trim(),
-                    base_url: document.getElementById('modal-base-url').value.trim(),
-                    api_key: apiKey
-                };
-                setSessionLLM(cfg);
-            } else {
-                const cfg = {
-                    mode: 'local',
-                    provider: 'ollama',
-                    model: 'llama3.2',
-                    base_url: 'http://localhost:11434/v1'
-                };
-                setSessionLLM(cfg);
+        function saveModalModelSettings() {
+            const prov = currentModalProvider;
+            const preset = PROVIDER_PRESETS[prov] || PROVIDER_PRESETS.ollama;
+            const tempVal = parseFloat(document.getElementById('modal-temp-slider')?.value) || 0.2;
+            const tokensVal = parseInt(document.getElementById('modal-tokens-slider')?.value) || 2048;
+
+            let cfg = {
+                provider: prov,
+                mode: preset.mode,
+                model: document.getElementById('modal-model-name')?.value.trim() || preset.model,
+                base_url: document.getElementById('modal-base-url')?.value.trim() || preset.base_url,
+                api_key: document.getElementById('modal-api-key')?.value.trim() || '',
+                temperature: tempVal,
+                max_tokens: tokensVal
+            };
+
+            if (['groq', 'openai', 'gemini'].includes(prov) && !cfg.api_key) {
+                alert(`Please enter an API Key for ${preset.name}.`);
+                return;
             }
+
+            setSessionLLM(cfg);
             closeLLMModal();
         }
 
-        function saveLLMFromSidebar() {
-            const isCloud = !document.getElementById('sb-cloud-fields').classList.contains('hidden');
-            if (isCloud) {
-                const apiKey = document.getElementById('sb-api-key').value.trim();
-                if (!apiKey) {
-                    alert('Please enter an API Key to use Cloud LLM.');
-                    return;
-                }
-                const p = document.getElementById('sb-cloud-provider').value;
-                const preset = PROVIDER_PRESETS[p] || PROVIDER_PRESETS.groq;
-                const cfg = {
-                    mode: 'cloud',
-                    provider: p,
-                    model: document.getElementById('sb-model-name').value.trim() || preset.model,
-                    base_url: preset.base_url,
-                    api_key: apiKey
-                };
-                setSessionLLM(cfg);
-            } else {
-                const cfg = {
-                    mode: 'local',
-                    provider: 'ollama',
-                    model: 'llama3.2',
-                    base_url: 'http://localhost:11434/v1'
-                };
-                setSessionLLM(cfg);
+        function saveCurrentModelFromSidebar() {
+            const prov = document.getElementById('sb-provider-select')?.value || 'ollama';
+            const preset = PROVIDER_PRESETS[prov] || PROVIDER_PRESETS.ollama;
+            let cfg = {
+                provider: prov,
+                mode: preset.mode,
+                model: document.getElementById('sb-model-name')?.value.trim() || preset.model,
+                base_url: document.getElementById('sb-base-url')?.value.trim() || preset.base_url,
+                api_key: document.getElementById('sb-api-key')?.value.trim() || '',
+                temperature: 0.2,
+                max_tokens: 2048
+            };
+
+            if (['groq', 'openai', 'gemini'].includes(prov) && !cfg.api_key) {
+                alert(`Please enter an API Key for ${preset.name}.`);
+                return;
             }
-            const statusEl = isCloud ? document.getElementById('sb-test-status') : document.getElementById('sb-local-status');
+
+            setSessionLLM(cfg);
+            const statusEl = document.getElementById('sb-test-status');
             if (statusEl) {
                 statusEl.classList.remove('hidden');
                 statusEl.className = "text-[10px] font-medium text-emerald-600 dark:text-emerald-400";
-                statusEl.innerText = "✓ Saved for active session";
+                statusEl.innerText = "✓ Model settings saved";
             }
         }
 
         function syncLLMInputsFromSession() {
             const session = getSessionLLM();
-            if (session && session.mode === 'cloud') {
-                setModalMode('cloud');
-                onSidebarModeChange('cloud');
-                if (session.provider) {
-                    const mProv = document.getElementById('modal-cloud-provider');
-                    if (mProv) mProv.value = session.provider;
-                    const sProv = document.getElementById('sb-cloud-provider');
-                    if (sProv) sProv.value = session.provider;
-                }
+            const prov = session?.provider || 'ollama';
+            selectModalProvider(prov);
+
+            const sbSelect = document.getElementById('sb-provider-select');
+            if (sbSelect) sbSelect.value = prov;
+            onSidebarProviderSelectChange(prov);
+
+            if (session) {
                 if (session.model) {
                     const mMod = document.getElementById('modal-model-name');
                     if (mMod) mMod.value = session.model;
@@ -1279,6 +1335,8 @@
                 if (session.base_url) {
                     const mUrl = document.getElementById('modal-base-url');
                     if (mUrl) mUrl.value = session.base_url;
+                    const sUrl = document.getElementById('sb-base-url');
+                    if (sUrl) sUrl.value = session.base_url;
                 }
                 if (session.api_key) {
                     const mKey = document.getElementById('modal-api-key');
@@ -1286,9 +1344,18 @@
                     const sKey = document.getElementById('sb-api-key');
                     if (sKey) sKey.value = session.api_key;
                 }
-            } else {
-                setModalMode('local');
-                onSidebarModeChange('local');
+                if (session.temperature !== undefined) {
+                    const tSlider = document.getElementById('modal-temp-slider');
+                    const tVal = document.getElementById('modal-temp-val');
+                    if (tSlider) tSlider.value = session.temperature;
+                    if (tVal) tVal.innerText = session.temperature;
+                }
+                if (session.max_tokens !== undefined) {
+                    const tokSlider = document.getElementById('modal-tokens-slider');
+                    const tokVal = document.getElementById('modal-tokens-val');
+                    if (tokSlider) tokSlider.value = session.max_tokens;
+                    if (tokVal) tokVal.innerText = session.max_tokens;
+                }
             }
         }
 
@@ -1298,13 +1365,40 @@
             const sbBadge = document.getElementById('sb-llm-badge');
             const compIndicator = document.getElementById('composer-model-indicator');
 
-            if (session && session.mode === 'cloud' && session.api_key) {
-                const provName = session.provider ? session.provider.toUpperCase() : 'CLOUD';
+            if (!session || session.provider === 'ollama') {
+                const modelName = session?.model || 'llama3.2';
+                if (llmPill) {
+                    llmPill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-blue-400 transition";
+                    llmPill.innerHTML = `🦙 Ollama (${modelName})`;
+                    llmPill.title = "Local Ollama model active. Click to view or change Model Settings.";
+                }
+                if (sbBadge) {
+                    sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300";
+                    sbBadge.innerText = "Local Ollama";
+                }
+                if (compIndicator) {
+                    compIndicator.innerText = `Ollama (${modelName})`;
+                }
+            } else if (session.provider === 'offline') {
+                if (llmPill) {
+                    llmPill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 cursor-pointer hover:bg-emerald-200 transition";
+                    llmPill.innerHTML = `🛡️ Offline Grounded`;
+                    llmPill.title = "100% Private Offline Grounded Mode. Click to view or change Model Settings.";
+                }
+                if (sbBadge) {
+                    sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
+                    sbBadge.innerText = "Offline Grounded";
+                }
+                if (compIndicator) {
+                    compIndicator.innerText = "Offline Grounded (100% Private)";
+                }
+            } else {
+                const provName = session.provider.toUpperCase();
                 const modelName = session.model || '';
                 if (llmPill) {
                     llmPill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 cursor-pointer shadow-xs hover:bg-indigo-200 transition flex items-center gap-1.5";
                     llmPill.innerHTML = `<span class="w-2 h-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span><span>${provName} (${modelName})</span><span class="bg-indigo-200/80 dark:bg-indigo-900 text-[9px] px-1 rounded font-semibold">Session</span>`;
-                    llmPill.title = "Cloud LLM active in session memory. Click to configure or clear.";
+                    llmPill.title = `${provName} active in session memory. Click to view or change Model Settings.`;
                 }
                 if (sbBadge) {
                     sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800";
@@ -1313,18 +1407,43 @@
                 if (compIndicator) {
                     compIndicator.innerText = `${provName} (${modelName})`;
                 }
-            } else {
-                if (sbBadge) {
-                    sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300";
-                    sbBadge.innerText = "Local Llama";
-                }
-                if (compIndicator) {
-                    compIndicator.innerText = "Local Llama (Ollama llama3.2)";
-                }
             }
         }
 
         // =====================================================================
+        // WEB SEARCH AUGMENTATION TOGGLE
+        // =====================================================================
+        function toggleWebSearch() {
+            isWebSearchEnabled = !isWebSearchEnabled;
+            sessionStorage.setItem('hopfield_web_search', isWebSearchEnabled ? 'true' : 'false');
+            updateWebSearchUI();
+            showToast(isWebSearchEnabled ? "🌐 Web search augmentation enabled" : "🌐 Web search disabled", "info");
+        }
+
+        function updateWebSearchUI() {
+            const btn = document.getElementById('web-search-toggle-btn');
+            const dot = document.getElementById('web-search-dot');
+            const lbl = document.getElementById('web-search-label');
+            if (!btn) return;
+            if (isWebSearchEnabled) {
+                btn.className = "px-2 py-0.5 rounded-full border text-[10px] font-semibold transition flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:opacity-90";
+                if (dot) dot.className = "w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse";
+                if (lbl) lbl.innerText = "🌐 Web Search: ON";
+                btn.title = "Live Web Search is active for out-of-domain / random queries. Click to disable.";
+            } else {
+                btn.className = "px-2 py-0.5 rounded-full border text-[10px] font-semibold transition flex items-center gap-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:opacity-90";
+                if (dot) dot.className = "w-1.5 h-1.5 rounded-full bg-slate-400";
+                if (lbl) lbl.innerText = "🌐 Web Search: OFF";
+                btn.title = "Live Web Search is disabled. Only local memory will be queried. Click to enable.";
+            }
+        }
+
+        // Check saved web search preference
+        const savedWebSearch = sessionStorage.getItem('hopfield_web_search');
+        if (savedWebSearch !== null) {
+            isWebSearchEnabled = savedWebSearch === 'true';
+        }
+
         // VOICE INPUT (SPEECH-TO-TEXT)
         // =====================================================================
         function toggleVoiceInput() {
@@ -1463,6 +1582,7 @@
             setupDropZone();
             syncLLMInputsFromSession();
             updateLLMUI();
+            updateWebSearchUI();
             await checkStatus();
             await loadChats();
             await refreshDocumentsList();
@@ -1880,19 +2000,18 @@
                     hopfield_beta: beta,
                     top_k: top_k,
                     answer_style: style,
-                    chat_id: activeChatId
+                    chat_id: activeChatId,
+                    web_search_enabled: isWebSearchEnabled
                 };
 
                 const sessionLLM = getSessionLLM();
-                if (sessionLLM && sessionLLM.mode === 'cloud' && sessionLLM.api_key) {
+                if (sessionLLM) {
                     payload.llm_provider = sessionLLM.provider;
-                    payload.llm_model = sessionLLM.model;
-                    payload.llm_base_url = sessionLLM.base_url;
-                    payload.llm_api_key = sessionLLM.api_key;
-                } else if (sessionLLM && sessionLLM.mode === 'local') {
-                    payload.llm_provider = 'ollama';
                     if (sessionLLM.model) payload.llm_model = sessionLLM.model;
                     if (sessionLLM.base_url) payload.llm_base_url = sessionLLM.base_url;
+                    if (sessionLLM.api_key) payload.llm_api_key = sessionLLM.api_key;
+                    if (sessionLLM.temperature !== undefined) payload.temperature = sessionLLM.temperature;
+                    if (sessionLLM.max_tokens !== undefined) payload.max_tokens = sessionLLM.max_tokens;
                 }
 
                 const res = await fetch('/api/search', {
@@ -1905,7 +2024,7 @@
                 if (!res.ok) {
                     botContent = `Error (${res.status}): ${data.detail || data.message || 'Request failed.'}`;
                 } else if (data.grounded_answer && data.grounded_answer.fallback_occurred) {
-                    botContent += "\n\n> ⚠️ *Extracted via Offline Grounded Fallback (LLM unavailable). Click 'LLM Engine' in the top bar to connect Groq, OpenAI, or Gemini for fluent generative synthesis.*";
+                    botContent += "\n\n> 🛡️ *Extracted via Grounded Fallback. Click 'Model Settings' in the top bar to connect Groq, OpenAI, Gemini, or Ollama.*";
                 }
                 const botMsg = {
                     role: 'assistant',

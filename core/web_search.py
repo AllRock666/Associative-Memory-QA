@@ -327,9 +327,9 @@ class DuckDuckGoSearchProvider(BaseWebSearchProvider):
         }
         data = {"q": query}
 
-        for attempt in range(2):
+        for attempt in range(1):
             try:
-                with httpx.Client(timeout=self.config.search_timeout_seconds) as client:
+                with httpx.Client(timeout=3.0) as client:
                     resp = client.post(search_url, data=data, headers=headers)
                     resp.raise_for_status()
                     html = resp.text

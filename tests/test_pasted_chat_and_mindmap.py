@@ -33,15 +33,25 @@ def test_pasted_chat_workflow():
     )
     assert res1.status_code == 200
 
-    # 2. Ask random unrelated question (out-of-domain)
+    # 2. Ask random unrelated question (out-of-domain) with web search enabled
     res_random = client.post(
         "/api/search",
-        json={"query": "What is the capital of Australia and how do penguins fly?", "chat_id": chat_id}
+        json={"query": "What is the capital of France?", "chat_id": chat_id, "web_search_enabled": True}
     )
     assert res_random.status_code == 200
-    random_answer = res_random.json()["answer"].lower()
-    # Must abstain or indicate insufficient evidence rather than hallucinating
-    assert any(term in random_answer for term in ["cannot answer", "insufficient evidence", "not found", "no relevant"])
+    r_data = res_random.json()
+    assert r_data.get("web_search_used") is True or r_data.get("cached_knowledge_used") is True
+    assert "paris" in r_data.get("answer", "").lower()
+    assert len(r_data.get("web_sources", [])) > 0
+
+    # Also verify that when web search is explicitly disabled, it abstains without hallucinating
+    res_offline_random = client.post(
+        "/api/search",
+        json={"query": "What is the capital of France?", "chat_id": chat_id, "web_search_enabled": False}
+    )
+    assert res_offline_random.status_code == 200
+    off_answer = res_offline_random.json()["answer"].lower()
+    assert any(term in off_answer for term in ["cannot answer", "insufficient evidence", "not found", "no relevant", "do not contain"])
 
     # 3. Ask specific questions on the paragraph sent
     res_q1 = client.post(
@@ -51,6 +61,7 @@ def test_pasted_chat_workflow():
     assert res_q1.status_code == 200
     ans_q1 = res_q1.json()["answer"]
     assert "quadratic" in ans_q1.lower()
+    assert res_q1.json().get("web_search_used") is False
 
     res_q2 = client.post(
         "/api/search",
@@ -68,4 +79,10 @@ def test_pasted_chat_workflow():
     assert res_mm.status_code == 200
     mm_data = res_mm.json()
     assert "visualization" in mm_data or "mindmap" in mm_data["answer"]
-    assert "mindmap" in mm_data["answer"] or (mm_data.get("visualization") and "mindmap" in mm_data["visualization"].get("content", ""))
+    content = mm_data.get("visualization", {}).get("content", "") or mm_data["answer"]
+    content_lower = content.lower()
+    assert "mindmap" in content_lower
+    # Ensure mindmap contains actual concepts from the provided paragraph
+    assert any(term in content_lower for term in ["quantum", "superposition", "qubits", "shor", "grover", "decoherence"])
+    # Ensure NO fake/hardcoded dummy nodes
+    assert "concept alpha" not in content_lower

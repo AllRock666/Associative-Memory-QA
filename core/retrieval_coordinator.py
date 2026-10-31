@@ -237,17 +237,32 @@ class RetrievalCoordinator:
             # Step 3a: Check Persistent Knowledge Memory for fresh matching chunks
             cached_chunks = self.knowledge_memory.search_knowledge(query, top_k=top_k)
             if cached_chunks and len(cached_chunks) >= 2 and not force_web_search:
-                logger.info(f"Retrieved {len(cached_chunks)} chunks from Persistent Knowledge Memory for query '{query}'.")
-                retrieved_web_chunks.extend(cached_chunks)
-                cached_knowledge_used = True
-                for c in cached_chunks:
-                    web_sources.append({
-                        "title": c.title or c.source,
-                        "url": c.url,
-                        "source": c.source,
-                        "cached": True
-                    })
-            else:
+                # Double-check that cached chunks actually cover the query topic
+                cached_text = " ".join(c.text.lower() for c in cached_chunks)
+                q_entities = [w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', query.lower()) if w not in {
+                    "what", "where", "when", "which", "explain", "describe", "detail", "overview",
+                    "the", "and", "for", "with", "mark", "marks", "answer", "question",
+                    "how", "why", "who", "whom", "whose", "does", "did", "done", "doing",
+                    "can", "could", "would", "should", "will", "shall", "may", "might", "must",
+                    "are", "was", "were", "been", "being", "have", "has", "had", "having",
+                    "its", "their", "theirs", "this", "that", "these", "those", "from"
+                }]
+                covers_topic = any(e in cached_text for e in q_entities) if q_entities else True
+                if covers_topic:
+                    logger.info(f"Retrieved {len(cached_chunks)} chunks from Persistent Knowledge Memory for query '{query}'.")
+                    retrieved_web_chunks.extend(cached_chunks)
+                    cached_knowledge_used = True
+                    for c in cached_chunks:
+                        web_sources.append({
+                            "title": c.title or c.source,
+                            "url": c.url,
+                            "source": c.source,
+                            "cached": True
+                        })
+                else:
+                    cached_chunks = None
+
+            if not cached_knowledge_used:
                 # Step 3b: Execute live or mock web search
                 try:
                     search_results: List[WebSearchResult] = self.web_search_provider.search(

@@ -170,16 +170,25 @@ class PersistentKnowledgeMemory:
         if not valid_entries:
             return []
 
-        q_words = set(re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', query.lower()))
+        stopwords = {
+            "the", "and", "for", "with", "from", "that", "this", "what", "where",
+            "when", "which", "who", "whom", "whose", "how", "why", "does", "did",
+            "are", "was", "were", "been", "being", "have", "has", "had", "can",
+            "could", "will", "would", "shall", "should", "about", "into", "over"
+        }
+        q_words = set(w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', query.lower()) if w not in stopwords)
+        if not q_words:
+            return []
+
         scored = []
         for entry in valid_entries:
             e_text_lower = entry.text.lower()
             e_title_lower = (entry.title or "").lower()
-            # Token match count
             overlap = sum(1 for w in q_words if w in e_text_lower or w in e_title_lower)
             if overlap > 0:
-                score = overlap / max(len(q_words), 1)
-                scored.append((score, entry))
+                score = overlap / len(q_words)
+                if score >= 0.34:
+                    scored.append((score, entry))
 
         scored.sort(key=lambda x: x[0], reverse=True)
         results = []

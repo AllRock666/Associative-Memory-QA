@@ -62,9 +62,10 @@ class SearchRequest(BaseModel):
     llm_base_url: Optional[str] = None
     llm_api_key: Optional[str] = None
     max_tokens: Optional[int] = 8192
+    temperature: Optional[float] = 0.2
     chat_id: Optional[str] = None
     conversation_history: Optional[List[Dict[str, Any]]] = None
-    web_search_enabled: Optional[bool] = None
+    web_search_enabled: Optional[bool] = True
     force_web_search: Optional[bool] = False
     web_search_provider: Optional[str] = None
     answer_format: Optional[str] = None
@@ -83,6 +84,7 @@ def init_app_state():
         return
     proj_path = "models/projection_squad.pt" if os.path.exists("models/projection_squad.pt") else None
     llm_env = LLMConfig.from_env()
+    web_search_active = os.environ.get("WEB_SEARCH_ENABLED", "true").lower() not in ("false", "0", "no")
     config = PipelineConfig(
         embedding_model="all-MiniLM-L6-v2",
         chunk_size=512,
@@ -93,6 +95,7 @@ def init_app_state():
         use_projection=False,
         projection_path=proj_path,
         use_associative_engine=True,
+        web_search_enabled=web_search_active,
         web_search_provider=os.environ.get("WEB_SEARCH_PROVIDER", "composite"),
         llm_provider=llm_env.provider,
         llm_base_url=llm_env.base_url,
@@ -102,6 +105,8 @@ def init_app_state():
     pipeline = HopfieldQAPipeline(config)
     hierarchical_memory = HierarchicalHopfieldMemory(embedding_dim=pipeline.embedder.embedding_dim)
     pipeline.hierarchical_memory = hierarchical_memory
+    if hasattr(pipeline, "answer_generator") and hasattr(pipeline.answer_generator, "llm_provider"):
+        visual_studio.llm_provider = pipeline.answer_generator.llm_provider
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -153,6 +158,14 @@ def verify_llm_connection(req: LLMVerifyRequest):
     Never persists or logs the API key to disk.
     """
     provider_name = (req.provider or "ollama").lower().strip()
+
+    if provider_name in ("offline", "offline_grounded", "deterministic"):
+        return {
+            "success": True,
+            "provider": "offline",
+            "model": "deterministic_grounded",
+            "message": "Offline Grounded Mode active. 100% private, deterministic Hopfield extraction."
+        }
     
     if provider_name == "groq":
         base_url = (req.base_url or "https://api.groq.com/openai/v1").strip()
@@ -309,6 +322,8 @@ def search(req: SearchRequest):
             ovr_cfg.api_key = req.llm_api_key
         if req.max_tokens:
             ovr_cfg.max_tokens = req.max_tokens
+        if req.temperature is not None:
+            ovr_cfg.temperature = req.temperature
         provider_override = create_llm_provider(ovr_cfg)
     
     # Extract conversation history for multi-turn conversational context
@@ -500,13 +515,55 @@ def search(req: SearchRequest):
     # Check if this query requested a visualization (e.g. mind map, flowchart, architecture diagram)
     is_viz_query = any(w in req.query.lower() for w in ["mind map", "mindmap", "flowchart", "flow chart", "architecture diagram", "sequence diagram", "concept map", "draw a diagram", "make a diagram"])
     if is_viz_query:
-        viz_context = [
-            {"text": c.get("text", ""), "source": c.get("source", "Document"), "page_number": c.get("page_number", 1)}
-            for c in evidence_list
-        ]
-        if not viz_context and pipeline._documents:
-            latest_src = list(pipeline._documents.keys())[-1]
-            viz_context = [{"text": pipeline._documents[latest_src], "source": latest_src, "page_number": 1}]
+        # Pass active LLM provider to VisualStudioEngine if available
+        if provider_override:
+            visual_studio.llm_provider = provider_override
+        elif hasattr(pipeline, "answer_generator") and hasattr(pipeline.answer_generator, "llm_provider"):
+            visual_studio.llm_provider = pipeline.answer_generator.llm_provider
+
+        # Resolve the most relevant source text for the visualization:
+        found_target_text = None
+        raw_q = req.query.strip()
+
+        # 1. Did the user paste the paragraph directly inside the visualization request?
+        if len(raw_q) > 120 and len(raw_q.split()) > 15:
+            clean_q_text = re.sub(r'^(?:please\s+)?(?:make|create|generate|build|draw)\s+(?:a\s+)?(?:mind\s*map|diagram|flowchart|concept\s*map)(?:\s+(?:of|for|about|from))?\s*[:\-–—]?\s*', '', raw_q, flags=re.I).strip()
+            if len(clean_q_text) > 80:
+                found_target_text = clean_q_text
+            else:
+                found_target_text = raw_q
+
+        # 2. Check conversation history for a recently pasted paragraph or substantial user text
+        if not found_target_text and history:
+            for h in reversed(history):
+                if h.get("role") == "user":
+                    c_text = h.get("content", "").strip()
+                    if c_text != raw_q and len(c_text) > 80 and len(c_text.split()) > 10:
+                        found_target_text = c_text
+                        break
+
+        # 3. Check active multimodal document if one is selected
+        if not found_target_text and req.active_doc_id and req.active_doc_id in multimodal_store:
+            doc_obj = multimodal_store[req.active_doc_id]
+            if doc_obj and getattr(doc_obj, "full_text", None):
+                found_target_text = doc_obj.full_text
+
+        # 4. Check pipeline documents (pasted chats or uploaded docs)
+        if not found_target_text and pipeline and pipeline._documents:
+            pasted_keys = [k for k in pipeline._documents.keys() if k.startswith("pasted_chat")]
+            if pasted_keys:
+                found_target_text = pipeline._documents[pasted_keys[-1]]
+            else:
+                latest_src = list(pipeline._documents.keys())[-1]
+                found_target_text = pipeline._documents[latest_src]
+
+        if found_target_text:
+            viz_context = [{"text": found_target_text, "source": "Target Document/Paragraph", "page_number": 1}]
+        else:
+            viz_context = [
+                {"text": c.get("text", ""), "source": c.get("source", "Document"), "page_number": c.get("page_number", 1)}
+                for c in evidence_list
+            ]
 
         viz_res = visual_studio.generate_visualization(
             prompt=req.query,

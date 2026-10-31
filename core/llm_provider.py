@@ -794,12 +794,77 @@ class MockLLMProvider(BaseLLMProvider):
         )
 
 
+class OfflineGroundedProvider(BaseLLMProvider):
+    """Offline, deterministic grounded extraction provider (zero external API calls)."""
+    def __init__(self, config: Optional[LLMConfig] = None):
+        super().__init__(config or LLMConfig(provider="offline"))
+
+    def is_available(self) -> Tuple[bool, str]:
+        return True, "Offline Grounded mode active (100% private, local deterministic extraction)"
+
+    def generate(
+        self,
+        query: str,
+        evidence_chunks: List[Any],
+        style: str = "conversational",
+        conversation_history: Optional[List[Dict[str, str]]] = None
+    ) -> LLMResult:
+        return self.generate_answer(
+            query=query,
+            evidence_chunks=evidence_chunks,
+            style=style,
+            chat_history=conversation_history
+        )
+
+    def generate_answer(
+        self,
+        query: str,
+        evidence_chunks: List[Any],
+        style: str = "conversational",
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        system_override: Optional[str] = None
+    ) -> LLMResult:
+        t_start = time.perf_counter()
+        if not evidence_chunks:
+            return LLMResult(
+                answer="I cannot answer this question based on the provided documents. Reason: Insufficient evidence.",
+                claims=[],
+                provider_used="offline_grounded",
+                model_name="deterministic_extractor",
+                latency_ms=0.5,
+                is_abstained=True,
+                abstention_reason="Insufficient evidence."
+            )
+        from core.generative_synthesizer import GenerativeRAGSynthesizer
+        synth = GenerativeRAGSynthesizer()
+        ans, _ = synth._deterministic_grounded_synthesis(query, evidence_chunks, style)
+        claims = []
+        for s in re.split(r'(?<=[.!?])\s+', ans):
+            s_clean = s.strip()
+            c_matches = re.findall(r'\[E(\d+)\]', s_clean)
+            if c_matches:
+                claims.append({
+                    "text": s_clean,
+                    "evidence_ids": [f"E{m}" for m in c_matches]
+                })
+        elapsed_ms = max(0.1, (time.perf_counter() - t_start) * 1000)
+        return LLMResult(
+            answer=ans,
+            claims=claims,
+            provider_used="offline_grounded",
+            model_name="deterministic_extractor",
+            latency_ms=round(elapsed_ms, 2)
+        )
+
+
 def create_llm_provider(config: Optional[LLMConfig] = None) -> BaseLLMProvider:
     """Factory creating the appropriate LLM provider based on configuration."""
     cfg = config or LLMConfig.from_env()
     provider_name = cfg.provider.lower().strip()
 
-    if provider_name == "ollama":
+    if provider_name in ("offline", "offline_grounded", "deterministic"):
+        return OfflineGroundedProvider(cfg)
+    elif provider_name == "ollama":
         return OllamaProvider(cfg)
     elif provider_name in ("openai", "openai_compatible", "vllm", "lmstudio", "groq", "gemini", "custom"):
         return OpenAICompatibleProvider(cfg)
