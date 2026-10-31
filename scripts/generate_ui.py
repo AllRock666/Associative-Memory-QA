@@ -1,0 +1,1699 @@
+# -*- coding: utf-8 -*-
+"""
+Generates the exact replica UI of the Figma Make dashboard from Build_an_interactive_code_layer_from.zip,
+completely emoji-free with open-source SVG vector icons, while providing full integration with
+the Hopfield Associative Memory QA backend (Model Settings, Chat & RAG, Web Search, Documents, Mind Maps).
+"""
+
+import os
+
+html_content = r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotjar - Site Overview & Hopfield Intelligence</title>
+
+    <!-- Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Markdown & Mermaid Visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+
+    <style>
+        body {
+            min-width: 320px;
+            font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-weight: 400;
+            background: #f7f8fa;
+            color: #17191f;
+        }
+
+        button, select, input, textarea {
+            outline: none;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        h1 {
+            font-size: clamp(1.65rem, 2vw, 2.05rem);
+            line-height: 1.1;
+            letter-spacing: -0.035em;
+            font-weight: 600;
+        }
+
+        h2 {
+            font-size: 0.95rem;
+            line-height: 1.35;
+            font-weight: 500;
+        }
+
+        .panel {
+            border: 1px solid #e1e3e9;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 1px 2px rgb(24 29 44 / 0.02);
+        }
+
+        .control {
+            display: inline-flex;
+            min-height: 38px;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #d9dce4;
+            border-radius: 5px;
+            background: white;
+            padding: 0 12px;
+            color: #333642;
+            font-size: 12px;
+            white-space: nowrap;
+            transition: border-color 150ms ease;
+        }
+
+        .control:hover {
+            border-color: #aeb6dd;
+        }
+
+        .control select {
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: inherit;
+            font-size: inherit;
+        }
+
+        .primary-button {
+            display: inline-flex;
+            min-height: 40px;
+            align-items: center;
+            gap: 8px;
+            border-radius: 5px;
+            background: #334dbb;
+            padding: 0 16px;
+            color: white;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 150ms ease;
+        }
+
+        .primary-button:hover {
+            background: #263da3;
+        }
+
+        .icon-button {
+            display: grid;
+            width: 34px;
+            height: 34px;
+            place-items: center;
+            border-radius: 6px;
+            color: #6d7180;
+            transition: background 150ms ease;
+        }
+
+        .icon-button:hover {
+            background: #f2f3f6;
+        }
+
+        .search {
+            display: flex;
+            min-height: 38px;
+            min-width: min(100%, 280px);
+            flex: 1;
+            align-items: center;
+            gap: 9px;
+            border: 1px solid #d9dce4;
+            border-radius: 5px;
+            padding: 0 12px;
+            color: #737783;
+            background: white;
+            transition: border-color 150ms ease, box-shadow 150ms ease;
+        }
+
+        .search:focus-within {
+            border-color: #6172c8;
+            box-shadow: 0 0 0 2px #eef0fb;
+        }
+
+        .search input {
+            min-width: 0;
+            flex: 1;
+            font-size: 12px;
+            color: #252832;
+            border: none;
+            background: transparent;
+        }
+
+        .recording-row {
+            display: grid;
+            grid-template-columns: minmax(170px, 1.3fr) repeat(4, minmax(90px, 0.8fr)) 50px;
+            align-items: center;
+            gap: 18px;
+            padding: 14px 18px;
+            color: #454955;
+            font-size: 12px;
+        }
+
+        .tab {
+            margin-bottom: -1px;
+            border-bottom: 2px solid transparent;
+            padding: 10px 18px;
+            color: #696d78;
+            font-size: 13px;
+            font-weight: 500;
+            transition: color 150ms ease, border-color 150ms ease;
+        }
+
+        .tab.active {
+            border-color: #334dbb;
+            color: #263da3;
+        }
+
+        .legend {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            margin-right: 6px;
+            border-radius: 50%;
+        }
+
+        @media (max-width: 767px) {
+            .recording-row {
+                grid-template-columns: 1fr auto;
+            }
+            .recording-row > span:nth-child(2),
+            .recording-row > span:nth-child(3),
+            .recording-row > span:nth-child(5),
+            .recording-row > span:nth-child(6) {
+                display: none;
+            }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Spinner */
+        .spinner {
+            border: 2px solid #e2e8f0;
+            border-top-color: #3049b8;
+            border-radius: 50%;
+            width: 14px;
+            height: 14px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Markdown formatting in chat */
+        .markdown-body { font-size: 13px; line-height: 1.6; color: #1f2937; }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 { font-weight: 600; margin-top: 0.8rem; margin-bottom: 0.3rem; }
+        .markdown-body h1 { font-size: 1.15rem; }
+        .markdown-body h2 { font-size: 1.05rem; }
+        .markdown-body p { margin-bottom: 0.5rem; }
+        .markdown-body ul, .markdown-body ol { margin-left: 1.25rem; margin-bottom: 0.5rem; list-style-type: disc; }
+        .markdown-body code { font-family: monospace; font-size: 12px; background: #eef1ff; color: #263da3; padding: 2px 5px; border-radius: 4px; }
+        .markdown-body pre { background: #1e2433; color: #f8fafc; padding: 10px 14px; border-radius: 6px; overflow-x: auto; margin: 0.5rem 0; }
+        .markdown-body pre code { background: transparent; color: inherit; padding: 0; }
+    </style>
+</head>
+<body class="min-h-screen bg-[#f7f8fa] text-[#17191f]">
+
+    <!-- ========================================== -->
+    <!-- LEFT SIDEBAR (72px fixed)                  -->
+    <!-- ========================================== -->
+    <aside class="fixed inset-y-0 left-0 z-30 flex w-[72px] flex-col items-center border-r border-[#e5e7ec] bg-white py-4">
+        <!-- Home / Reset Button -->
+        <button
+            aria-label="Home"
+            onclick="switchView('Overview')"
+            class="mb-7 grid size-10 place-items-center rounded-xl text-[#15171c] transition hover:bg-[#f2f4fb]"
+            title="Home"
+        >
+            <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m3 11 9-8 9 8" />
+                <path d="M5 10v10h14V10M9 20v-6h6v6" />
+            </svg>
+        </button>
+
+        <!-- Navigation Views -->
+        <nav class="flex flex-1 flex-col gap-2">
+            <!-- 1. Overview -->
+            <button
+                id="nav-btn-Overview"
+                aria-label="Overview"
+                title="Overview"
+                onclick="switchView('Overview')"
+                class="relative grid size-11 place-items-center rounded-xl transition bg-[#eef1ff] text-[#3049b8]"
+            >
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                    <rect x="14" y="14" width="7" height="7" rx="1" />
+                </svg>
+                <span id="nav-active-Overview" class="absolute -right-[15px] h-7 w-[3px] rounded-l bg-[#3049b8]"></span>
+            </button>
+
+            <!-- 2. Highlights -->
+            <button
+                id="nav-btn-Highlights"
+                aria-label="Highlights"
+                title="Highlights"
+                onclick="switchView('Highlights')"
+                class="relative grid size-11 place-items-center rounded-xl transition text-[#292d36] hover:bg-[#f5f6f8]"
+            >
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3 9.8 8.8 4 11l5.8 2.2L12 19l2.2-5.8L20 11l-5.8-2.2L12 3Z" />
+                    <path d="m5 3 .7 1.8L7.5 5.5l-1.8.7L5 8l-.7-1.8-1.8-.7 1.8-.7L5 3Z" />
+                </svg>
+                <span id="nav-active-Highlights" class="hidden absolute -right-[15px] h-7 w-[3px] rounded-l bg-[#3049b8]"></span>
+            </button>
+
+            <!-- 3. Recordings -->
+            <button
+                id="nav-btn-Recordings"
+                aria-label="Recordings"
+                title="Recordings"
+                onclick="switchView('Recordings')"
+                class="relative grid size-11 place-items-center rounded-xl transition text-[#292d36] hover:bg-[#f5f6f8]"
+            >
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="16" rx="2" />
+                    <path d="m10 8 6 4-6 4V8Z" />
+                </svg>
+                <span id="nav-active-Recordings" class="hidden absolute -right-[15px] h-7 w-[3px] rounded-l bg-[#3049b8]"></span>
+            </button>
+
+            <!-- 4. Surveys -->
+            <button
+                id="nav-btn-Surveys"
+                aria-label="Surveys"
+                title="Surveys"
+                onclick="switchView('Surveys')"
+                class="relative grid size-11 place-items-center rounded-xl transition text-[#292d36] hover:bg-[#f5f6f8]"
+            >
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M7 3h10v3H7z" />
+                    <path d="M5 5v16h14V5M8 11h8M8 15h5" />
+                </svg>
+                <span id="nav-active-Surveys" class="hidden absolute -right-[15px] h-7 w-[3px] rounded-l bg-[#3049b8]"></span>
+            </button>
+
+            <!-- 5. Hopfield AI Research Assistant -->
+            <button
+                id="nav-btn-Assistant"
+                aria-label="Hopfield AI"
+                title="Hopfield AI Research Assistant"
+                onclick="switchView('Assistant')"
+                class="relative grid size-11 place-items-center rounded-xl transition text-[#292d36] hover:bg-[#f5f6f8]"
+            >
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="4" width="16" height="16" rx="2" />
+                    <rect x="9" y="9" width="6" height="6" />
+                    <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" />
+                </svg>
+                <span id="nav-active-Assistant" class="hidden absolute -right-[15px] h-7 w-[3px] rounded-l bg-[#3049b8]"></span>
+            </button>
+        </nav>
+
+        <!-- Bottom Icons -->
+        <div class="flex flex-col gap-2">
+            <button
+                aria-label="Team"
+                onclick="showToast('Team workspace active · 4 members connected')"
+                title="Team Workspace"
+                class="grid size-11 place-items-center rounded-xl text-[#292d36] hover:bg-[#f5f6f8] transition"
+            >
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+            </button>
+            <button
+                aria-label="Settings"
+                onclick="openModelSettingsModal()"
+                title="Model & System Settings"
+                class="grid size-11 place-items-center rounded-xl text-[#292d36] hover:bg-[#f5f6f8] transition"
+            >
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.2 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4H2.5v-4h.09A1.7 1.7 0 0 0 4.2 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.6 4.2a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1V2.5h4v.09a1.7 1.7 0 0 0 1 1.61 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06a1.7 1.7 0 0 0-.31 1.91 1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1 .4h.09v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+                </svg>
+            </button>
+        </div>
+    </aside>
+
+    <!-- ========================================== -->
+    <!-- TOP HEADER BAR (72px fixed)                -->
+    <!-- ========================================== -->
+    <header class="fixed left-[72px] right-0 top-0 z-20 flex h-[72px] items-center justify-between border-b border-[#e5e7ec] bg-white px-6 lg:px-8">
+        <div class="flex items-center gap-5">
+            <div class="text-[24px] font-medium tracking-[-1.5px] text-[#111218] cursor-pointer" onclick="switchView('Overview')">
+                <span class="text-[#e64351]">hot</span>jar
+                <span class="ml-1 align-top text-[8px] tracking-normal text-[#51545e]">
+                    by Contentsquare
+                </span>
+            </div>
+            <span class="hidden h-7 w-px bg-[#e0e2e7] sm:block"></span>
+            <button class="hidden items-center gap-2 text-[14px] text-[#333642] sm:flex" onclick="showToast('Content Dummy Site selected')">
+                Content Dummy Site <span class="text-[10px]">▼</span>
+            </button>
+            <span class="hidden rounded bg-[#344fc2] px-3 py-1.5 text-[11px] font-medium tracking-wide text-white lg:inline">
+                7 TRIAL DAYS LEFT
+            </span>
+            <!-- Model Indicator Pill -->
+            <button
+                onclick="openModelSettingsModal()"
+                id="header-model-pill"
+                class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[#d9dce4] bg-[#f8f9fc] hover:border-[#3049b8] text-[11px] font-medium text-[#2f333f] transition"
+                title="Click to configure model settings"
+            >
+                <span class="size-1.5 rounded-full bg-emerald-500"></span>
+                <span id="header-model-label">Ollama (llama3.2)</span>
+            </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <!-- New Button -->
+            <button
+                id="header-new-btn"
+                onclick="handleNewAction()"
+                class="hidden h-9 items-center gap-2 rounded border border-[#d9dce4] px-3 text-[13px] font-medium text-[#252934] transition hover:border-[#3049b8] hover:text-[#3049b8] sm:flex"
+            >
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 5v14M5 12h14" />
+                </svg>
+                <span id="header-new-label">New dashboard</span>
+            </button>
+
+            <!-- Notifications Button -->
+            <button
+                aria-label="Notifications"
+                onclick="showToast('No new notifications')"
+                class="relative grid size-9 place-items-center rounded-lg hover:bg-[#f4f5f8] transition"
+            >
+                <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+                    <path d="M10 21h4" />
+                </svg>
+                <span class="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-[#d93c2b]"></span>
+            </button>
+
+            <!-- User Avatar -->
+            <button
+                onclick="showToast('Signed in as Jane Smith')"
+                class="grid size-9 place-items-center rounded-full bg-[#e44250] text-[12px] font-semibold text-white shadow-xs"
+                title="Jane Smith"
+            >
+                JS
+            </button>
+        </div>
+    </header>
+
+    <!-- ========================================== -->
+    <!-- MAIN CONTENT VIEW CONTAINER                -->
+    <!-- ========================================== -->
+    <main class="ml-[72px] px-5 pb-12 pt-[104px] sm:px-8 lg:px-10">
+        <div class="mx-auto max-w-[1440px]">
+
+            <!-- ====================================== -->
+            <!-- VIEW 1: OVERVIEW                       -->
+            <!-- ====================================== -->
+            <section id="view-Overview" class="block">
+                <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                        <p class="mb-1 text-[13px] text-[#737782]">Dashboard</p>
+                        <h1>Site overview</h1>
+                    </div>
+                    <div class="flex gap-2">
+                        <label class="control">
+                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="5" width="18" height="16" rx="2" />
+                                <path d="M16 3v4M8 3v4M3 10h18" />
+                            </svg>
+                            <select id="overview-range-select" onchange="showToast('Range updated: ' + this.value)">
+                                <option>Last 7 days</option>
+                                <option selected>Last 30 days</option>
+                                <option>Last 90 days</option>
+                            </select>
+                        </label>
+                        <button class="control" onclick="showToast('Filter panel opened')">
+                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 5h16M7 12h10M10 19h4" />
+                            </svg>
+                            Add filter
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4 Metrics Cards -->
+                <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <article class="panel p-5">
+                        <p class="text-[13px] text-[#646874]">Total sessions</p>
+                        <div class="mt-3 flex items-end justify-between">
+                            <strong class="text-[28px] font-medium tracking-tight">7</strong>
+                            <span class="text-[12px] text-[#2c8069] font-medium">+12.5%</span>
+                        </div>
+                    </article>
+
+                    <article class="panel p-5">
+                        <p class="text-[13px] text-[#646874]">Avg. pages / session</p>
+                        <div class="mt-3 flex items-end justify-between">
+                            <strong class="text-[28px] font-medium tracking-tight">3.7</strong>
+                            <span class="text-[12px] text-[#2c8069] font-medium">+4.2%</span>
+                        </div>
+                    </article>
+
+                    <article class="panel p-5">
+                        <p class="text-[13px] text-[#646874]">Avg. session duration</p>
+                        <div class="mt-3 flex items-end justify-between">
+                            <strong class="text-[28px] font-medium tracking-tight">6:02</strong>
+                            <span class="text-[12px] text-[#2c8069] font-medium">+18.1%</span>
+                        </div>
+                    </article>
+
+                    <article class="panel p-5">
+                        <p class="text-[13px] text-[#646874]">Bounce rate</p>
+                        <div class="mt-3 flex items-end justify-between">
+                            <strong class="text-[28px] font-medium tracking-tight">14.3%</strong>
+                            <span class="text-[12px] text-[#2c8069] font-medium">-2.3%</span>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- Trend Chart & Page Overview Split -->
+                <div class="mt-5 grid gap-5 xl:grid-cols-[1.65fr_1fr]">
+                    <article class="panel p-6">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h2>Sessions over time</h2>
+                                <p class="mt-1 text-[12px] text-[#7a7e89]">All traffic · Last 30 days</p>
+                            </div>
+                            <button class="icon-button" onclick="showToast('Chart options')">
+                                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                    <circle cx="5" cy="12" r="1" fill="currentColor" />
+                                    <circle cx="12" cy="12" r="1" fill="currentColor" />
+                                    <circle cx="19" cy="12" r="1" fill="currentColor" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <!-- Trend Chart SVG -->
+                        <svg viewBox="0 0 720 250" class="mt-3 h-[220px] w-full overflow-visible" aria-label="Session trend chart">
+                            <line x1="45" x2="710" y1="30" y2="30" stroke="#eceef3" />
+                            <line x1="45" x2="710" y1="80" y2="80" stroke="#eceef3" />
+                            <line x1="45" x2="710" y1="130" y2="130" stroke="#eceef3" />
+                            <line x1="45" x2="710" y1="180" y2="180" stroke="#eceef3" />
+                            <line x1="45" x2="710" y1="230" y2="230" stroke="#eceef3" />
+                            <path d="M45 188 C110 175 130 128 195 146 S295 190 355 130 S445 74 505 108 S600 142 710 62" fill="none" stroke="#394fc0" stroke-width="3" stroke-linecap="round" />
+                            <path d="M45 188 C110 175 130 128 195 146 S295 190 355 130 S445 74 505 108 S600 142 710 62 L710 230 L45 230Z" fill="url(#area-grad)" />
+                            <defs>
+                                <linearGradient id="area-grad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop stop-color="#5368d2" stop-opacity=".18" />
+                                    <stop offset="1" stop-color="#5368d2" stop-opacity="0" />
+                                </linearGradient>
+                            </defs>
+                            <text x="45" y="248" fill="#777b87" font-size="11">Jun 5</text>
+                            <text x="155" y="248" fill="#777b87" font-size="11">Jun 6</text>
+                            <text x="265" y="248" fill="#777b87" font-size="11">Jun 7</text>
+                            <text x="375" y="248" fill="#777b87" font-size="11">Jun 8</text>
+                            <text x="485" y="248" fill="#777b87" font-size="11">Jun 9</text>
+                            <text x="595" y="248" fill="#777b87" font-size="11">Jun 10</text>
+                            <text x="705" y="248" fill="#777b87" font-size="11">Jun 11</text>
+                        </svg>
+                    </article>
+
+                    <!-- Page Overview Card -->
+                    <article class="panel p-6">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h2>Page overview</h2>
+                                <p class="mt-1 text-[12px] text-[#7a7e89]">Top-performing page</p>
+                            </div>
+                            <button class="icon-button" onclick="showToast('Page options')">
+                                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                    <circle cx="5" cy="12" r="1" fill="currentColor" />
+                                    <circle cx="12" cy="12" r="1" fill="currentColor" />
+                                    <circle cx="19" cy="12" r="1" fill="currentColor" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="mt-5 rounded-lg border border-[#e7e9ee] bg-[#fafbfc] p-4">
+                            <p class="truncate text-[13px] font-medium text-[#111319]">content-dummy.vercel.app/</p>
+                            <div class="mt-4 grid grid-cols-2 gap-4 text-[12px]">
+                                <div>
+                                    <span class="text-[#777b86]">Sessions</span>
+                                    <strong class="mt-1 block text-[20px] font-medium text-[#15171e]">4</strong>
+                                </div>
+                                <div>
+                                    <span class="text-[#777b86]">Clicks</span>
+                                    <strong class="mt-1 block text-[20px] font-medium text-[#15171e]">15</strong>
+                                </div>
+                                <div>
+                                    <span class="text-[#777b86]">Avg. scroll depth</span>
+                                    <strong class="mt-1 block text-[20px] font-medium text-[#15171e]">95.9%</strong>
+                                </div>
+                                <div>
+                                    <span class="text-[#777b86]">Drop-off rate</span>
+                                    <strong class="mt-1 block text-[20px] font-medium text-[#15171e]">28.6%</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="mt-5 w-full rounded bg-[#334dbb] py-2.5 text-[13px] font-medium text-white hover:bg-[#263da3] transition" onclick="showToast('Heatmap loaded for content-dummy.vercel.app')">
+                            View heatmap
+                        </button>
+                    </article>
+                </div>
+            </section>
+
+            <!-- ====================================== -->
+            <!-- VIEW 2: HIGHLIGHTS                     -->
+            <!-- ====================================== -->
+            <section id="view-Highlights" class="hidden">
+                <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                        <p class="mb-1 text-[13px] text-[#737782]">Highlights</p>
+                        <h1>All highlights</h1>
+                    </div>
+                    <button class="primary-button" onclick="showToast('New collection created')">
+                        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        New collection
+                    </button>
+                </div>
+
+                <!-- Search & Filters -->
+                <div class="panel mb-5 flex flex-wrap gap-3 p-4">
+                    <label class="search">
+                        <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m20 20-4-4" />
+                        </svg>
+                        <input id="highlights-search-input" oninput="filterHighlights()" placeholder="Search highlights" />
+                    </label>
+                    <button class="control" onclick="showToast('Date filter')">All dates <span class="text-[10px]">▼</span></button>
+                    <button class="control" onclick="showToast('Author filter')">Author: Any <span class="text-[10px]">▼</span></button>
+                    <button class="control" onclick="showToast('Label filter')">Label: Any <span class="text-[10px]">▼</span></button>
+                </div>
+
+                <!-- Highlights Cards Grid -->
+                <div id="highlights-grid" class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                    <!-- Cards populated by JS -->
+                </div>
+            </section>
+
+            <!-- ====================================== -->
+            <!-- VIEW 3: RECORDINGS                     -->
+            <!-- ====================================== -->
+            <section id="view-Recordings" class="hidden">
+                <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                        <p class="mb-1 text-[13px] text-[#737782]">Recordings</p>
+                        <h1>All sessions</h1>
+                    </div>
+                    <button class="control" onclick="showToast('Segment saved')">
+                        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 5h16M7 12h10M10 19h4" />
+                        </svg>
+                        Save segment
+                    </button>
+                </div>
+
+                <!-- Filter Bar -->
+                <div class="panel mb-5 flex flex-wrap gap-3 p-4">
+                    <label class="search">
+                        <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m20 20-4-4" />
+                        </svg>
+                        <input id="recordings-search-input" oninput="filterRecordings()" placeholder="Search by session ID" />
+                    </label>
+                    <label class="control">
+                        Device
+                        <select id="recordings-device-select" onchange="filterRecordings()">
+                            <option>All devices</option>
+                            <option>Desktop</option>
+                            <option>Mobile</option>
+                            <option>Tablet</option>
+                        </select>
+                    </label>
+                    <button class="control" onclick="showToast('Date range: Last 30 days')">
+                        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="5" width="18" height="16" rx="2" />
+                            <path d="M16 3v4M8 3v4M3 10h18" />
+                        </svg>
+                        Last 30 days
+                    </button>
+                </div>
+
+                <!-- Recordings Table Panel -->
+                <div class="panel overflow-hidden">
+                    <div class="recording-row hidden bg-[#fafbfc] text-[11px] font-medium uppercase tracking-wide text-[#747884] md:grid border-b border-[#eceef2]">
+                        <span>Session</span>
+                        <span>Country</span>
+                        <span>Device</span>
+                        <span>Duration</span>
+                        <span>Activity</span>
+                        <span></span>
+                    </div>
+                    <div id="recordings-list">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- ====================================== -->
+            <!-- VIEW 4: SURVEYS                        -->
+            <!-- ====================================== -->
+            <section id="view-Surveys" class="hidden">
+                <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                        <p class="mb-1 text-[13px] text-[#737782]">Surveys</p>
+                        <h1>Sentiment analysis</h1>
+                    </div>
+                    <button class="primary-button" onclick="showToast('New survey initiated')">
+                        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        New survey
+                    </button>
+                </div>
+
+                <!-- Tabs -->
+                <div class="mb-5 flex border-b border-[#e0e2e7]">
+                    <button id="survey-tab-overview" onclick="switchSurveyTab('Overview')" class="tab active">
+                        Overview
+                    </button>
+                    <button id="survey-tab-responses" onclick="switchSurveyTab('Responses')" class="tab">
+                        Responses
+                    </button>
+                </div>
+
+                <!-- Tab 1: Overview -->
+                <div id="survey-content-overview" class="grid gap-5 xl:grid-cols-[.85fr_1.5fr]">
+                    <article class="panel p-6">
+                        <h2>How do users feel?</h2>
+                        <p class="mt-1 text-[12px] text-[#7a7e89]">60 responses</p>
+
+                        <!-- Donut Chart -->
+                        <div class="relative mx-auto mt-8 size-56 rounded-full" style="background: conic-gradient(#2d8069 0 60%, #ee6548 60% 80%, #d9dde5 80%);">
+                            <div class="absolute inset-8 grid place-items-center rounded-full bg-white text-center shadow-xs">
+                                <div>
+                                    <strong class="block text-[34px] font-medium text-[#111319]">60%</strong>
+                                    <span class="text-[12px] text-[#6f7380]">Positive</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Legend -->
+                        <div class="mt-8 flex justify-center gap-5 text-[12px] text-[#333642]">
+                            <span><i class="legend bg-[#2d8069]"></i>Positive</span>
+                            <span><i class="legend bg-[#ee6548]"></i>Negative</span>
+                            <span><i class="legend bg-[#d9dde5]"></i>Neutral</span>
+                        </div>
+                    </article>
+
+                    <article class="panel p-6">
+                        <div class="flex justify-between">
+                            <div>
+                                <h2>Sentiment over time</h2>
+                                <p class="mt-1 text-[12px] text-[#7a7e89]">Jun 5 - Jun 11</p>
+                            </div>
+                            <button class="icon-button" onclick="showToast('Sentiment chart options')">
+                                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                    <circle cx="5" cy="12" r="1" fill="currentColor" />
+                                    <circle cx="12" cy="12" r="1" fill="currentColor" />
+                                    <circle cx="19" cy="12" r="1" fill="currentColor" />
+                                </svg>
+                            </button>
+                        </div>
+                        <!-- Trend chart for sentiment -->
+                        <svg viewBox="0 0 720 250" class="mt-3 h-[220px] w-full overflow-visible" aria-label="Sentiment trend chart">
+                            <line x1="45" x2="710" y1="30" y2="30" stroke="#eceef3" />
+                            <line x1="45" x2="710" y1="80" y2="80" stroke="#eceef3" />
+                            <line x1="45" x2="710" y1="130" y2="130" stroke="#eceef3" />
+                            <line x1="45" x2="710" y1="180" y2="180" stroke="#eceef3" />
+                            <line x1="45" x2="710" y1="230" y2="230" stroke="#eceef3" />
+                            <path d="M45 188 C110 175 130 128 195 146 S295 190 355 130 S445 74 505 108 S600 142 710 62" fill="none" stroke="#394fc0" stroke-width="3" stroke-linecap="round" />
+                            <path d="M45 188 C110 175 130 128 195 146 S295 190 355 130 S445 74 505 108 S600 142 710 62 L710 230 L45 230Z" fill="url(#area-grad-survey)" />
+                            <defs>
+                                <linearGradient id="area-grad-survey" x1="0" y1="0" x2="0" y2="1">
+                                    <stop stop-color="#5368d2" stop-opacity=".18" />
+                                    <stop offset="1" stop-color="#5368d2" stop-opacity="0" />
+                                </linearGradient>
+                            </defs>
+                            <text x="45" y="248" fill="#777b87" font-size="11">Jun 5</text>
+                            <text x="155" y="248" fill="#777b87" font-size="11">Jun 6</text>
+                            <text x="265" y="248" fill="#777b87" font-size="11">Jun 7</text>
+                            <text x="375" y="248" fill="#777b87" font-size="11">Jun 8</text>
+                            <text x="485" y="248" fill="#777b87" font-size="11">Jun 9</text>
+                            <text x="595" y="248" fill="#777b87" font-size="11">Jun 10</text>
+                            <text x="705" y="248" fill="#777b87" font-size="11">Jun 11</text>
+                        </svg>
+                    </article>
+                </div>
+
+                <!-- Tab 2: Responses -->
+                <div id="survey-content-responses" class="grid gap-4 lg:grid-cols-3 hidden">
+                    <article class="panel p-5">
+                        <span class="rounded-full px-3 py-1.5 text-[11px] font-medium bg-[#e9f5f0] text-[#2c8069]">Positive</span>
+                        <p class="mt-6 min-h-16 text-[15px] leading-6 text-[#1e232d]">I love the update! Keep it coming.</p>
+                        <button class="mt-6 text-[12px] font-medium text-[#3049b8] hover:underline" onclick="showToast('Loading positive answers')">View all positive answers →</button>
+                    </article>
+
+                    <article class="panel p-5">
+                        <span class="rounded-full px-3 py-1.5 text-[11px] font-medium bg-[#f2f3f6] text-[#4b505d]">Neutral</span>
+                        <p class="mt-6 min-h-16 text-[15px] leading-6 text-[#1e232d]">It’s not bad, but can be better.</p>
+                        <button class="mt-6 text-[12px] font-medium text-[#3049b8] hover:underline" onclick="showToast('Loading neutral answers')">View all neutral answers →</button>
+                    </article>
+
+                    <article class="panel p-5">
+                        <span class="rounded-full px-3 py-1.5 text-[11px] font-medium bg-[#fff0ec] text-[#bd493b]">Negative</span>
+                        <p class="mt-6 min-h-16 text-[15px] leading-6 text-[#1e232d]">Why do I have to do these things now?</p>
+                        <button class="mt-6 text-[12px] font-medium text-[#3049b8] hover:underline" onclick="showToast('Loading negative answers')">View all negative answers →</button>
+                    </article>
+                </div>
+            </section>
+
+            <!-- ====================================== -->
+            <!-- VIEW 5: HOPFIELD AI RESEARCH ASSISTANT -->
+            <!-- ====================================== -->
+            <section id="view-Assistant" class="hidden">
+                <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                        <p class="mb-1 text-[13px] text-[#737782]">Hopfield Associative Intelligence</p>
+                        <h1>Multimodal Research &amp; Synthesis</h1>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <!-- Web Search Toggle Button -->
+                        <button
+                            id="web-search-toggle-btn"
+                            onclick="toggleWebSearch()"
+                            class="control"
+                            title="Toggle Live Web Search Augmentation"
+                        >
+                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                <path d="M2 12h20" />
+                            </svg>
+                            <span id="web-search-label">Web Search: ON</span>
+                        </button>
+                        <button class="primary-button" onclick="openModelSettingsModal()">
+                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3" />
+                                <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.2 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4H2.5v-4h.09A1.7 1.7 0 0 0 4.2 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.6 4.2a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1V2.5h4v.09a1.7 1.7 0 0 0 1 1.61 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06a1.7 1.7 0 0 0-.31 1.91 1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1 .4h.09v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+                            </svg>
+                            Model Settings
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
+                    <!-- Left: Interactive Chat & QA Panel -->
+                    <div class="panel p-6 flex flex-col min-h-[560px]">
+                        <div class="flex items-center justify-between pb-3 border-b border-[#eceef2]">
+                            <div>
+                                <h2>Grounded Associative QA Feed</h2>
+                                <p class="text-[12px] text-[#7a7e89]">Continuous attractor relaxation minimizing energy</p>
+                            </div>
+                            <button onclick="clearChatHistory()" class="text-[12px] text-[#bd493b] hover:underline">
+                                Clear chat
+                            </button>
+                        </div>
+
+                        <!-- Chat Messages Container -->
+                        <div id="chat-messages" class="flex-1 overflow-y-auto py-4 space-y-4 max-h-[460px] pr-1">
+                            <div class="rounded-lg border border-[#e5e8f0] bg-[#fafbfc] p-4 text-[13px] text-[#4b5262]">
+                                <strong class="text-[#1a202c] block mb-1">Welcome to Hopfield QA Assistant</strong>
+                                Upload documents or paste large text below to extract semantic patterns, perform web-augmented verification, or construct grounded Mermaid mind maps.
+                            </div>
+                        </div>
+
+                        <!-- Chat Input Box -->
+                        <div class="mt-4 pt-3 border-t border-[#eceef2]">
+                            <div class="flex items-end gap-2">
+                                <textarea
+                                    id="chat-query-input"
+                                    rows="2"
+                                    placeholder="Ask a question or enter text to analyze / make a mindmap..."
+                                    class="flex-1 rounded-lg border border-[#d9dce4] p-2.5 text-[13px] text-[#1c202a] focus:border-[#3049b8] transition"
+                                    onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendQuery(); }"
+                                ></textarea>
+                                <div class="flex flex-col gap-1.5">
+                                    <button
+                                        id="chat-send-btn"
+                                        onclick="sendQuery()"
+                                        class="primary-button justify-center min-w-[80px]"
+                                    >
+                                        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="22" y1="2" x2="11" y2="13" />
+                                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                        </svg>
+                                        Send
+                                    </button>
+                                    <button
+                                        onclick="generateMindmapFromChat()"
+                                        class="control justify-center text-[11px]"
+                                        title="Generate Mind Map from current context"
+                                    >
+                                        Mind Map
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Documents & Mind Map Studio -->
+                    <div class="flex flex-col gap-5">
+                        <!-- Upload Document Panel -->
+                        <div class="panel p-5">
+                            <h2 class="mb-1">Knowledge Ingestion</h2>
+                            <p class="text-[12px] text-[#7a7e89] mb-4">Upload PDF, DOCX, PPTX, or image files</p>
+
+                            <div
+                                id="drop-zone"
+                                class="rounded-lg border-2 border-dashed border-[#d9dce4] p-5 text-center hover:border-[#3049b8] transition cursor-pointer bg-[#fafbfc]"
+                                onclick="document.getElementById('file-upload-input').click()"
+                            >
+                                <input type="file" id="file-upload-input" class="hidden" onchange="uploadFile(this)" accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg">
+                                <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3049b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="mx-auto mb-2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                                </svg>
+                                <p class="text-[13px] font-medium text-[#222530]">Click or drag files here</p>
+                                <p class="text-[11px] text-[#7d818d] mt-1">Multi-modal OCR &amp; structural layout parsing</p>
+                            </div>
+                            <div id="upload-status" class="mt-2 text-[12px] font-medium text-[#3049b8] hidden"></div>
+
+                            <!-- Document list -->
+                            <div class="mt-4 pt-3 border-t border-[#eceef2]">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-[12px] font-medium text-[#505462]">Indexed Documents</span>
+                                    <button onclick="refreshDocumentsList()" class="text-[11px] text-[#3049b8] hover:underline">Refresh</button>
+                                </div>
+                                <div id="indexed-docs-list" class="space-y-1.5 max-h-40 overflow-y-auto text-[12px] text-[#323644]">
+                                    <div class="text-[#898e9a] py-2">Loading documents...</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mind Map & Visualization Container -->
+                        <div class="panel p-5 flex-1 flex flex-col">
+                            <div class="flex items-center justify-between mb-2">
+                                <h2>Dynamic Visual Studio</h2>
+                                <span class="text-[11px] text-[#7a7e89]">Mermaid Diagrams</span>
+                            </div>
+                            <div id="mindmap-container" class="flex-1 rounded-lg border border-[#e6e8ee] bg-[#fafbfc] p-3 overflow-auto min-h-[220px] flex items-center justify-center text-center text-[12px] text-[#838896]">
+                                Diagram visualization will render here after running analysis or clicking Mind Map.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- ========================================== -->
+    <!-- RECORDING PLAYER MODAL                     -->
+    <!-- ========================================== -->
+    <div id="recording-modal" class="fixed inset-0 z-50 grid place-items-center bg-[#11141f]/45 p-4 hidden" onclick="closeRecordingModal()">
+        <div class="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between border-b border-[#e4e6eb] p-4">
+                <div>
+                    <strong id="modal-rec-id" class="text-[14px]">Recording 54170193604</strong>
+                    <p id="modal-rec-sub" class="text-[11px] text-[#777b86]">Indonesia · Mobile</p>
+                </div>
+                <button onclick="closeRecordingModal()" class="icon-button text-xl">
+                    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="grid min-h-[360px] place-items-center bg-[#eceef3] p-8">
+                <div class="w-[80%] rounded-lg border border-[#dfe2e9] bg-white p-8 shadow-sm">
+                    <div class="mx-auto h-3 w-36 rounded bg-[#dfe2e9]"></div>
+                    <div class="mx-auto mt-5 h-20 w-44 rounded bg-[#edf1ff]"></div>
+                    <button class="mx-auto mt-8 grid size-14 place-items-center rounded-full bg-[#334dbb] text-white hover:bg-[#263da3] transition">
+                        <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="16" rx="2" />
+                            <path d="m10 8 6 4-6 4V8Z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="flex items-center gap-4 bg-[#1f2431] px-5 py-4 text-white">
+                <button class="grid size-9 place-items-center rounded-full bg-[#435cc8]">
+                    <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="16" rx="2" />
+                        <path d="m10 8 6 4-6 4V8Z" />
+                    </svg>
+                </button>
+                <span id="modal-rec-time" class="text-xs">0:28 / 57:33</span>
+                <div class="h-1 flex-1 overflow-hidden rounded bg-white/25">
+                    <div class="h-full w-[28%] bg-[#6e82e2]"></div>
+                </div>
+                <button onclick="closeRecordingModal()" class="text-xs hover:text-slate-300">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODEL SETTINGS & ENGINE CONFIG MODAL       -->
+    <!-- ========================================== -->
+    <div id="model-settings-modal" class="fixed inset-0 z-50 grid place-items-center bg-[#11141f]/45 p-4 hidden" onclick="closeModelSettingsModal()">
+        <div class="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl border border-[#e2e4ea]" onclick="event.stopPropagation()">
+            <!-- Header -->
+            <div class="flex items-center justify-between border-b border-[#e4e6eb] px-6 py-4">
+                <div>
+                    <h2 class="text-[16px] font-semibold text-[#111319]">Model &amp; Inference Settings</h2>
+                    <p class="text-[12px] text-[#737782]">Select provider, configure credentials, and tune Hopfield attractor parameters</p>
+                </div>
+                <button onclick="closeModelSettingsModal()" class="icon-button">
+                    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-6 space-y-4 max-h-[75vh] overflow-y-auto text-[13px]">
+                <!-- Choose Provider (6 options) -->
+                <div>
+                    <label class="block font-medium text-[#2d313d] mb-2">Inference Provider</label>
+                    <div class="grid grid-cols-3 gap-2" id="provider-cards-grid">
+                        <button type="button" onclick="selectProvider('ollama')" id="card-prov-ollama" class="p-2.5 rounded-lg border-2 text-left transition border-[#3049b8] bg-[#eef1ff]">
+                            <div class="font-medium text-[#11141c] flex items-center justify-between">
+                                <span>Ollama</span>
+                                <span class="size-2 rounded-full bg-[#3049b8]" id="dot-prov-ollama"></span>
+                            </div>
+                            <span class="text-[10px] text-[#636876] block mt-0.5">Local CPU/GPU</span>
+                        </button>
+                        <button type="button" onclick="selectProvider('groq')" id="card-prov-groq" class="p-2.5 rounded-lg border-2 text-left transition border-[#e1e3e9] hover:border-[#b8c2ec]">
+                            <div class="font-medium text-[#11141c] flex items-center justify-between">
+                                <span>Groq</span>
+                                <span class="size-2 rounded-full bg-slate-300" id="dot-prov-groq"></span>
+                            </div>
+                            <span class="text-[10px] text-[#636876] block mt-0.5">Llama-3.3 70B</span>
+                        </button>
+                        <button type="button" onclick="selectProvider('openai')" id="card-prov-openai" class="p-2.5 rounded-lg border-2 text-left transition border-[#e1e3e9] hover:border-[#b8c2ec]">
+                            <div class="font-medium text-[#11141c] flex items-center justify-between">
+                                <span>OpenAI</span>
+                                <span class="size-2 rounded-full bg-slate-300" id="dot-prov-openai"></span>
+                            </div>
+                            <span class="text-[10px] text-[#636876] block mt-0.5">GPT-4o mini</span>
+                        </button>
+                        <button type="button" onclick="selectProvider('gemini')" id="card-prov-gemini" class="p-2.5 rounded-lg border-2 text-left transition border-[#e1e3e9] hover:border-[#b8c2ec]">
+                            <div class="font-medium text-[#11141c] flex items-center justify-between">
+                                <span>Gemini</span>
+                                <span class="size-2 rounded-full bg-slate-300" id="dot-prov-gemini"></span>
+                            </div>
+                            <span class="text-[10px] text-[#636876] block mt-0.5">1.5 Flash</span>
+                        </button>
+                        <button type="button" onclick="selectProvider('custom')" id="card-prov-custom" class="p-2.5 rounded-lg border-2 text-left transition border-[#e1e3e9] hover:border-[#b8c2ec]">
+                            <div class="font-medium text-[#11141c] flex items-center justify-between">
+                                <span>Custom</span>
+                                <span class="size-2 rounded-full bg-slate-300" id="dot-prov-custom"></span>
+                            </div>
+                            <span class="text-[10px] text-[#636876] block mt-0.5">OpenAI URL</span>
+                        </button>
+                        <button type="button" onclick="selectProvider('offline')" id="card-prov-offline" class="p-2.5 rounded-lg border-2 text-left transition border-[#e1e3e9] hover:border-[#b8c2ec]">
+                            <div class="font-medium text-[#11141c] flex items-center justify-between">
+                                <span>Offline</span>
+                                <span class="size-2 rounded-full bg-slate-300" id="dot-prov-offline"></span>
+                            </div>
+                            <span class="text-[10px] text-[#636876] block mt-0.5">100% Private</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Provider Fields -->
+                <div class="space-y-3">
+                    <div id="modal-api-key-container" class="hidden">
+                        <label class="block font-medium text-[#2d313d] mb-1">API Key (Session Storage Only)</label>
+                        <div class="relative">
+                            <input type="password" id="modal-api-key" placeholder="Enter API Key..." class="w-full rounded-lg border border-[#d9dce4] p-2 pr-9 font-mono text-[12px] text-[#11141c]" />
+                            <button type="button" onclick="togglePasswordVisibility('modal-api-key')" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3" id="modal-model-url-grid">
+                        <div>
+                            <label class="block font-medium text-[#2d313d] mb-1">Model Name</label>
+                            <input type="text" id="modal-model-name" value="llama3.2" class="w-full rounded-lg border border-[#d9dce4] p-2 font-mono text-[12px] text-[#11141c]" />
+                        </div>
+                        <div>
+                            <label class="block font-medium text-[#2d313d] mb-1">Base URL</label>
+                            <input type="text" id="modal-base-url" value="http://localhost:11434/v1" class="w-full rounded-lg border border-[#d9dce4] p-2 font-mono text-[12px] text-[#11141c]" />
+                        </div>
+                    </div>
+
+                    <div id="modal-offline-notice" class="hidden rounded-lg bg-[#eef8f3] border border-[#c3e6d2] p-3 text-[12px] text-[#1b6d47]">
+                        <strong>Offline Grounded Mode:</strong> No outbound network traffic or external API calls. Extracted answers and mind maps are derived deterministically from Hopfield attractor dynamics and indexed evidence.
+                    </div>
+                </div>
+
+                <!-- Sliders: Temperature, Tokens, Hopfield Beta -->
+                <div class="pt-3 border-t border-[#eceef2] space-y-3">
+                    <span class="text-[11px] font-semibold uppercase tracking-wider text-[#737782] block">Hyperparameter Tuning</span>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <div class="flex justify-between text-[12px] font-medium mb-1">
+                                <span>Temperature</span>
+                                <span id="modal-temp-val" class="text-[#3049b8] font-mono font-bold">0.2</span>
+                            </div>
+                            <input type="range" id="modal-temp-slider" min="0.0" max="1.0" step="0.05" value="0.2" class="w-full accent-[#3049b8]" oninput="document.getElementById('modal-temp-val').innerText=this.value" />
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[12px] font-medium mb-1">
+                                <span>Max Tokens</span>
+                                <span id="modal-tokens-val" class="text-[#3049b8] font-mono font-bold">2048</span>
+                            </div>
+                            <input type="range" id="modal-tokens-slider" min="256" max="8192" step="256" value="2048" class="w-full accent-[#3049b8]" oninput="document.getElementById('modal-tokens-val').innerText=this.value" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Feedback Box -->
+                <div id="modal-status-box" class="hidden p-3 rounded-lg border text-[12px] font-medium"></div>
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="flex items-center justify-between border-t border-[#e4e6eb] px-6 py-4 bg-[#fafbfc]">
+                <button onclick="clearLLMSession()" class="text-[12px] text-[#bd493b] hover:underline font-medium">
+                    Reset to Local Default
+                </button>
+                <div class="flex gap-2">
+                    <button onclick="testModalModel()" class="control">
+                        <span id="modal-test-spinner" class="spinner hidden mr-1"></span>
+                        Test Connection
+                    </button>
+                    <button onclick="saveModalModelSettings()" class="primary-button">
+                        Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- FIXED FEEDBACK TAB (RIGHT EDGE)            -->
+    <!-- ========================================== -->
+    <button
+        aria-label="Open feedback"
+        onclick="showToast('Thanks for your feedback')"
+        class="fixed bottom-8 right-0 grid h-28 w-11 place-items-center rounded-l-lg bg-[#d83b21] text-white shadow-lg hover:bg-[#bd311a] transition"
+    >
+        <span class="-rotate-90 text-[11px] font-medium tracking-wide">
+            Feedback
+        </span>
+    </button>
+
+    <!-- ========================================== -->
+    <!-- TOAST NOTIFICATION CONTAINER               -->
+    <!-- ========================================== -->
+    <div id="toast-container" class="fixed bottom-8 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg bg-[#262a34] px-4 py-3 text-[13px] text-white shadow-xl transition-all opacity-0 pointer-events-none">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m5 12 4 4L19 6" />
+        </svg>
+        <span id="toast-message">Notification</span>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- APPLICATION JAVASCRIPT                     -->
+    <!-- ========================================== -->
+    <script>
+        // --- State Management ---
+        let currentView = "Overview";
+        let currentModalProvider = "ollama";
+        let isWebSearchEnabled = true;
+        let toastTimeout = null;
+
+        const highlightsData = [
+            { title: "Pauses for longer than 2 secs", user: "Jane Smith", tag: "RESOLVED", time: "30 sec", color: "#ede9ff", avatar: "JS" },
+            { title: "Testing comment feature", user: "Jane Smith", tag: "NEW", time: "30 sec", color: "#e9f6ef", avatar: "JS" },
+            { title: "Here's an example highlight", user: "Hotjar", tag: "EXAMPLE", time: "30 sec", color: "#fff1db", avatar: "HJ" },
+            { title: "Checkout flow hesitation", user: "Jane Smith", tag: "OPEN", time: "42 sec", color: "#f5e9ef", avatar: "JS" }
+        ];
+
+        const recordingsData = [
+            ["54170193604", "Indonesia", "Mobile", "57:33", "3 pages"],
+            ["54143899864", "Singapore", "Desktop", "1:46", "2 pages"],
+            ["54189240122", "United States", "Desktop", "4:12", "5 pages"],
+            ["54128763091", "Germany", "Tablet", "2:33", "3 pages"],
+            ["54190521784", "France", "Desktop", "1:24", "1 page"]
+        ];
+
+        const PROVIDER_PRESETS = {
+            ollama: { label: 'Local Ollama', defaultModel: 'llama3.2', defaultBaseUrl: 'http://localhost:11434/v1', requiresKey: false },
+            groq: { label: 'Groq', defaultModel: 'llama-3.3-70b-versatile', defaultBaseUrl: 'https://api.groq.com/openai/v1', requiresKey: true },
+            openai: { label: 'OpenAI', defaultModel: 'gpt-4o-mini', defaultBaseUrl: 'https://api.openai.com/v1', requiresKey: true },
+            gemini: { label: 'Google Gemini', defaultModel: 'gemini-1.5-flash', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', requiresKey: true },
+            custom: { label: 'Custom Endpoint', defaultModel: 'gpt-4o', defaultBaseUrl: 'http://localhost:8000/v1', requiresKey: false },
+            offline: { label: 'Offline Grounded', defaultModel: 'offline-grounded', defaultBaseUrl: '', requiresKey: false }
+        };
+
+        const SESSION_LLM_KEY = 'hopfield_session_llm';
+
+        // --- View Switching ---
+        function switchView(viewName) {
+            currentView = viewName;
+            const views = ["Overview", "Highlights", "Recordings", "Surveys", "Assistant"];
+            views.forEach(v => {
+                const sec = document.getElementById("view-" + v);
+                const btn = document.getElementById("nav-btn-" + v);
+                const activeBar = document.getElementById("nav-active-" + v);
+                if (v === viewName) {
+                    sec.classList.remove("hidden");
+                    sec.classList.add("block");
+                    btn.classList.add("bg-[#eef1ff]", "text-[#3049b8]");
+                    btn.classList.remove("text-[#292d36]");
+                    if (activeBar) activeBar.classList.remove("hidden");
+                } else {
+                    sec.classList.add("hidden");
+                    sec.classList.remove("block");
+                    btn.classList.remove("bg-[#eef1ff]", "text-[#3049b8]");
+                    btn.classList.add("text-[#292d36]");
+                    if (activeBar) activeBar.classList.add("hidden");
+                }
+            });
+
+            // Update Header New Button Label
+            const newLabel = document.getElementById("header-new-label");
+            if (viewName === "Overview") newLabel.innerText = "New dashboard";
+            else if (viewName === "Highlights") newLabel.innerText = "New collection";
+            else if (viewName === "Recordings") newLabel.innerText = "Save segment";
+            else if (viewName === "Surveys") newLabel.innerText = "New survey";
+            else newLabel.innerText = "New query";
+        }
+
+        function handleNewAction() {
+            showToast(`New ${currentView === "Overview" ? "dashboard" : currentView.slice(0, -1).toLowerCase()} created`);
+        }
+
+        // --- Toast System ---
+        function showToast(msg) {
+            const container = document.getElementById("toast-container");
+            const text = document.getElementById("toast-message");
+            text.innerText = msg;
+            container.classList.remove("opacity-0", "pointer-events-none");
+            container.classList.add("opacity-100");
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                container.classList.remove("opacity-100");
+                container.classList.add("opacity-0", "pointer-events-none");
+            }, 2600);
+        }
+
+        // --- Highlights Render & Filter ---
+        function renderHighlights(items) {
+            const grid = document.getElementById("highlights-grid");
+            grid.innerHTML = items.map(item => `
+                <button onclick="showToast('Highlight selected: ${item.title}')" class="panel group overflow-hidden text-left transition hover:-translate-y-0.5 hover:border-[#bdc5ec] hover:shadow-md">
+                    <div class="relative h-40 bg-[#edf0f5] p-5">
+                        <div class="absolute inset-6 rounded border border-[#dfe2e8] bg-white/80">
+                            <div class="mx-auto mt-12 h-2 w-24 rounded bg-[#dfe3ed]"></div>
+                            <div class="mx-auto mt-3 h-8 w-32 rounded bg-[#3049b8] opacity-90"></div>
+                        </div>
+                        <span class="absolute right-4 top-4 rounded bg-white px-2 py-1 text-[11px] shadow-sm font-medium">${item.time}</span>
+                        <span class="absolute bottom-4 left-4 grid size-8 place-items-center rounded-full bg-[#464b5a] text-[11px] text-white font-medium">${item.avatar}</span>
+                    </div>
+                    <div class="p-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <h2 class="truncate text-[15px] font-medium text-[#111319]">${item.title}</h2>
+                            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-slate-400 group-hover:text-[#3049b8] transition">
+                                <path d="m9 18 6-6-6-6" />
+                            </svg>
+                        </div>
+                        <div class="mt-3 flex items-center justify-between">
+                            <span class="text-[12px] text-[#6f7380]">${item.user}</span>
+                            <span style="background: ${item.color}" class="rounded px-2 py-1 text-[10px] font-medium tracking-wide">${item.tag}</span>
+                        </div>
+                    </div>
+                </button>
+            `).join("");
+        }
+
+        function filterHighlights() {
+            const query = (document.getElementById("highlights-search-input").value || "").toLowerCase();
+            const filtered = highlightsData.filter(h => h.title.toLowerCase().includes(query));
+            renderHighlights(filtered);
+        }
+
+        // --- Recordings Render & Filter & Modal ---
+        function renderRecordings(rows) {
+            const list = document.getElementById("recordings-list");
+            list.innerHTML = rows.map((row, index) => `
+                <button onclick="openRecordingModal('${row[0]}', '${row[1]}', '${row[2]}', '${row[3]}')" class="recording-row group w-full border-t border-[#eceef2] text-left transition hover:bg-[#f8f9fc]">
+                    <span class="flex items-center gap-3 font-medium text-[#111319]">
+                        <span class="grid size-9 place-items-center rounded-full bg-[#edf0fb] text-[#3049b8]">
+                            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="16" rx="2" />
+                                <path d="m10 8 6 4-6 4V8Z" />
+                            </svg>
+                        </span>
+                        ${row[0]}
+                    </span>
+                    <span>${row[1]}</span>
+                    <span>${row[2]}</span>
+                    <span>${row[3]}</span>
+                    <span>${row[4]}</span>
+                    <span class="justify-self-end text-[#3049b8] opacity-0 transition group-hover:opacity-100 font-medium">Play</span>
+                </button>
+            `).join("");
+        }
+
+        function filterRecordings() {
+            const search = (document.getElementById("recordings-search-input").value || "").toLowerCase();
+            const device = document.getElementById("recordings-device-select").value;
+            const filtered = recordingsData.filter(r => {
+                const matchSearch = r[0].toLowerCase().includes(search) || r[1].toLowerCase().includes(search);
+                const matchDevice = (device === "All devices" || r[2] === device);
+                return matchSearch && matchDevice;
+            });
+            renderRecordings(filtered);
+        }
+
+        function openRecordingModal(id, country, device, duration) {
+            document.getElementById("modal-rec-id").innerText = "Recording " + id;
+            document.getElementById("modal-rec-sub").innerText = country + " · " + device;
+            document.getElementById("modal-rec-time").innerText = "0:28 / " + duration;
+            document.getElementById("recording-modal").classList.remove("hidden");
+        }
+
+        function closeRecordingModal() {
+            document.getElementById("recording-modal").classList.add("hidden");
+        }
+
+        // --- Surveys Tab Switch ---
+        function switchSurveyTab(tabName) {
+            const btnOver = document.getElementById("survey-tab-overview");
+            const btnResp = document.getElementById("survey-tab-responses");
+            const contentOver = document.getElementById("survey-content-overview");
+            const contentResp = document.getElementById("survey-content-responses");
+
+            if (tabName === "Overview") {
+                btnOver.classList.add("active");
+                btnResp.classList.remove("active");
+                contentOver.classList.remove("hidden");
+                contentResp.classList.add("hidden");
+            } else {
+                btnResp.classList.add("active");
+                btnOver.classList.remove("active");
+                contentResp.classList.remove("hidden");
+                contentOver.classList.add("hidden");
+            }
+        }
+
+        // --- Session-scoped Model Settings ---
+        function getSessionLLM() {
+            try {
+                const raw = sessionStorage.getItem(SESSION_LLM_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function setSessionLLM(cfg) {
+            try {
+                sessionStorage.setItem(SESSION_LLM_KEY, JSON.stringify(cfg));
+            } catch (e) {}
+            updateHeaderModelBadge();
+        }
+
+        function clearLLMSession() {
+            sessionStorage.removeItem(SESSION_LLM_KEY);
+            selectProvider('ollama');
+            showToast('Settings reset to local Ollama default');
+            updateHeaderModelBadge();
+        }
+
+        function openModelSettingsModal() {
+            syncModelInputsFromSession();
+            document.getElementById("model-settings-modal").classList.remove("hidden");
+        }
+
+        function closeModelSettingsModal() {
+            document.getElementById("model-settings-modal").classList.add("hidden");
+        }
+
+        function selectProvider(prov) {
+            currentModalProvider = prov;
+            const providers = ['ollama', 'groq', 'openai', 'gemini', 'custom', 'offline'];
+            providers.forEach(p => {
+                const card = document.getElementById('card-prov-' + p);
+                const dot = document.getElementById('dot-prov-' + p);
+                if (p === prov) {
+                    card.className = "p-2.5 rounded-lg border-2 text-left transition border-[#3049b8] bg-[#eef1ff]";
+                    dot.className = "size-2 rounded-full bg-[#3049b8]";
+                } else {
+                    card.className = "p-2.5 rounded-lg border-2 text-left transition border-[#e1e3e9] hover:border-[#b8c2ec]";
+                    dot.className = "size-2 rounded-full bg-slate-300";
+                }
+            });
+
+            const preset = PROVIDER_PRESETS[prov] || PROVIDER_PRESETS.ollama;
+            const keyCont = document.getElementById('modal-api-key-container');
+            const modelUrlGrid = document.getElementById('modal-model-url-grid');
+            const offlineNotice = document.getElementById('modal-offline-notice');
+            const modelInput = document.getElementById('modal-model-name');
+            const urlInput = document.getElementById('modal-base-url');
+
+            if (preset.requiresKey) {
+                keyCont.classList.remove('hidden');
+            } else {
+                keyCont.classList.add('hidden');
+            }
+
+            if (prov === 'offline') {
+                modelUrlGrid.classList.add('hidden');
+                offlineNotice.classList.remove('hidden');
+            } else {
+                modelUrlGrid.classList.remove('hidden');
+                offlineNotice.classList.add('hidden');
+            }
+
+            modelInput.value = preset.defaultModel;
+            urlInput.value = preset.defaultBaseUrl;
+        }
+
+        function togglePasswordVisibility(inputId) {
+            const input = document.getElementById(inputId);
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+
+        async function testModalModel() {
+            const prov = currentModalProvider;
+            const statusBox = document.getElementById('modal-status-box');
+            const spinner = document.getElementById('modal-test-spinner');
+            spinner.classList.remove('hidden');
+            statusBox.classList.add('hidden');
+
+            const reqData = {
+                provider: prov,
+                api_key: document.getElementById('modal-api-key').value.trim() || null,
+                model_name: document.getElementById('modal-model-name').value.trim() || undefined,
+                base_url: document.getElementById('modal-base-url').value.trim() || undefined
+            };
+
+            try {
+                const res = await fetch('/api/llm/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reqData)
+                });
+                const data = await res.json();
+                statusBox.classList.remove('hidden');
+                if (data.available || data.success) {
+                    statusBox.className = "p-3 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 text-[12px] font-medium";
+                    statusBox.innerText = `Verified: ${data.message || 'Connection successful!'}`;
+                } else {
+                    statusBox.className = "p-3 rounded-lg border border-rose-300 bg-rose-50 text-rose-800 text-[12px] font-medium";
+                    statusBox.innerText = `Verification Failed: ${data.message || 'Unable to connect'}`;
+                }
+            } catch (err) {
+                statusBox.classList.remove('hidden');
+                statusBox.className = "p-3 rounded-lg border border-rose-300 bg-rose-50 text-rose-800 text-[12px] font-medium";
+                statusBox.innerText = `Network error during test: ${err.message}`;
+            } finally {
+                spinner.classList.add('hidden');
+            }
+        }
+
+        function saveModalModelSettings() {
+            const prov = currentModalProvider;
+            const preset = PROVIDER_PRESETS[prov] || PROVIDER_PRESETS.ollama;
+            const tempVal = parseFloat(document.getElementById('modal-temp-slider').value) || 0.2;
+            const tokensVal = parseInt(document.getElementById('modal-tokens-slider').value) || 2048;
+
+            let cfg = {
+                provider: prov,
+                model: document.getElementById('modal-model-name').value.trim() || preset.defaultModel,
+                base_url: document.getElementById('modal-base-url').value.trim() || preset.defaultBaseUrl,
+                temperature: tempVal,
+                max_tokens: tokensVal
+            };
+
+            const apiKey = document.getElementById('modal-api-key').value.trim();
+            if (preset.requiresKey && apiKey) {
+                cfg.api_key = apiKey;
+            }
+
+            setSessionLLM(cfg);
+            closeModelSettingsModal();
+            showToast(`Saved model: ${preset.label} (${cfg.model})`);
+        }
+
+        function syncModelInputsFromSession() {
+            const session = getSessionLLM();
+            const prov = session?.provider || 'ollama';
+            selectProvider(prov);
+            if (session?.model) document.getElementById('modal-model-name').value = session.model;
+            if (session?.base_url) document.getElementById('modal-base-url').value = session.base_url;
+            if (session?.api_key) document.getElementById('modal-api-key').value = session.api_key;
+            if (session?.temperature !== undefined) {
+                document.getElementById('modal-temp-slider').value = session.temperature;
+                document.getElementById('modal-temp-val').innerText = session.temperature;
+            }
+            if (session?.max_tokens !== undefined) {
+                document.getElementById('modal-tokens-slider').value = session.max_tokens;
+                document.getElementById('modal-tokens-val').innerText = session.max_tokens;
+            }
+        }
+
+        function updateHeaderModelBadge() {
+            const session = getSessionLLM();
+            const lbl = document.getElementById("header-model-label");
+            if (session && session.provider) {
+                const preset = PROVIDER_PRESETS[session.provider] || { label: session.provider };
+                lbl.innerText = `${preset.label} (${session.model || 'ready'})`;
+            } else {
+                lbl.innerText = "Ollama (llama3.2)";
+            }
+        }
+
+        function toggleWebSearch() {
+            isWebSearchEnabled = !isWebSearchEnabled;
+            const label = document.getElementById("web-search-label");
+            label.innerText = `Web Search: ${isWebSearchEnabled ? 'ON' : 'OFF'}`;
+            showToast(`Live Web Search ${isWebSearchEnabled ? 'Enabled' : 'Disabled'}`);
+        }
+
+        // --- Hopfield QA Engine Integration ---
+        async function sendQuery() {
+            const input = document.getElementById("chat-query-input");
+            const q = input.value.trim();
+            if (!q) return;
+
+            // Append user message
+            appendChatMessage("user", q);
+            input.value = "";
+
+            // Bot message placeholder
+            const botMsgId = "msg-" + Date.now();
+            appendChatMessage("assistant", `<span class="spinner mr-2"></span> Relaxing Hopfield attractor landscape &amp; retrieving grounded evidence...`, botMsgId);
+
+            const sessionLLM = getSessionLLM();
+            const payload = {
+                query: q,
+                hopfield_beta: 8.0,
+                top_k: 5,
+                enable_web_search: isWebSearchEnabled,
+                answer_style: "conversational"
+            };
+
+            if (sessionLLM && sessionLLM.provider) {
+                payload.provider = sessionLLM.provider;
+                payload.model_name = sessionLLM.model;
+                payload.base_url = sessionLLM.base_url;
+                if (sessionLLM.api_key) payload.api_key = sessionLLM.api_key;
+                if (sessionLLM.temperature !== undefined) payload.temperature = sessionLLM.temperature;
+                if (sessionLLM.max_tokens !== undefined) payload.max_tokens = sessionLLM.max_tokens;
+            }
+
+            try {
+                const res = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                const botContent = data.answer || "No response received.";
+                const botMsgEl = document.getElementById(botMsgId);
+                if (botMsgEl) {
+                    botMsgEl.innerHTML = marked.parse(botContent);
+                    if (data.web_search_used) {
+                        botMsgEl.innerHTML += `<div class="mt-2 text-[11px] text-emerald-700 font-medium">✓ Augmented with live web knowledge</div>`;
+                    }
+                }
+            } catch (err) {
+                const botMsgEl = document.getElementById(botMsgId);
+                if (botMsgEl) {
+                    botMsgEl.innerHTML = `<span class="text-rose-600 font-medium">Error: ${err.message}</span>`;
+                }
+            }
+        }
+
+        function appendChatMessage(role, html, id = null) {
+            const container = document.getElementById("chat-messages");
+            const div = document.createElement("div");
+            if (id) div.id = id;
+            if (role === "user") {
+                div.className = "rounded-lg border border-[#d9dce4] bg-white p-3.5 text-[13px] text-[#111319] shadow-xs";
+                div.innerHTML = `<strong class="text-[#3049b8] block mb-1">You</strong><div class="markdown-body">${html}</div>`;
+            } else {
+                div.className = "rounded-lg border border-[#e2e5ec] bg-[#f8f9fc] p-3.5 text-[13px] text-[#111319] shadow-xs";
+                div.innerHTML = `<strong class="text-[#2c8069] block mb-1">Hopfield Assistant</strong><div class="markdown-body">${html}</div>`;
+            }
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function clearChatHistory() {
+            const container = document.getElementById("chat-messages");
+            container.innerHTML = `<div class="rounded-lg border border-[#e5e8f0] bg-[#fafbfc] p-4 text-[13px] text-[#4b5262]"><strong class="text-[#1a202c] block mb-1">Chat Cleared</strong>Ready for new questions or document analysis.</div>`;
+            showToast("Chat cleared");
+        }
+
+        // --- Mind Map Generation ---
+        async function generateMindmapFromChat() {
+            const input = document.getElementById("chat-query-input");
+            const prompt = input.value.trim() || "Create a comprehensive mind map of the indexed documents and context";
+            const container = document.getElementById("mindmap-container");
+            container.innerHTML = `<div class="text-center py-8"><span class="spinner mr-2"></span> Synthesizing grounded Mermaid diagram...</div>`;
+
+            const sessionLLM = getSessionLLM();
+            const payload = {
+                prompt: prompt,
+                viz_type: "mindmap"
+            };
+
+            if (sessionLLM && sessionLLM.provider) {
+                payload.provider = sessionLLM.provider;
+                payload.model_name = sessionLLM.model;
+                payload.base_url = sessionLLM.base_url;
+                if (sessionLLM.api_key) payload.api_key = sessionLLM.api_key;
+                if (sessionLLM.temperature !== undefined) payload.temperature = sessionLLM.temperature;
+            }
+
+            try {
+                const res = await fetch('/api/visual-studio/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                const code = data.content || data.code;
+                if (code) {
+                    const id = 'mermaid_' + Date.now();
+                    container.innerHTML = `<div class="mermaid w-full text-center" id="${id}">${code}</div>`;
+                    mermaid.init(undefined, document.getElementById(id));
+                    showToast("Mind map generated successfully");
+                } else {
+                    container.innerHTML = `<span class="text-rose-600">Failed to generate visualization.</span>`;
+                }
+            } catch (err) {
+                container.innerHTML = `<span class="text-rose-600">Error generating mind map: ${err.message}</span>`;
+            }
+        }
+
+        // --- Document Management ---
+        async function uploadFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const status = document.getElementById("upload-status");
+            status.classList.remove("hidden");
+            status.innerText = `Ingesting ${file.name}...`;
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) {
+                    status.innerText = `Successfully parsed ${file.name}`;
+                    showToast(`Uploaded ${file.name}`);
+                    refreshDocumentsList();
+                } else {
+                    status.innerText = `Upload error: ${data.message || 'Unknown error'}`;
+                }
+            } catch (err) {
+                status.innerText = `Upload failed: ${err.message}`;
+            } finally {
+                input.value = "";
+                setTimeout(() => status.classList.add("hidden"), 3000);
+            }
+        }
+
+        async function refreshDocumentsList() {
+            const listEl = document.getElementById("indexed-docs-list");
+            try {
+                const res = await fetch('/api/documents');
+                const data = await res.json();
+                const docs = data.documents || [];
+                if (docs.length === 0) {
+                    listEl.innerHTML = `<div class="text-[#898e9a] py-2">No documents indexed yet.</div>`;
+                } else {
+                    listEl.innerHTML = docs.map(d => `
+                        <div class="flex items-center justify-between p-1.5 rounded hover:bg-[#f1f3f8]">
+                            <span class="truncate font-medium">${d.source}</span>
+                            <button onclick="removeDocument('${encodeURIComponent(d.source)}')" class="text-[#bd493b] hover:underline text-[11px]">Remove</button>
+                        </div>
+                    `).join("");
+                }
+            } catch (e) {
+                listEl.innerHTML = `<div class="text-[#898e9a] py-2">Ready (documents endpoint available)</div>`;
+            }
+        }
+
+        async function removeDocument(encodedSource) {
+            const src = decodeURIComponent(encodedSource);
+            try {
+                await fetch(`/api/documents/${encodeURIComponent(src)}`, { method: 'DELETE' });
+                showToast(`Removed ${src}`);
+                refreshDocumentsList();
+            } catch (e) {
+                showToast(`Failed to remove document`);
+            }
+        }
+
+        // --- Initialization ---
+        document.addEventListener("DOMContentLoaded", () => {
+            renderHighlights(highlightsData);
+            renderRecordings(recordingsData);
+            updateHeaderModelBadge();
+            refreshDocumentsList();
+            mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+        });
+    </script>
+</body>
+</html>
+'''
+
+output_path = r"e:\projects\hopfield_qa-main\static\index.html"
+with open(output_path, "w", encoding="utf-8") as f:
+    f.write(html_content)
+
+print(f"Successfully generated replica UI to {output_path} (length: {len(html_content)} characters)")
