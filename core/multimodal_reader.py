@@ -300,7 +300,7 @@ class MultimodalDocumentReader:
                 plumber_doc.close()
             doc.close()
 
-            full_text = "\n\n--- Page Break ---\n\n".join(p.text_content for p in pages if p.text_content)
+            full_text = "\n\n".join(p.text_content for p in pages if p.text_content)
             return MultimodalDocument(
                 doc_id=doc_id,
                 filename=filename,
@@ -335,229 +335,274 @@ class MultimodalDocumentReader:
                 metadata={"title": filename, "source": filename}
             )
 
-    def _parse_docx(self, file_bytes: bytes, filename: str, doc_id: str) -> MultimodalDocument:
-        """Parses DOCX document paragraphs, headings, and tables."""
-        import docx
-        doc = docx.Document(io.BytesIO(file_bytes))
-        elements: List[ExtractedElement] = []
-        all_tables: List[Dict[str, Any]] = []
-        text_parts = []
-
-        page_num = 1
-        for p_idx, para in enumerate(doc.paragraphs):
-            txt = para.text.strip()
-            if not txt:
-                continue
-            is_heading = para.style.name.startswith("Heading") if para.style else False
-            elem_type = "heading" if is_heading else "text"
-            elem = ExtractedElement(
-                element_id=f"{doc_id}_p1_p{p_idx}",
-                element_type=elem_type,
-                content=txt,
-                page_number=page_num,
-                doc_id=doc_id,
-                metadata={"style": para.style.name if para.style else "Normal"}
-            )
-            elements.append(elem)
-            text_parts.append(txt)
-
-        for t_idx, tbl in enumerate(doc.tables):
-            headers = [cell.text.strip() for cell in tbl.rows[0].cells] if tbl.rows else []
-            rows = []
-            for r in tbl.rows[1:]:
-                rows.append([cell.text.strip() for cell in r.cells])
-            
-            tbl_str = f"Table {t_idx + 1}:\n" + " | ".join(headers) + "\n" + " | ".join(["---"] * len(headers)) + "\n"
-            for r in rows:
-                tbl_str += " | ".join(r) + "\n"
-
-            t_dict = {
-                "table_id": f"{doc_id}_tbl{t_idx}",
-                "page_number": 1,
-                "headers": headers,
-                "rows": rows,
-                "text": tbl_str
-            }
-            all_tables.append(t_dict)
-            elements.append(ExtractedElement(
-                element_id=t_dict["table_id"],
-                element_type="table",
-                content=tbl_str,
-                page_number=1,
-                doc_id=doc_id,
-                structured_data=t_dict
-            ))
-            text_parts.append(tbl_str)
-
-        combined_text = "\n\n".join(text_parts)
-        page = DocumentPage(
+    def _fallback_multimodal_doc(self, file_bytes: bytes, filename: str, doc_id: str, file_type: str) -> MultimodalDocument:
+        from utils.file_utils import extract_text_from_file
+        txt, _ = extract_text_from_file(io.BytesIO(file_bytes), filename)
+        elem = ExtractedElement(
+            element_id=f"{doc_id}_p1_fallback",
+            element_type="text",
+            content=txt,
             page_number=1,
-            text_content=combined_text,
-            elements=elements,
-            has_tables=len(all_tables) > 0
+            doc_id=doc_id
         )
+        page = DocumentPage(page_number=1, text_content=txt, elements=[elem])
         return MultimodalDocument(
             doc_id=doc_id,
             filename=filename,
-            file_type="docx",
+            file_type=file_type,
             total_pages=1,
             pages=[page],
-            full_text=combined_text,
-            tables=all_tables,
+            full_text=txt,
             metadata={"title": filename, "source": filename}
         )
+
+    def _parse_docx(self, file_bytes: bytes, filename: str, doc_id: str) -> MultimodalDocument:
+        """Parses DOCX document paragraphs, headings, and tables."""
+        try:
+            import docx
+        except ImportError as e:
+            logger.warning(f"python-docx not available, falling back to basic extraction: {e}")
+            return self._fallback_multimodal_doc(file_bytes, filename, doc_id, 'docx')
+        try:
+            doc = docx.Document(io.BytesIO(file_bytes))
+            elements: List[ExtractedElement] = []
+            all_tables: List[Dict[str, Any]] = []
+            text_parts = []
+
+            page_num = 1
+            for p_idx, para in enumerate(doc.paragraphs):
+                txt = para.text.strip()
+                if not txt:
+                    continue
+                is_heading = para.style.name.startswith("Heading") if para.style else False
+                elem_type = "heading" if is_heading else "text"
+                elem = ExtractedElement(
+                    element_id=f"{doc_id}_p1_p{p_idx}",
+                    element_type=elem_type,
+                    content=txt,
+                    page_number=page_num,
+                    doc_id=doc_id,
+                    metadata={"style": para.style.name if para.style else "Normal"}
+                )
+                elements.append(elem)
+                text_parts.append(txt)
+
+            for t_idx, tbl in enumerate(doc.tables):
+                headers = [cell.text.strip() for cell in tbl.rows[0].cells] if tbl.rows else []
+                rows = []
+                for r in tbl.rows[1:]:
+                    rows.append([cell.text.strip() for cell in r.cells])
+            
+                tbl_str = f"Table {t_idx + 1}:\n" + " | ".join(headers) + "\n" + " | ".join(["---"] * len(headers)) + "\n"
+                for r in rows:
+                    tbl_str += " | ".join(r) + "\n"
+
+                t_dict = {
+                    "table_id": f"{doc_id}_tbl{t_idx}",
+                    "page_number": 1,
+                    "headers": headers,
+                    "rows": rows,
+                    "text": tbl_str
+                }
+                all_tables.append(t_dict)
+                elements.append(ExtractedElement(
+                    element_id=t_dict["table_id"],
+                    element_type="table",
+                    content=tbl_str,
+                    page_number=1,
+                    doc_id=doc_id,
+                    structured_data=t_dict
+                ))
+                text_parts.append(tbl_str)
+
+            combined_text = "\n\n".join(text_parts)
+            page = DocumentPage(
+                page_number=1,
+                text_content=combined_text,
+                elements=elements,
+                has_tables=len(all_tables) > 0
+            )
+            return MultimodalDocument(
+                doc_id=doc_id,
+                filename=filename,
+                file_type="docx",
+                total_pages=1,
+                pages=[page],
+                full_text=combined_text,
+                tables=all_tables,
+                metadata={"title": filename, "source": filename}
+            )
+        except Exception as e:
+            logger.warning(f"DOCX extraction failed, falling back to basic extraction: {e}")
+            return self._fallback_multimodal_doc(file_bytes, filename, doc_id, 'docx')
 
     def _parse_pptx(self, file_bytes: bytes, filename: str, doc_id: str) -> MultimodalDocument:
         """Parses PPTX slides, text shapes, tables, and notes."""
-        from pptx import Presentation
-        prs = Presentation(io.BytesIO(file_bytes))
-        pages: List[DocumentPage] = []
-        all_tables: List[Dict[str, Any]] = []
+        try:
+            from pptx import Presentation
+        except ImportError as e:
+            logger.warning(f"python-pptx not available, falling back to basic extraction: {e}")
+            return self._fallback_multimodal_doc(file_bytes, filename, doc_id, 'pptx')
+        try:
+            prs = Presentation(io.BytesIO(file_bytes))
+            pages: List[DocumentPage] = []
+            all_tables: List[Dict[str, Any]] = []
 
-        for slide_idx, slide in enumerate(prs.slides):
-            slide_num = slide_idx + 1
-            slide_elements: List[ExtractedElement] = []
-            slide_texts = []
+            for slide_idx, slide in enumerate(prs.slides):
+                slide_num = slide_idx + 1
+                slide_elements: List[ExtractedElement] = []
+                slide_texts = []
 
-            for shape_idx, shape in enumerate(slide.shapes):
-                if shape.has_text_frame:
-                    for para in shape.text_frame.paragraphs:
-                        txt = para.text.strip()
-                        if txt:
-                            elem = ExtractedElement(
-                                element_id=f"{doc_id}_s{slide_num}_t{shape_idx}",
-                                element_type="text",
-                                content=txt,
-                                page_number=slide_num,
-                                doc_id=doc_id
-                            )
-                            slide_elements.append(elem)
-                            slide_texts.append(txt)
+                for shape_idx, shape in enumerate(slide.shapes):
+                    if shape.has_text_frame:
+                        for para in shape.text_frame.paragraphs:
+                            txt = para.text.strip()
+                            if txt:
+                                elem = ExtractedElement(
+                                    element_id=f"{doc_id}_s{slide_num}_t{shape_idx}",
+                                    element_type="text",
+                                    content=txt,
+                                    page_number=slide_num,
+                                    doc_id=doc_id
+                                )
+                                slide_elements.append(elem)
+                                slide_texts.append(txt)
 
-                if shape.has_table:
-                    tbl = shape.table
-                    headers = [c.text.strip() for c in tbl.rows[0].cells] if tbl.rows else []
-                    rows = [[c.text.strip() for c in r.cells] for r in tbl.rows[1:]]
-                    tbl_str = f"Slide {slide_num} Table:\n" + " | ".join(headers) + "\n"
-                    for r in rows:
-                        tbl_str += " | ".join(r) + "\n"
+                    if shape.has_table:
+                        tbl = shape.table
+                        headers = [c.text.strip() for c in tbl.rows[0].cells] if tbl.rows else []
+                        rows = [[c.text.strip() for c in r.cells] for r in tbl.rows[1:]]
+                        tbl_str = f"Slide {slide_num} Table:\n" + " | ".join(headers) + "\n"
+                        for r in rows:
+                            tbl_str += " | ".join(r) + "\n"
 
-                    t_dict = {
-                        "table_id": f"{doc_id}_s{slide_num}_tbl{shape_idx}",
-                        "page_number": slide_num,
-                        "headers": headers,
-                        "rows": rows,
-                        "text": tbl_str
-                    }
-                    all_tables.append(t_dict)
-                    slide_elements.append(ExtractedElement(
-                        element_id=t_dict["table_id"],
-                        element_type="table",
-                        content=tbl_str,
-                        page_number=slide_num,
-                        doc_id=doc_id,
-                        structured_data=t_dict
-                    ))
-                    slide_texts.append(tbl_str)
+                        t_dict = {
+                            "table_id": f"{doc_id}_s{slide_num}_tbl{shape_idx}",
+                            "page_number": slide_num,
+                            "headers": headers,
+                            "rows": rows,
+                            "text": tbl_str
+                        }
+                        all_tables.append(t_dict)
+                        slide_elements.append(ExtractedElement(
+                            element_id=t_dict["table_id"],
+                            element_type="table",
+                            content=tbl_str,
+                            page_number=slide_num,
+                            doc_id=doc_id,
+                            structured_data=t_dict
+                        ))
+                        slide_texts.append(tbl_str)
 
-            # Check for speaker notes
-            if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
-                notes = slide.notes_slide.notes_text_frame.text.strip()
-                if notes:
-                    slide_elements.append(ExtractedElement(
-                        element_id=f"{doc_id}_s{slide_num}_notes",
-                        element_type="text",
-                        content=f"Speaker Notes: {notes}",
-                        page_number=slide_num,
-                        doc_id=doc_id
-                    ))
-                    slide_texts.append(f"Speaker Notes: {notes}")
+                # Check for speaker notes
+                if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+                    notes = slide.notes_slide.notes_text_frame.text.strip()
+                    if notes:
+                        slide_elements.append(ExtractedElement(
+                            element_id=f"{doc_id}_s{slide_num}_notes",
+                            element_type="text",
+                            content=f"Speaker Notes: {notes}",
+                            page_number=slide_num,
+                            doc_id=doc_id
+                        ))
+                        slide_texts.append(f"Speaker Notes: {notes}")
 
-            combined_slide_text = "\n\n".join(slide_texts)
-            pages.append(DocumentPage(
-                page_number=slide_num,
-                text_content=combined_slide_text,
-                elements=slide_elements,
-                has_tables=len([e for e in slide_elements if e.element_type == "table"]) > 0
-            ))
+                combined_slide_text = "\n\n".join(slide_texts)
+                pages.append(DocumentPage(
+                    page_number=slide_num,
+                    text_content=combined_slide_text,
+                    elements=slide_elements,
+                    has_tables=len([e for e in slide_elements if e.element_type == "table"]) > 0
+                ))
 
-        full_text = "\n\n--- Slide Break ---\n\n".join(p.text_content for p in pages if p.text_content)
-        return MultimodalDocument(
-            doc_id=doc_id,
-            filename=filename,
-            file_type="pptx",
-            total_pages=len(pages),
-            pages=pages,
-            full_text=full_text,
-            tables=all_tables,
-            metadata={"title": filename, "source": filename}
-        )
+            full_text = "\n\n".join(p.text_content for p in pages if p.text_content)
+            return MultimodalDocument(
+                doc_id=doc_id,
+                filename=filename,
+                file_type="pptx",
+                total_pages=len(pages),
+                pages=pages,
+                full_text=full_text,
+                tables=all_tables,
+                metadata={"title": filename, "source": filename}
+            )
+        except Exception as e:
+            logger.warning(f"PPTX extraction failed, falling back to basic extraction: {e}")
+            return self._fallback_multimodal_doc(file_bytes, filename, doc_id, 'pptx')
 
     def _parse_xlsx(self, file_bytes: bytes, filename: str, doc_id: str) -> MultimodalDocument:
         """Parses Excel spreadsheets sheet-by-sheet into structured tables."""
-        import openpyxl
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-        pages: List[DocumentPage] = []
-        all_tables: List[Dict[str, Any]] = []
+        try:
+            import openpyxl
+        except ImportError as e:
+            logger.warning(f"openpyxl not available, falling back to basic extraction: {e}")
+            return self._fallback_multimodal_doc(file_bytes, filename, doc_id, 'xlsx')
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+            pages: List[DocumentPage] = []
+            all_tables: List[Dict[str, Any]] = []
 
-        for sheet_idx, sheet_name in enumerate(wb.sheetnames):
-            page_num = sheet_idx + 1
-            ws = wb[sheet_name]
-            rows_data = []
-            for row in ws.iter_rows(values_only=True):
-                if any(v is not None for v in row):
-                    rows_data.append([str(v).strip() if v is not None else "" for v in row])
+            for sheet_idx, sheet_name in enumerate(wb.sheetnames):
+                page_num = sheet_idx + 1
+                ws = wb[sheet_name]
+                rows_data = []
+                for row in ws.iter_rows(values_only=True):
+                    if any(v is not None for v in row):
+                        rows_data.append([str(v).strip() if v is not None else "" for v in row])
 
-            if not rows_data:
-                continue
+                if not rows_data:
+                    continue
 
-            headers = rows_data[0]
-            data_rows = rows_data[1:]
+                headers = rows_data[0]
+                data_rows = rows_data[1:]
 
-            tbl_str = f"Sheet '{sheet_name}':\n"
-            tbl_str += " | ".join(headers) + "\n"
-            tbl_str += " | ".join(["---"] * len(headers)) + "\n"
-            for r in data_rows:
-                tbl_str += " | ".join(r) + "\n"
+                tbl_str = f"Sheet '{sheet_name}':\n"
+                tbl_str += " | ".join(headers) + "\n"
+                tbl_str += " | ".join(["---"] * len(headers)) + "\n"
+                for r in data_rows:
+                    tbl_str += " | ".join(r) + "\n"
 
-            t_dict = {
-                "table_id": f"{doc_id}_sheet_{sheet_idx}",
-                "page_number": page_num,
-                "sheet_name": sheet_name,
-                "headers": headers,
-                "rows": data_rows,
-                "text": tbl_str
-            }
-            all_tables.append(t_dict)
+                t_dict = {
+                    "table_id": f"{doc_id}_sheet_{sheet_idx}",
+                    "page_number": page_num,
+                    "sheet_name": sheet_name,
+                    "headers": headers,
+                    "rows": data_rows,
+                    "text": tbl_str
+                }
+                all_tables.append(t_dict)
 
-            elem = ExtractedElement(
-                element_id=t_dict["table_id"],
-                element_type="table",
-                content=tbl_str,
-                page_number=page_num,
+                elem = ExtractedElement(
+                    element_id=t_dict["table_id"],
+                    element_type="table",
+                    content=tbl_str,
+                    page_number=page_num,
+                    doc_id=doc_id,
+                    structured_data=t_dict,
+                    metadata={"sheet_name": sheet_name}
+                )
+
+                pages.append(DocumentPage(
+                    page_number=page_num,
+                    text_content=tbl_str,
+                    elements=[elem],
+                    has_tables=True
+                ))
+
+            full_text = "\n\n".join(p.text_content for p in pages)
+            return MultimodalDocument(
                 doc_id=doc_id,
-                structured_data=t_dict,
-                metadata={"sheet_name": sheet_name}
+                filename=filename,
+                file_type="xlsx",
+                total_pages=len(pages),
+                pages=pages,
+                full_text=full_text,
+                tables=all_tables,
+                metadata={"title": filename, "source": filename}
             )
-
-            pages.append(DocumentPage(
-                page_number=page_num,
-                text_content=tbl_str,
-                elements=[elem],
-                has_tables=True
-            ))
-
-        full_text = "\n\n".join(p.text_content for p in pages)
-        return MultimodalDocument(
-            doc_id=doc_id,
-            filename=filename,
-            file_type="xlsx",
-            total_pages=len(pages),
-            pages=pages,
-            full_text=full_text,
-            tables=all_tables,
-            metadata={"title": filename, "source": filename}
-        )
+        except Exception as e:
+            logger.warning(f"XLSX extraction failed, falling back to basic extraction: {e}")
+            return self._fallback_multimodal_doc(file_bytes, filename, doc_id, 'xlsx')
 
     def _parse_csv(self, file_bytes: bytes, filename: str, doc_id: str) -> MultimodalDocument:
         """Parses CSV tabular data."""

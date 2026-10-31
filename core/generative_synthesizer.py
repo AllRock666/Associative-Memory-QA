@@ -228,12 +228,19 @@ def smooth_evidence_sentence(s: str) -> str:
     broken word wraps, and trailing colon headers from evidence sentences.
     """
     s = s.strip()
+    # Strip page and slide break markers
+    s = re.sub(r'---\s*(?:Page|Slide)\s*Break\s*---', '', s, flags=re.I)
+    # Strip slide header / footer course markers e.g. "Generative AI | Unit 1 12", "Course Title | Slide 5"
+    s = re.sub(r'\b[A-Za-z0-9\s\-]+\|\s*(?:Unit|Slide|Chapter|Module|Lecture)\s*\d+\s*(?:\d+)?', '', s, flags=re.I)
+    # Strip unicode replacement characters and stray decorative bullets
+    s = re.sub(r'[\uFFFD\u2022\u25E6\u25AA\u25AB\u2023\u2043\u2219]', ' ', s)
     # Strip bullet symbols like •, -, *, ·, >, ◦
     s = re.sub(r'^[•\-\*·>◦\s]+', '', s).strip()
     # Strip slide headers e.g. "Deployment Serve via...", "Overview: ..."
     s = re.sub(r'^(?:slide\s+\d+|overview|deployment|key\s+takeaways?|summary)\s*:\s*', '', s, flags=re.I).strip()
     # Strip dangling trailing prepositions / conjunctions before period
     s = re.sub(r'\s+(?:and|or|with|to|for|of|in|by|via|the|a|an)\s*$', '', s, flags=re.I).strip()
+    s = re.sub(r'\s{2,}', ' ', s).strip()
     return s
 
 

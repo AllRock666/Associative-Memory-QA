@@ -6,6 +6,10 @@ uvicorn
 python-multipart
 pypdf
 python-docx
+openpyxl
+python-pptx
+PyMuPDF
+pdfplumber
 numpy
 scipy
 rank_bm25

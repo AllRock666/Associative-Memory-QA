@@ -53,10 +53,41 @@ class LLMConfig:
     @classmethod
     def from_env(cls) -> "LLMConfig":
         """Instantiate configuration from environment variables with sensible defaults."""
-        provider = os.environ.get("LLM_PROVIDER", "ollama").lower().strip()
-        base_url = os.environ.get("LLM_BASE_URL", "http://localhost:11434/v1").strip()
-        model = os.environ.get("LLM_MODEL", "llama3.2").strip()
-        api_key = os.environ.get("LLM_API_KEY", "").strip() or None
+        env_provider = os.environ.get("LLM_PROVIDER")
+        if not env_provider:
+            if os.environ.get("GROQ_API_KEY"):
+                provider = "openai"
+                base_url = os.environ.get("LLM_BASE_URL", "https://api.groq.com/openai/v1").strip()
+                model = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile").strip()
+                api_key = os.environ.get("GROQ_API_KEY", "").strip() or None
+            elif os.environ.get("OPENAI_API_KEY"):
+                provider = "openai"
+                base_url = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1").strip()
+                model = os.environ.get("LLM_MODEL", "gpt-4o-mini").strip()
+                api_key = os.environ.get("OPENAI_API_KEY", "").strip() or None
+            elif os.environ.get("GEMINI_API_KEY"):
+                provider = "openai"
+                base_url = os.environ.get("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/").strip()
+                model = os.environ.get("LLM_MODEL", "gemini-1.5-flash").strip()
+                api_key = os.environ.get("GEMINI_API_KEY", "").strip() or None
+            else:
+                provider = "ollama"
+                base_url = os.environ.get("LLM_BASE_URL", "http://localhost:11434/v1").strip()
+                model = os.environ.get("LLM_MODEL", "llama3.2").strip()
+                api_key = os.environ.get("LLM_API_KEY", "").strip() or None
+        else:
+            provider = env_provider.lower().strip()
+            def_url = "http://localhost:11434/v1" if provider == "ollama" else "https://api.openai.com/v1"
+            base_url = os.environ.get("LLM_BASE_URL", def_url).strip()
+            def_model = "llama3.2" if provider == "ollama" else "gpt-4o-mini"
+            model = os.environ.get("LLM_MODEL", def_model).strip()
+            api_key = (
+                os.environ.get("LLM_API_KEY") or
+                os.environ.get("OPENAI_API_KEY") or
+                os.environ.get("GROQ_API_KEY") or
+                os.environ.get("GEMINI_API_KEY") or
+                ""
+            ).strip() or None
 
         try:
             timeout_seconds = float(os.environ.get("LLM_TIMEOUT_SECONDS", "60.0"))
@@ -441,9 +472,16 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             headers["Authorization"] = f"Bearer {self.config.api_key}"
 
         try:
-            with httpx.Client(timeout=httpx.Timeout(min(3.0, self.config.timeout_seconds), connect=1.0)) as client:
+            with httpx.Client(timeout=httpx.Timeout(min(5.0, self.config.timeout_seconds), connect=3.0)) as client:
                 resp = client.get(url, headers=headers)
-                if resp.status_code in (200, 401, 403):
+                if resp.status_code in (200, 204):
+                    self._availability_cache = (now, True, None)
+                    return True, None
+                if resp.status_code in (401, 403):
+                    res = (False, f"Authentication failed: HTTP {resp.status_code}. Check API key.")
+                    self._availability_cache = (now, res[0], res[1])
+                    return res
+                if resp.status_code == 404 and self.config.api_key:
                     self._availability_cache = (now, True, None)
                     return True, None
                 res = (False, f"Endpoint returned HTTP {resp.status_code}")
@@ -480,7 +518,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         }
 
         try:
-            with httpx.Client(timeout=httpx.Timeout(self.config.timeout_seconds, connect=1.5)) as client:
+            with httpx.Client(timeout=httpx.Timeout(self.config.timeout_seconds, connect=min(5.0, self.config.timeout_seconds))) as client:
                 resp = client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
@@ -532,7 +570,7 @@ class OllamaProvider(BaseLLMProvider):
         tags_url = f"{root_url}/api/tags"
 
         try:
-            with httpx.Client(timeout=httpx.Timeout(min(2.0, self.config.timeout_seconds), connect=0.8)) as client:
+            with httpx.Client(timeout=httpx.Timeout(min(5.0, self.config.timeout_seconds), connect=3.0)) as client:
                 resp = client.get(tags_url)
                 if resp.status_code == 200:
                     data = resp.json()
@@ -581,7 +619,7 @@ class OllamaProvider(BaseLLMProvider):
         }
 
         try:
-            with httpx.Client(timeout=httpx.Timeout(self.config.timeout_seconds, connect=1.2)) as client:
+            with httpx.Client(timeout=httpx.Timeout(self.config.timeout_seconds, connect=5.0)) as client:
                 resp = client.post(url, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
@@ -763,7 +801,7 @@ def create_llm_provider(config: Optional[LLMConfig] = None) -> BaseLLMProvider:
 
     if provider_name == "ollama":
         return OllamaProvider(cfg)
-    elif provider_name in ("openai", "openai_compatible", "vllm", "lmstudio"):
+    elif provider_name in ("openai", "openai_compatible", "vllm", "lmstudio", "groq", "gemini", "custom"):
         return OpenAICompatibleProvider(cfg)
     elif provider_name in ("mock", "mock_llm"):
         return MockLLMProvider(cfg)

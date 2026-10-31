@@ -281,67 +281,67 @@ def test_hierarchical_hopfield_memory_5_levels():
 
 def test_api_multimodal_document_and_studio_endpoints():
     api.startup_event()
-    client = TestClient(api.app)
+    with TestClient(api.app) as client:
 
-    # 1. Upload CSV document
-    csv_content = b"Algorithm,Complexity,Memory\nQuicksort,O(n log n),O(log n)\nMergesort,O(n log n),O(n)\n"
-    res = client.post(
+        # 1. Upload CSV document
+        csv_content = b"Algorithm,Complexity,Memory\nQuicksort,O(n log n),O(log n)\nMergesort,O(n log n),O(n)\n"
+        res = client.post(
         "/api/upload",
         files={"file": ("algorithms.csv", csv_content, "text/csv")}
-    )
-    assert res.status_code == 200
-    data = res.json()
-    assert "doc_id" in data
-    doc_id = data["doc_id"]
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert "doc_id" in data
+        doc_id = data["doc_id"]
 
-    # 2. List multimodal documents
-    res_m = client.get("/api/documents/multimodal")
-    assert res_m.status_code == 200
-    docs = res_m.json()["documents"]
-    assert any(d["doc_id"] == doc_id for d in docs)
+        # 2. List multimodal documents
+        res_m = client.get("/api/documents/multimodal")
+        assert res_m.status_code == 200
+        docs = res_m.json()["documents"]
+        assert any(d["doc_id"] == doc_id for d in docs)
 
-    # 3. Get document pages
-    res_p = client.get(f"/api/documents/{doc_id}/pages")
-    assert res_p.status_code == 200
-    assert len(res_p.json()["pages"]) >= 1
+        # 3. Get document pages
+        res_p = client.get(f"/api/documents/{doc_id}/pages")
+        assert res_p.status_code == 200
+        assert len(res_p.json()["pages"]) >= 1
 
-    # 4. Get page details
-    res_p1 = client.get(f"/api/documents/{doc_id}/pages/1")
-    assert res_p1.status_code == 200
-    assert res_p1.json()["has_tables"] is True
+        # 4. Get page details
+        res_p1 = client.get(f"/api/documents/{doc_id}/pages/1")
+        assert res_p1.status_code == 200
+        assert res_p1.json()["has_tables"] is True
 
-    # 5. Table CSV export
-    res_tbl = client.get(f"/api/documents/{doc_id}/tables")
-    assert res_tbl.status_code == 200
-    tables = res_tbl.json()["tables"]
-    assert len(tables) >= 1
-    tbl_id = tables[0]["table_id"]
-    res_csv = client.get(f"/api/documents/{doc_id}/tables/{tbl_id}/csv")
-    assert res_csv.status_code == 200
-    assert "Quicksort" in res_csv.text
+        # 5. Table CSV export
+        res_tbl = client.get(f"/api/documents/{doc_id}/tables")
+        assert res_tbl.status_code == 200
+        tables = res_tbl.json()["tables"]
+        assert len(tables) >= 1
+        tbl_id = tables[0]["table_id"]
+        res_csv = client.get(f"/api/documents/{doc_id}/tables/{tbl_id}/csv")
+        assert res_csv.status_code == 200
+        assert "Quicksort" in res_csv.text
 
-    # 6. Visual Studio endpoint
-    res_studio = client.post(
+        # 6. Visual Studio endpoint
+        res_studio = client.post(
         "/api/visual-studio/generate",
         json={"prompt": "Generate a mind map of algorithms", "requested_type": "mindmap"}
-    )
-    assert res_studio.status_code == 200
-    assert res_studio.json()["viz_type"] == "mermaid"
+        )
+        assert res_studio.status_code == 200
+        assert res_studio.json()["viz_type"] == "mermaid"
 
-    # 7. Knowledge graph endpoint
-    res_kg = client.get("/api/knowledge-graph")
-    assert res_kg.status_code == 200
-    assert "elements" in res_kg.json()
+        # 7. Knowledge graph endpoint
+        res_kg = client.get("/api/knowledge-graph")
+        assert res_kg.status_code == 200
+        assert "elements" in res_kg.json()
 
-    # 8. Study deck endpoint
-    res_study = client.post(
+        # 8. Study deck endpoint
+        res_study = client.post(
         "/api/study/deck",
         json={"topic": "Sorting Algorithms"}
-    )
-    assert res_study.status_code == 200
-    assert "flashcards" in res_study.json()
+        )
+        assert res_study.status_code == 200
+        assert "flashcards" in res_study.json()
 
-    # 9. Memory stats endpoint
-    res_stats = client.get("/api/memory/hierarchical/stats")
-    assert res_stats.status_code == 200
-    assert "level1_raw_memory_count" in res_stats.json()
+        # 9. Memory stats endpoint
+        res_stats = client.get("/api/memory/hierarchical/stats")
+        assert res_stats.status_code == 200
+        assert "level1_raw_memory_count" in res_stats.json()
