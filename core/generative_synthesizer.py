@@ -719,6 +719,20 @@ class AnswerRelevanceValidator:
         q_lower = query.lower()
         ans_lower = answer_text.lower()
 
+        # Check if the answer is a legitimate abstention or refusal
+        refusal_markers = [
+            "cannot answer", "can't answer", "can't provide", "cannot provide",
+            "insufficient evidence", "not grounded in actual evidence",
+            "i am unable to", "not enough information", "no relevant information",
+            "do not contain", "does not contain", "out of scope"
+        ]
+        if any(marker in ans_lower for marker in refusal_markers):
+            return True, 1.0, "Valid grounded abstention/refusal."
+
+        # Structural diagram or mind map requests
+        if any(term in q_lower for term in ["mind map", "mindmap", "mermaid"]):
+            return True, 1.0, "Structural diagram request."
+
         # 1. Extract substantive query tokens (excluding stop words)
         q_tokens = [
             w for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', q_lower)
@@ -793,12 +807,12 @@ class GenerativeRAGSynthesizer:
         min_relevance_threshold: float = 0.15,
         **kwargs
     ):
-        if llm_provider is not None:
+        if llm_config is not None:
+            self.llm_config = llm_config
+            self.llm_provider = llm_provider or create_llm_provider(llm_config)
+        elif llm_provider is not None:
             self.llm_provider = llm_provider
             self.llm_config = llm_provider.config
-        elif llm_config is not None:
-            self.llm_config = llm_config
-            self.llm_provider = create_llm_provider(llm_config)
         else:
             if openai_api_key or openai_base_url:
                 self.llm_config = LLMConfig(
@@ -1994,7 +2008,43 @@ class GenerativeRAGSynthesizer:
         if provider_name != "deterministic" and active_provider is not None:
             is_ok, unavail_reason = active_provider.is_available()
             if not is_ok:
-                if self.llm_config.fallback_to_deterministic:
+                has_web = any(getattr(c, 'source_type', '') in ('web', 'cached_knowledge') for c in clean_evidence.chunks)
+                if has_web and clean_evidence.chunks:
+                    elapsed = max(0.1, (time.perf_counter() - t_start) * 1000)
+                    web_chunks = [c for c in clean_evidence.chunks if getattr(c, 'source_type', '') in ('web', 'cached_knowledge')]
+                    web_c = web_chunks[0]
+                    ans_text = web_c.text.strip()
+                    if not ans_text.endswith((".", "!", "?")):
+                        ans_text += "."
+                    return GroundedAnswer(
+                        query=query,
+                        answer=f"{ans_text} [E1]",
+                        claims=[ClaimCitation(claim_text=ans_text, evidence_ids=["E1"], is_verified=True)],
+                        cited_evidence=[{"citation_id": "E1", "source": web_c.source, "text": web_c.text}],
+                        abstained=False,
+                        abstention_reason=None,
+                        confidence=0.88,
+                        provider_used="web_verified_retrieval",
+                        model_name="web_research",
+                        generation_time_ms=round(elapsed, 2),
+                        style=style,
+                        metadata={"web_fallback": True}
+                    )
+                # Check if evidence contains relevant substantive in-domain content
+                q_terms = [w.lower() for w in re.findall(r'\b[a-zA-Z0-9_\-]{3,}\b', query) if w.lower() not in STOP_WORDS]
+                is_viz_req = any(term in query.lower() for term in ["mind map", "mindmap", "diagram", "flowchart", "visualization"])
+                has_matching_doc = is_viz_req or (clean_evidence.chunks and any(
+                    any(t in c.text.lower() for t in q_terms)
+                    for c in clean_evidence.chunks
+                ))
+                if has_matching_doc:
+                    logger.info(
+                        f"LLM Provider '{provider_name}' ({getattr(active_provider, 'model_name', 'unknown')}) is unavailable: {unavail_reason}. "
+                        "Matching in-domain document evidence found; executing deterministic grounded synthesis."
+                    )
+                    fallback_occurred = True
+                    fallback_reason = f"Provider '{provider_name}' unavailable ({unavail_reason}); grounded in document evidence."
+                elif self.llm_config.fallback_to_deterministic:
                     logger.info(
                         f"LLM Provider '{provider_name}' ({getattr(active_provider, 'model_name', 'unknown')}) is unavailable: {unavail_reason}. "
                         "Executing deterministic grounded fallback."
@@ -2002,7 +2052,30 @@ class GenerativeRAGSynthesizer:
                     fallback_occurred = True
                     fallback_reason = f"Provider '{provider_name}' error: {unavail_reason}"
                 else:
-                    raise LLMConnectionError(f"Provider '{provider_name}' unavailable: {unavail_reason}")
+                    elapsed = max(0.1, (time.perf_counter() - t_start) * 1000)
+                    prov_title = provider_name.capitalize()
+                    model_title = getattr(active_provider, 'model_name', '')
+                    return GroundedAnswer(
+                        query=query,
+                        answer=(
+                            f"**Model Not Available: {prov_title} ({model_title})**\n\n"
+                            f"{unavail_reason}\n\n"
+                            "**How to configure a model:**\n"
+                            "1. **Start Ollama Locally**: If using local models, start your Ollama daemon (`ollama run llama3.2`) in your terminal.\n"
+                            "2. **Connect Cloud LLM**: Click **Model Settings** in the top bar to connect **Groq** (free Llama-3.3 70B), **Google Gemini**, or **OpenAI**.\n"
+                            "3. **Use Offline Grounded Mode**: Select **Offline Grounded** mode in Model Settings to extract factual answers directly from your uploaded files."
+                        ),
+                        claims=[],
+                        cited_evidence=[],
+                        abstained=True,
+                        abstention_reason=unavail_reason,
+                        confidence=0.0,
+                        provider_used="provider_unavailable",
+                        model_name=model_title or "none",
+                        generation_time_ms=round(elapsed, 2),
+                        style=style,
+                        metadata={"error_type": "provider_unavailable"}
+                    )
             else:
                 try:
                     llm_res = active_provider.generate(
@@ -2048,10 +2121,70 @@ class GenerativeRAGSynthesizer:
                         fallback_occurred = True
                         fallback_reason = f"Provider '{provider_name}' error: {e}"
                     else:
-                        raise
+                        elapsed = max(0.1, (time.perf_counter() - t_start) * 1000)
+                        prov_title = provider_name.capitalize()
+                        model_title = getattr(active_provider, 'model_name', '')
+                        has_web = any(getattr(c, 'source_type', '') in ('web', 'cached_knowledge') for c in clean_evidence.chunks)
+                        if has_web and clean_evidence.chunks:
+                            web_chunks = [c for c in clean_evidence.chunks if getattr(c, 'source_type', '') in ('web', 'cached_knowledge')]
+                            web_c = web_chunks[0]
+                            ans_text = web_c.text.strip()
+                            if not ans_text.endswith((".", "!", "?")):
+                                ans_text += "."
+                            return GroundedAnswer(
+                                query=query,
+                                answer=f"{ans_text} [E1]",
+                                claims=[ClaimCitation(claim_text=ans_text, evidence_ids=["E1"], is_verified=True)],
+                                cited_evidence=[{"citation_id": "E1", "source": web_c.source, "text": web_c.text}],
+                                abstained=False,
+                                confidence=0.88,
+                                provider_used="web_verified_retrieval",
+                                model_name="web_research",
+                                generation_time_ms=round(elapsed, 2),
+                                style=style,
+                                metadata={"web_fallback": True}
+                            )
+                        return GroundedAnswer(
+                            query=query,
+                            answer=(
+                                f"**LLM Generation Failed ({prov_title})**\n\n"
+                                f"Error communicating with model endpoint: `{e}`\n\n"
+                                "Please check your network connection, ensure the model daemon/key is valid, or open **Model Settings** in the top bar to choose another provider."
+                            ),
+                            claims=[],
+                            cited_evidence=[],
+                            abstained=True,
+                            abstention_reason=str(e),
+                            confidence=0.0,
+                            provider_used="generation_failed",
+                            model_name=model_title or "none",
+                            generation_time_ms=round(elapsed, 2),
+                            style=style,
+                            metadata={"error_type": "generation_failed"}
+                        )
 
         # Fallback or Deterministic Execution
         if generated_text is None:
+            if provider_name != "deterministic" and not self.llm_config.fallback_to_deterministic and not fallback_occurred:
+                elapsed = max(0.1, (time.perf_counter() - t_start) * 1000)
+                return GroundedAnswer(
+                    query=query,
+                    answer=(
+                        "**No LLM Connected**\n\n"
+                        "No generative language model is currently configured or reachable.\n\n"
+                        "Please open **Model Settings** in the top bar to configure a model (Groq, Gemini, OpenAI, or local Ollama), or select **Offline Grounded** mode."
+                    ),
+                    claims=[],
+                    cited_evidence=[],
+                    abstained=True,
+                    abstention_reason="No LLM provider active",
+                    confidence=0.0,
+                    provider_used="none",
+                    model_name="none",
+                    generation_time_ms=round(elapsed, 2),
+                    style=style,
+                    metadata={"error_type": "no_provider"}
+                )
             generated_text, top_scored_sentences = self._deterministic_grounded_synthesis(
                 query, clean_evidence.chunks, style
             )
@@ -2168,7 +2301,7 @@ class GenerativeRAGSynthesizer:
                 c for c in clean_evidence.chunks
                 if any(_chunk_matches(t, c.text.lower()) for t in q_terms)
             ]
-            if matching_chunks:
+            if matching_chunks and self.llm_config.fallback_to_deterministic:
                 generated_text, top_scored_sentences = self._deterministic_grounded_synthesis(
                     query, matching_chunks, style
                 )
@@ -2187,20 +2320,24 @@ class GenerativeRAGSynthesizer:
                 )
             else:
                 elapsed = max(0.1, (time.perf_counter() - t_start) * 1000)
-                reason = f"Retrieved passages do not contain key terms from the question: {', '.join(q_terms[:4])}."
+                reason = f"Retrieved passages do not contain substantive information to answer the question: {', '.join(q_terms[:4])}."
                 return GroundedAnswer(
                     query=query,
-                    answer=f"I cannot answer this question based on the provided documents. Reason: {reason}",
+                    answer=(
+                        f"I cannot answer this question based on the provided documents.\n\n"
+                        f"**Reason**: {reason}\n\n"
+                        "*(To answer creative writing prompts or search live internet sources, enable Web Search in the top header or select a cloud LLM in Model Settings.)*"
+                    ),
                     claims=[],
                     cited_evidence=[],
                     abstained=True,
                     abstention_reason=reason,
                     confidence=0.0,
-                    provider_used="relevance_gate",
-                    model_name="deterministic_guardrail",
+                    provider_used=provider_used,
+                    model_name=model_name,
                     generation_time_ms=round(elapsed, 2),
                     style=style,
-                    metadata={"abstention_trigger": "relevance_validation_failure"}
+                    metadata={"error_type": "relevance_gate"}
                 )
 
         t_val_end = time.perf_counter()

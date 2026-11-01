@@ -280,11 +280,11 @@
             <button
                 id="llm-status-pill"
                 onclick="openLLMModal()"
-                class="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#d9dce4] dark:border-slate-700 bg-[#f8f9fc] dark:bg-slate-800 hover:border-[#3049b8] text-[11px] font-medium text-[#2f333f] dark:text-slate-200 transition"
+                class="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-[11px] font-medium text-amber-800 dark:text-amber-300 transition"
                 title="Click to configure Model Settings"
             >
-                <span class="size-1.5 rounded-full bg-emerald-500"></span>
-                <span id="llm-status-text">Ollama (llama3.2)</span>
+                <span class="size-2 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="llm-status-text">Select Model</span>
             </button>
         </div>
 
@@ -1672,48 +1672,56 @@ function getSvgIcon(name, size = 16, extraClass = '') {
             const sbBadge = document.getElementById('sb-llm-badge');
             const compIndicator = document.getElementById('composer-model-indicator');
 
-            if (!session || session.provider === 'ollama') {
-                const modelName = session?.model || 'llama3.2';
-                if (llmPill) {
-                    llmPill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-blue-400 transition";
-                    llmPill.innerHTML = `<span class="size-1.5 rounded-full bg-emerald-500 mr-1 inline-block"></span>Ollama (${modelName})`;
-                    llmPill.title = "Local Ollama model active. Click to view or change Model Settings.";
-                }
-                if (sbBadge) {
-                    sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300";
-                    sbBadge.innerText = "Local Ollama";
-                }
-                if (compIndicator) {
-                    compIndicator.innerText = `Ollama (${modelName})`;
+            if (!session) {
+                if (window.__backendLLM && window.__backendLLM.available) {
+                    const mName = window.__backendLLM.model || 'llama3.2';
+                    const pName = (window.__backendLLM.provider || 'Ollama').toUpperCase();
+                    if (llmPill) {
+                        llmPill.className = "hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 text-[11px] font-medium text-emerald-800 dark:text-emerald-300 cursor-pointer hover:bg-emerald-100 transition";
+                        llmPill.innerHTML = `<span class="size-2 rounded-full bg-emerald-500"></span><span>${pName} (${mName})</span>`;
+                        llmPill.title = "Backend model connected. Click to configure Model Settings.";
+                    }
+                    if (sbBadge) {
+                        sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300";
+                        sbBadge.innerText = `${pName} (${mName})`;
+                    }
+                    if (compIndicator) compIndicator.innerText = `${pName} (${mName})`;
+                } else {
+                    if (llmPill) {
+                        llmPill.className = "hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 text-[11px] font-medium text-amber-800 dark:text-amber-300 cursor-pointer hover:bg-amber-100 transition";
+                        llmPill.innerHTML = `<span class="size-2 rounded-full bg-amber-500 animate-pulse"></span><span>Select Model</span>`;
+                        llmPill.title = "No generative model connected. Click to choose in Model Settings.";
+                    }
+                    if (sbBadge) {
+                        sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300";
+                        sbBadge.innerText = "Select Model";
+                    }
+                    if (compIndicator) compIndicator.innerText = "No Model Connected (Click to Select)";
                 }
             } else if (session.provider === 'offline') {
                 if (llmPill) {
-                    llmPill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 cursor-pointer hover:bg-emerald-200 transition";
-                    llmPill.innerHTML = `Offline Grounded`;
-                    llmPill.title = "100% Private Offline Grounded Mode. Click to view or change Model Settings.";
+                    llmPill.className = "hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-200 transition";
+                    llmPill.innerHTML = `<span class="size-2 rounded-full bg-slate-500"></span><span>Offline Grounded</span>`;
+                    llmPill.title = "100% Private Offline Grounded Mode. Click to configure Model Settings.";
                 }
                 if (sbBadge) {
-                    sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
+                    sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300";
                     sbBadge.innerText = "Offline Grounded";
                 }
-                if (compIndicator) {
-                    compIndicator.innerText = "Offline Grounded (100% Private)";
-                }
+                if (compIndicator) compIndicator.innerText = "Offline Grounded (100% Private)";
             } else {
                 const provName = session.provider.toUpperCase();
                 const modelName = session.model || '';
                 if (llmPill) {
-                    llmPill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 cursor-pointer shadow-xs hover:bg-indigo-200 transition flex items-center gap-1.5";
-                    llmPill.innerHTML = `<span class="w-2 h-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span><span>${provName} (${modelName})</span><span class="bg-indigo-200/80 dark:bg-indigo-900 text-[9px] px-1 rounded font-semibold">Session</span>`;
-                    llmPill.title = `${provName} active in session memory. Click to view or change Model Settings.`;
+                    llmPill.className = "hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-indigo-300 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 text-[11px] font-medium text-indigo-800 dark:text-indigo-300 cursor-pointer hover:bg-indigo-100 transition";
+                    llmPill.innerHTML = `<span class="size-2 rounded-full bg-indigo-600 animate-pulse"></span><span>${provName} (${modelName})</span>`;
+                    llmPill.title = `${provName} active in session memory. Click to configure Model Settings.`;
                 }
                 if (sbBadge) {
-                    sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800";
+                    sbBadge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300";
                     sbBadge.innerText = `${provName} (Session)`;
                 }
-                if (compIndicator) {
-                    compIndicator.innerText = `${provName} (${modelName})`;
-                }
+                if (compIndicator) compIndicator.innerText = `${provName} (${modelName})`;
             }
         }
 
@@ -1912,7 +1920,9 @@ function getSvgIcon(name, size = 16, extraClass = '') {
                     if (session && session.mode === 'cloud' && session.api_key) {
                         updateLLMUI();
                     } else {
-                        const llmPill = document.getElementById('llm-status-pill');
+                        window.__backendLLM = data.llm;
+                    updateLLMUI();
+                    const llmPill = document.getElementById('llm-status-pill');
                         if (llmPill && data.llm) {
                             if (data.llm.available) {
                                 llmPill.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 cursor-pointer hover:bg-emerald-200 transition";

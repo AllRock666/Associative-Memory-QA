@@ -45,10 +45,10 @@ class LLMConfig:
     base_url: str = "http://localhost:11434/v1"
     model: str = "llama3.2"
     api_key: Optional[str] = None
-    timeout_seconds: float = 60.0
+    timeout_seconds: float = 120.0
     max_tokens: int = 8192
     temperature: float = 0.2
-    fallback_to_deterministic: bool = True
+    fallback_to_deterministic: bool = False
 
     @classmethod
     def from_env(cls) -> "LLMConfig":
@@ -90,9 +90,9 @@ class LLMConfig:
             ).strip() or None
 
         try:
-            timeout_seconds = float(os.environ.get("LLM_TIMEOUT_SECONDS", "60.0"))
+            timeout_seconds = float(os.environ.get("LLM_TIMEOUT_SECONDS", "120.0"))
         except ValueError:
-            timeout_seconds = 60.0
+            timeout_seconds = 120.0
 
         try:
             max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "8192"))
@@ -104,8 +104,8 @@ class LLMConfig:
         except ValueError:
             temperature = 0.2
 
-        fb_str = os.environ.get("LLM_FALLBACK_TO_DETERMINISTIC", "true").lower().strip()
-        fallback_to_deterministic = fb_str not in ("false", "0", "no")
+        fb_str = os.environ.get("LLM_FALLBACK_TO_DETERMINISTIC", "false").lower().strip()
+        fallback_to_deterministic = fb_str in ("true", "1", "yes")
 
         return cls(
             provider=provider,
@@ -466,6 +466,11 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             if now - ts < 10.0:
                 return is_ok, msg
 
+        if self.config.provider in ("openai", "groq", "gemini") and not self.config.api_key:
+            res = (False, f"No API key provided for {self.config.provider.capitalize()}. Please configure your API key in Model Settings.")
+            self._availability_cache = (now, res[0], res[1])
+            return res
+
         url = self.config.base_url.rstrip("/") + "/models"
         headers = {}
         if self.config.api_key:
@@ -500,6 +505,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         conversation_history: Optional[List[Dict[str, str]]] = None
     ) -> LLMResult:
         t_start = time.perf_counter()
+        self.is_available()
         sys_prompt, usr_prompt = build_grounded_prompt(query, evidence_chunks, style, conversation_history)
 
         url = self.config.base_url.rstrip("/") + "/chat/completions"
@@ -574,12 +580,27 @@ class OllamaProvider(BaseLLMProvider):
                 resp = client.get(tags_url)
                 if resp.status_code == 200:
                     data = resp.json()
-                    models = [m.get("name", "").split(":")[0] for m in data.get("models", [])]
-                    target_model = self.config.model.split(":")[0]
-                    if target_model in models or not models:
+                    available_names = [m.get("name", "") for m in data.get("models", [])]
+                    target_model = self.config.model.strip()
+                    if target_model in available_names:
                         self._availability_cache = (now, True, None)
                         return True, None
-                    res = (True, f"Ollama is running, but model '{self.config.model}' may need to be pulled (available: {models})")
+                    # Attempt prefix / family match (e.g. 'llama3.2' -> 'llama3.2:1b')
+                    target_base = target_model.split(":")[0]
+                    matched = None
+                    for full_name in available_names:
+                        if full_name.split(":")[0] == target_base or full_name.startswith(target_base):
+                            matched = full_name
+                            break
+                    if matched:
+                        self.config.model = matched
+                        self._availability_cache = (now, True, None)
+                        return True, None
+                    if available_names:
+                        self.config.model = available_names[0]
+                        self._availability_cache = (now, True, None)
+                        return True, None
+                    res = (True, f"Ollama is running, but model '{self.config.model}' may need to be pulled.")
                     self._availability_cache = (now, res[0], res[1])
                     return res
                 res = (False, f"Ollama returned HTTP {resp.status_code}")
@@ -604,6 +625,7 @@ class OllamaProvider(BaseLLMProvider):
         conversation_history: Optional[List[Dict[str, str]]] = None
     ) -> LLMResult:
         t_start = time.perf_counter()
+        self.is_available()
         sys_prompt, usr_prompt = build_grounded_prompt(query, evidence_chunks, style, conversation_history)
 
         # Standard OpenAI-compatible path supported by Ollama v0.1.24+

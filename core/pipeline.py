@@ -61,10 +61,10 @@ class PipelineConfig:
     llm_base_url: str = "http://localhost:11434/v1"
     llm_model: str = "llama3.2"
     llm_api_key: Optional[str] = None
-    llm_timeout_seconds: float = 60.0
+    llm_timeout_seconds: float = 120.0
     llm_max_tokens: int = 8192
     llm_temperature: float = 0.2
-    llm_fallback_to_deterministic: bool = True
+    llm_fallback_to_deterministic: bool = False
 
     # Web Augmentation & Persistent Knowledge Memory
     web_search_enabled: bool = False
@@ -167,10 +167,10 @@ class HopfieldQAPipeline:
             base_url=getattr(self.config, 'llm_base_url', 'http://localhost:11434/v1'),
             model=getattr(self.config, 'llm_model', 'llama3.2'),
             api_key=getattr(self.config, 'llm_api_key', None),
-            timeout_seconds=getattr(self.config, 'llm_timeout_seconds', 60.0),
+            timeout_seconds=getattr(self.config, 'llm_timeout_seconds', 120.0),
             max_tokens=getattr(self.config, 'llm_max_tokens', 4096),
             temperature=getattr(self.config, 'llm_temperature', 0.2),
-            fallback_to_deterministic=getattr(self.config, 'llm_fallback_to_deterministic', True)
+            fallback_to_deterministic=getattr(self.config, 'llm_fallback_to_deterministic', False)
         )
         self.answer_generator = GenerativeRAGSynthesizer(
             llm_config=llm_cfg

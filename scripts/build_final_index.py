@@ -178,6 +178,21 @@ cleaned_script = cleaned_script.replace(
     "const code = data.content || data.code;"
 )
 
+# Update updateLLMUI logic
+cleaned_script = re.sub(
+    r'function updateLLMUI\(\)\s*\{.*?\n        \}',
+    custom_update_llmui.strip(),
+    cleaned_script,
+    flags=re.DOTALL
+)
+
+# Update checkStatus to update window.__backendLLM and call updateLLMUI
+cleaned_script = cleaned_script.replace(
+    "const llmPill = document.getElementById('llm-status-pill');",
+    "window.__backendLLM = data.llm;\n                    updateLLMUI();\n                    const llmPill = document.getElementById('llm-status-pill');"
+)
+
+
 # Assemble final script
 final_script = svg_helper + "\n" + cleaned_script
 
@@ -463,11 +478,11 @@ full_html = r'''<!DOCTYPE html>
             <button
                 id="llm-status-pill"
                 onclick="openLLMModal()"
-                class="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#d9dce4] dark:border-slate-700 bg-[#f8f9fc] dark:bg-slate-800 hover:border-[#3049b8] text-[11px] font-medium text-[#2f333f] dark:text-slate-200 transition"
+                class="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-[11px] font-medium text-amber-800 dark:text-amber-300 transition"
                 title="Click to configure Model Settings"
             >
-                <span class="size-1.5 rounded-full bg-emerald-500"></span>
-                <span id="llm-status-text">Ollama (llama3.2)</span>
+                <span class="size-2 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="llm-status-text">Select Model</span>
             </button>
         </div>
 

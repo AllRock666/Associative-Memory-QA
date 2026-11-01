@@ -78,6 +78,30 @@ class CreateChatRequest(BaseModel):
 class UpdateChatRequest(BaseModel):
     title: str
 
+def is_informational_pasted_text(text: str) -> bool:
+    t = text.strip()
+    if len(t) < 120 or len(t.split()) < 20:
+        return False
+    if t.endswith("?"):
+        return False
+    first_word = t.split()[0].lower().strip('"\':;')
+    prompt_verbs = {
+        "write", "describe", "explain", "tell", "summarize", "generate",
+        "create", "list", "show", "give", "start", "do", "please", "can",
+        "could", "what", "how", "why", "who", "where", "when", "which",
+        "make", "compare", "provide", "compose", "draft", "act"
+    }
+    if first_word in prompt_verbs:
+        return False
+    lower_t = t.lower()
+    if any(prefix in lower_t[:40] for prefix in [
+        "write a", "write an", "generate a", "generate an", "create a",
+        "describe the", "explain the", "start at", "do not stop",
+        "can you", "could you", "please tell", "make a mind map"
+    ]):
+        return False
+    return True
+
 def init_app_state():
     global pipeline, hierarchical_memory
     if pipeline is not None:
@@ -297,6 +321,7 @@ def search(req: SearchRequest):
         p_name = req.llm_provider.lower().strip()
         ovr_cfg = LLMConfig.from_env()
         ovr_cfg.provider = p_name
+        ovr_cfg.fallback_to_deterministic = False
         if p_name == "groq" and not req.llm_base_url:
             ovr_cfg.base_url = "https://api.groq.com/openai/v1"
             if not req.llm_model:
@@ -337,11 +362,11 @@ def search(req: SearchRequest):
     q_lower = req.query.lower()
     q_words = req.query.strip().split()
 
-    # Automatically index any large paragraphs pasted directly in history or current prompt
+    # Automatically index any large informational paragraphs pasted directly in history or current prompt
     if history:
         for idx, h_msg in enumerate(history):
             h_text = h_msg.get("content", "").strip()
-            if h_msg.get("role") == "user" and len(h_text) > 120 and len(h_text.split()) > 15:
+            if h_msg.get("role") == "user" and is_informational_pasted_text(h_text):
                 h_src = f"pasted_chat_{req.chat_id or 'turn'}_{idx}"
                 if h_src not in pipeline._documents:
                     pipeline.add_documents([(h_text, h_src)])
@@ -350,7 +375,7 @@ def search(req: SearchRequest):
                         emb = pipeline.embedder.embed_texts([h_text], show_progress=False)
                         hierarchical_memory.ingest_chunks(chunks, emb)
 
-    if len(req.query.strip()) > 150 and (len(req.query.split()) > 20 or "\n" in req.query):
+    if is_informational_pasted_text(req.query):
         curr_src = f"pasted_chat_{req.chat_id or 'current'}"
         if curr_src not in pipeline._documents:
             pipeline.add_documents([(req.query.strip(), curr_src)])
